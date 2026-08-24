@@ -5,8 +5,8 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phase 0a is built and verified** (see §7 for what landed and what it cost). Sections 3.2–3.6, 3.8,
-3.9 and 4 remain planning. Section 2 is a verdict against code that is built and verified.
+**Status:** **Phases 0a and 0b are built and verified** (§7, §8). Sections 3.3–3.6, 3.8, 3.9 and 4 remain
+planning. Section 2 is a verdict against code that is built and verified.
 
 ---
 
@@ -42,7 +42,7 @@ Verdicts are against the code on `main` as of this document, not against intent.
 | Requirement | Verdict | Gap detail | Fix |
 |---|---|---|---|
 | Dual Buyer+Seller profile (FR073) | **Missing** → now **Covered** (§7) | `users.email` is `UNIQUE`; `actor_class`, `tenant_id`, `institution_id` and `user_type_id` are all columns on `users`, with `CHECK (tenant_id IS NULL OR institution_id IS NULL)`. One login = one actor, permanently. | `user_profiles` table + active-profile claim in the JWT. See §3.1. |
-| Maker/Checker segregation (FR070, FR122) | **Partial** | The only segregation that exists is `PartnershipService.assertMayApprove`, and it separates *sides* (the seller side cannot approve its own proposal), not *users* — a second user of the same seller can approve their colleague's proposal. There is no generic mechanism, so every future approval (listing, KYC, auction, promotion, vendor product) would re-implement it. | Generic `approval_workflow` with a `submitted_by <> checked_by` constraint. See §3.2. |
+| Maker/Checker segregation (FR070, FR122) | **Partial** → now **Covered** (§8) | The only segregation that exists is `PartnershipService.assertMayApprove`, and it separates *sides* (the seller side cannot approve its own proposal), not *users* — a second user of the same seller can approve their colleague's proposal. There is no generic mechanism, so every future approval (listing, KYC, auction, promotion, vendor product) would re-implement it. | Generic `approval_workflow` with a `submitted_by <> checked_by` constraint. See §3.2. |
 | Seller entity-type KYC fields (FR066) | **Partial** | `tenants.seller_type` exists and is captured at onboarding, but nothing consumes it: there is no per-type required-document list, no document upload for KYC, and no validation that differs by type. | `kyc_requirement_config` + `kyc_submission` + `kyc_document`. See §3.3. |
 | Agent role + e-signature (FR160–FR161) | **Missing** | `SALES_AGENT` is a *seller staff* user type — an employee inside a seller organisation. The BRD's agent registers independently, accepts T&Cs with a captured signature artifact, and flags each listing self-owned vs client-owned. No signature storage exists. | New actor class `AGENT` + `agent_profile` + `signature_artifact` + `listing_agreement`. See §3.4. |
 | Valuer scoped access (FR043) | **Missing** | No valuer anything. More importantly, `TenantScope` has exactly two visibility modes — own organisation, or the set of partnered sellers — and a valuer needs a third: only the rows of the tickets assigned to them. | New actor class `VALUER` + assignment-based visibility mode in `TenantScope`. See §3.5. |
@@ -106,7 +106,7 @@ landing decision moves from "is this a buyer" to "what is the active profile".
 appears on screen except a switcher, and roughly a dozen files that currently read `user.actorClass` change to read
 `profile.actorClass`. It is also the change that gets 30× more expensive after M8 exists.
 
-### 3.2 Generic approvals *(blocks M6, M8, M10, M13)*
+### 3.2 Generic approvals *(blocks M6, M8, M10, M13)* — **BUILT**
 
 ```
 approval_workflow
@@ -126,9 +126,11 @@ remembers. A service-layer guard sits in front of it for the readable error mess
 Two permissions per approvable module, `*_SUBMIT` and `*_APPROVE`, so Maker and Checker are group bundles rather than
 hard-coded roles — which is what lets one organisation put both in one group and another split them.
 
-**Open question for Compliance:** the source plan flags (correctly) that the BRD implies segregation of duties
-without stating it. The `CHECK` above makes self-approval impossible platform-wide. If Compliance wants it
-configurable per entity type, say so before this lands — configurable is a different table.
+**Decided, and built that way:** self-approval is impossible platform-wide, enforced by the database CHECK. It
+is not configurable per entity type — a segregation of duties that can be switched off is not one, and every
+regulator's version of this question expects a single answer. Where an organisation is genuinely one person,
+the answer is that the platform decides, since it already sits outside every organisation. If Compliance later
+wants exceptions, that is a new table and a new conversation, not a flag on this one.
 
 ### 3.3 KYC *(with M8)*
 
@@ -239,7 +241,7 @@ turn lands backend **and** frontend together.
 | Phase | Contents | Turns (estimate) |
 |---|---|---|
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
-| **0b** | §3.2 approvals, folding partnerships into it | 1–2 |
+| **0b** | §3.2 approvals, folding partnerships into it | **done** |
 | **1** | M2 (property + search + media) → M1 consent → M3 (mock affordability behind the real interface) → M4 | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
 | **3** | M5, M6 | 4–5 |
@@ -365,3 +367,66 @@ an unmatched identifier creates nothing and says the same thing either way.
 - **AGENT, VALUER and VENDOR profile types.** The CHECK constraint lists the four that exist; each new one arrives
   with its module, its permissions and its screens, because a profile type with none of those is a value nothing
   can hold.
+
+
+---
+
+## 8. Phase 0b as built
+
+### The mechanism
+
+`V20260824180000__approval_workflows.sql` creates `approval_workflows`: `(entity_type, entity_id, action)` plus
+the scope whose queue it belongs in, the submitter, the decision, and four CHECK constraints. Three are worth
+naming:
+
+- `ck_approval_maker_checker` — `checked_by_user_id <> submitted_by_user_id`. **The rule.** Verified by raw
+  SQL as superuser: the UPDATE is refused.
+- `ck_approval_decided` — a decided row has a decider and a pending one does not, so "approved by nobody" is
+  not representable. That is the shape an audit cannot ask questions about.
+- A partial unique index on `(entity_type, entity_id, action) WHERE state = 'PENDING'` — two people submitting
+  the same thing cannot produce two queue rows, either of which could be decided while the other stayed open.
+
+`ApprovalHandler` is what a module supplies to make its things approvable: the entity type, **the domain's own
+decide permission**, any extra domain rule, and what "approved" actually does. There is deliberately no
+`APPROVALS_DECIDE` permission — a single approve-anything code would be a way around every module's gate,
+granted from one screen. `APPROVALS_VIEW` grants sight of the queue and nothing else.
+
+### Partnerships folded in
+
+Proposing raises the queue entry in the same transaction, in the queue of the side that did *not* propose. The
+partnership screen's Approve button now goes through the same workflow as the queue, so there is one path to
+cross-organisation access rather than two that can drift. The old `assertMayApprove` became the handler's
+`assertMayDecide` — the organisation rule, which is domain knowledge — while the user rule and the permission
+are the workflow's.
+
+Verified end to end: seller proposes with a covering note → the request appears in the lender's queue and not
+in the seller's → the seller (the submitter) is refused with "You submitted this — somebody else has to decide
+it" → the lender approves → the partnership activates and the lender's visible-seller set gains it on the next
+request → reject with no reason is refused → send back with a reason clears the proposal so either side may
+propose again, and the lender loses visibility immediately.
+
+### Two gaps this phase exposed, both fixed
+
+Neither is about approvals; both are about what happens when a module ships *after* an organisation exists.
+
+1. **New permissions never reached existing organisations.** An owner group is built at onboarding from the
+   permissions that existed that day, and nothing revisited it. `APPROVALS_VIEW` was therefore invisible to
+   every organisation already on the platform — and would have been, once per module, for the fifteen still to
+   come. The seeder now tops up each organisation's *system* group on every boot, filtered through the module
+   matrix and `platformOnly` exactly as onboarding is. Groups an organisation built for itself are left alone:
+   adding permissions to those would be the platform widening a role somebody deliberately narrowed.
+2. **New core modules never reached existing organisations either.** `enableCoreModules` was written to be
+   idempotent "so it can be re-run", and nothing re-ran it. The seeder now calls it for every live tenant.
+   Non-core modules are deliberately left alone — those are an organisation's choice, and switching them on
+   would override it on every deploy.
+
+`APPROVALS` was made **core** in the process. A queue for a control the BRD requires everywhere should not be
+something an organisation can be switched off from while remaining subject to the rule; what can be withheld
+is the permission, and that is per user group where it belongs.
+
+### One client-side defect worth recording
+
+Approving a partnership left the shell still saying "no sellers in view" directly above the partnership that
+had just been approved. The server rebuilds the principal per request, so the *next* call was correctly scoped
+— it was the client's copy of the identity, taken at sign-in, that was stale. Both the approvals queue and the
+partnership screen now re-read `/auth/me` alongside the list after any decision.

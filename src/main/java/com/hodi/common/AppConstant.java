@@ -62,6 +62,21 @@ public final class AppConstant {
      */
     public static final String PORTFOLIO_SELECTED = "SELECTED";
 
+    // ── Approval workflow (Maker/Checker — plan §3.2) ────────────────────────
+    // The state of a request, and — where a decision has been made — what it was. PENDING never appears as a
+    // decision: a request that has not been decided has no decider, which the table's own CHECK enforces.
+    public static final String APPROVAL_PENDING   = "PENDING";
+    public static final String APPROVAL_APPROVED  = "APPROVED";
+    public static final String APPROVAL_REJECTED  = "REJECTED";
+    /** Refused, but invited back: the submitter is expected to fix something and submit again. */
+    public static final String APPROVAL_SENT_BACK = "SENT_BACK";
+
+    /** Entity types the approval queue knows about. Each needs an ApprovalHandler to be decidable. */
+    public static final String APPROVAL_ENTITY_PARTNERSHIP = "PARTNERSHIP";
+
+    /** The decision being asked for. One entity can need several over its life. */
+    public static final String APPROVAL_ACTION_ACTIVATE = "ACTIVATE";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -85,6 +100,8 @@ public final class AppConstant {
     public static final String AUDIT_LOGIN_FAILED     = "LOGIN_FAILED";
     public static final String AUDIT_LOGOUT           = "LOGOUT";
     public static final String AUDIT_PROFILE_SWITCH   = "PROFILE_SWITCH";
+    public static final String AUDIT_APPROVAL_SUBMIT  = "APPROVAL_SUBMITTED";
+    public static final String AUDIT_APPROVAL_DECIDE  = "APPROVAL_DECIDED";
     /** A refresh token presented twice: either a stale tab or a stolen session. */
     public static final String AUDIT_TOKEN_REUSE      = "TOKEN_REUSE_DETECTED";
     public static final String AUDIT_REFRESH          = "REFRESH";

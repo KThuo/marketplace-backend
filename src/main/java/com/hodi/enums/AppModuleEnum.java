@@ -112,6 +112,23 @@ public enum AppModuleEnum {
      * per-tenant gate was code with nothing to gate — {@code TenantModuleService} refuses to disable a core
      * module, so the whole path was unreachable and therefore unverified.
      */
+    /**
+     * The Maker/Checker queue (plan §3.2).
+     *
+     * <p>Admits every user type that can hold an approve permission in any module, because the queue is one
+     * screen serving all of them — a lender administrator deciding a partnership and a listing manager
+     * deciding a listing are looking at the same list, filtered to their own organisation.
+     *
+     * <p>Core, unlike the audit trail. Maker/Checker is a control the BRD requires across the platform, and
+     * this is the only screen that shows what is waiting for one — an organisation switched off from it would
+     * still be subject to the rule, with no way to see what it was holding up. What can be granted or withheld
+     * is the permission, and that is per user group where it belongs.
+     */
+    APPROVALS("APPROVALS", "Approvals",
+            "What is waiting for a second person to agree with it",
+            true, 95,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,

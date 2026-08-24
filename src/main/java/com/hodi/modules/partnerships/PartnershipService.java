@@ -6,6 +6,7 @@ import com.hodi.common.dto.PagedDataRequest;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
+import com.hodi.modules.approvals.ApprovalService;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.institutions.LendingInstitution;
 import com.hodi.modules.institutions.LendingInstitutionRepository;
@@ -53,6 +54,7 @@ public class PartnershipService {
     private final TenantRepository tenants;
     private final LendingInstitutionRepository institutions;
     private final AuditService audit;
+    private final ApprovalService approvals;
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -71,7 +73,14 @@ public class PartnershipService {
             boolean awaitingMyApproval,
             Integer status, String statusFlag) {}
 
-    public record ProposeRequest(String tenantId, String institutionId, String portfolioScope) {}
+    /**
+     * @param note optional word to whoever has to decide it — "we met at the expo last week". Lands on the
+     *             approval request rather than on the partnership: it is about this proposal, not about the
+     *             arrangement, and a re-proposal after a refusal should not inherit the old one's covering
+     *             note.
+     */
+    public record ProposeRequest(String tenantId, String institutionId, String portfolioScope,
+                                 String note) {}
 
     // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -209,6 +218,23 @@ public class PartnershipService {
         partnership.setUpdatedBy(AuthContext.username());
 
         Partnership saved = repository.save(partnership);
+
+        /*
+         * The queue entry is raised here, in the same transaction, so a proposal and the decision it is
+         * waiting on cannot exist without each other.
+         *
+         * It lands in the queue of the side that did NOT propose — they are the ones who owe an answer — and
+         * the platform sees every queue, which is what keeps a one-person organisation from being stuck.
+         */
+        approvals.submit(
+                AppConstant.APPROVAL_ENTITY_PARTNERSHIP,
+                saved.getId(),
+                AppConstant.APPROVAL_ACTION_ACTIVATE,
+                AppConstant.ACTOR_LENDER.equals(side) ? saved.getTenantId() : null,
+                AppConstant.ACTOR_SELLER.equals(side) ? saved.getInstitutionId() : null,
+                saved.getTenantName() + " ↔ " + saved.getInstitutionName(),
+                request.note());
+
         audit.record(AppConstant.ACTION_REQUEST, "Partnership", saved.getId(), null, snapshot(saved));
         log.info("Partnership proposed between seller {} and institution {} by {}",
                 tenant.getSlug(), institution.getSlug(), side);
@@ -216,11 +242,12 @@ public class PartnershipService {
     }
 
     /**
-     * Approves a proposal — the moment cross-organisation access begins.
+     * Approves a proposal from the partnership screen.
      *
-     * <p>Only the side that did <em>not</em> propose may approve, or the platform. Without that check, a
-     * lender could propose and approve its own access to any seller's portfolio, which would make the whole
-     * table decorative.
+     * <p>Delegates to the approval workflow rather than stamping the row directly, so this button and the
+     * approvals queue are the same act: one Maker/Checker record, one set of guards, one audit trail. The
+     * checks that used to live here are now the handler's ({@link PartnershipApprovalHandler}) — the side
+     * rule — and the workflow's — the user rule and the permission.
      */
     @Transactional
     public PartnershipResponse approve(String hashId) {
@@ -233,18 +260,57 @@ public class PartnershipService {
         if (!partnership.isPending()) {
             throw new HodiException("There is no live proposal to approve.", HttpStatus.CONFLICT);
         }
-        assertMayApprove(partnership, caller);
 
+        approvals.decideFor(AppConstant.APPROVAL_ENTITY_PARTNERSHIP, partnership.getId(),
+                AppConstant.APPROVAL_ACTION_ACTIVATE,
+                new ApprovalService.DecisionRequest(AppConstant.APPROVAL_APPROVED, null));
+
+        return toResponse(repository.findById(partnership.getId()).orElseThrow(), caller);
+    }
+
+    /**
+     * Stamps the partnership active. Called only by the approval handler, inside the deciding transaction.
+     *
+     * <p>Not public API and not guarded: everything that decides whether this may happen has already run by
+     * the time it is reached. Splitting it out is what lets the queue and the partnership screen share one
+     * implementation of "what approval means".
+     */
+    @Transactional
+    public void applyApproval(Long partnershipId) {
+        Partnership partnership = repository.findById(partnershipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Partnership", partnershipId));
         String before = snapshot(partnership);
         partnership.setApprovedAt(OffsetDateTime.now());
-        partnership.setApprovedByUserId(caller.getUserId());
+        partnership.setApprovedByUserId(AuthContext.userId());
         partnership.setUpdatedBy(AuthContext.username());
         Partnership saved = repository.save(partnership);
 
         audit.record(AppConstant.ACTION_APPROVE, "Partnership", saved.getId(), before, snapshot(saved));
         log.info("Partnership {} approved — institution {} can now see seller {}",
                 saved.getId(), saved.getInstitutionName(), saved.getTenantName());
-        return toResponse(saved, caller);
+    }
+
+    /**
+     * Clears a proposal that was rejected or sent back.
+     *
+     * <p>The row survives — it carries the history of two organisations having talked — but it stops being a
+     * live proposal, so either side may propose again without tripping the "already waiting" guard. The
+     * reason is kept where a re-proposer will see it.
+     */
+    @Transactional
+    public void applyRefusal(Long partnershipId, String reason) {
+        Partnership partnership = repository.findById(partnershipId)
+                .orElseThrow(() -> new ResourceNotFoundException("Partnership", partnershipId));
+        String before = snapshot(partnership);
+        partnership.setRequestedAt(null);
+        partnership.setRevokedAt(OffsetDateTime.now());
+        partnership.setRevokedByUserId(AuthContext.userId());
+        partnership.setRevokeReason(reason == null ? "Not approved" : reason);
+        partnership.setUpdatedBy(AuthContext.username());
+        Partnership saved = repository.save(partnership);
+
+        audit.record(AppConstant.ACTION_REVOKE, "Partnership", saved.getId(), before, snapshot(saved));
+        log.info("Partnership {} refused — {}", saved.getId(), saved.getRevokeReason());
     }
 
     /**
@@ -296,25 +362,13 @@ public class PartnershipService {
         return partnership;
     }
 
-    /** The proposer cannot approve their own proposal. */
-    private void assertMayApprove(Partnership partnership, UserPrincipal caller) {
-        if (caller.isPlatformStaff()) return;
-
-        boolean callerIsSeller = partnership.getTenantId().equals(caller.getTenantId());
-        boolean callerIsLender = partnership.getInstitutionId().equals(caller.getInstitutionId());
-        String proposedBy = partnership.getRequestedBySide();
-
-        if (callerIsSeller && AppConstant.ACTOR_SELLER.equals(proposedBy)) {
-            throw new HodiException(
-                    "Your organisation proposed this — the institution has to accept it.",
-                    HttpStatus.CONFLICT);
-        }
-        if (callerIsLender && AppConstant.ACTOR_LENDER.equals(proposedBy)) {
-            throw new HodiException(
-                    "Your institution proposed this — the seller has to accept it.",
-                    HttpStatus.CONFLICT);
-        }
-    }
+    /*
+     * The proposer-cannot-approve rule used to live here as assertMayApprove. It is now
+     * PartnershipApprovalHandler.assertMayDecide, so that the approvals queue and this screen enforce the
+     * same thing — and so the user-level half of it (a colleague of the submitter is still a different
+     * person, but the submitter is not) is the workflow's database CHECK rather than something this class
+     * remembers to ask.
+     */
 
     private static Long requireId(String hashId, String message) {
         Long id = HashIdUtil.decodeId(hashId);

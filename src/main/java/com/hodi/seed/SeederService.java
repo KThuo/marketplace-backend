@@ -15,6 +15,9 @@ import com.hodi.modules.permissions.PermissionRepository;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
 import com.hodi.modules.profiles.UserProfileService;
+import com.hodi.modules.tenantmodules.TenantModuleService;
+import com.hodi.modules.tenants.Tenant;
+import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.modules.usertypes.UserType;
@@ -68,6 +71,8 @@ public class SeederService {
     private final UserRepository users;
     private final UserProfileService userProfiles;
     private final ConfigurationRepository configurations;
+    private final TenantRepository tenants;
+    private final TenantModuleService tenantModules;
     private final PasswordEncoder passwordEncoder;
     private final EncryptionUtil encryption;
     /** Starts the seed's transaction, because a self-invocation cannot — see {@link #seedOnBoot}. */
@@ -134,11 +139,13 @@ public class SeederService {
         int templates = seedRoleTemplates();
         int platform = topUpPlatformGroup();
         int buyer = topUpBuyerGroup();
+        int owners = topUpOrganisationOwnerGroups();
+        int enabled = enableCoreModulesEverywhere();
         boolean bootstrapped = seedBootstrapAdmin();
 
         log.info("Seeder: {} user types, {} modules, {} permissions, {} configs, {} templates "
-                        + "(+{} platform, +{} buyer perms){}",
-                types, modules, perms, configs, templates, platform, buyer,
+                        + "(+{} platform, +{} buyer, +{} owner perms, +{} tenant modules){}",
+                types, modules, perms, configs, templates, platform, buyer, owners, enabled,
                 bootstrapped ? ", bootstrap admin created" : "");
     }
 
@@ -528,6 +535,75 @@ public class SeederService {
         if (added > 0) {
             group.setUpdatedBy(ACTOR);
             userGroups.save(group);
+        }
+        return added;
+    }
+
+    /**
+     * Every live organisation gets every core module.
+     *
+     * <p>Onboarding switches on the core modules that exist that day. Nothing revisited it, so a core module
+     * shipped afterwards reached organisations onboarded later and nobody else — the same shape of gap as the
+     * owner-group top-up above, and it surfaced the same way: a module added this phase was invisible to every
+     * organisation already on the platform.
+     *
+     * <p>Only core modules. A non-core one is a choice an organisation makes, and switching it on for them
+     * would be the platform overriding that choice on every deploy.
+     */
+    private int enableCoreModulesEverywhere() {
+        int enabled = 0;
+        for (Tenant tenant : tenants.findAll()) {
+            if (!AppConstant.isLive(tenant.getStatus())) continue;
+            enabled += tenantModules.enableCoreModules(tenant.getId());
+        }
+        return enabled;
+    }
+
+    /**
+     * Every organisation's owner group gains whatever its user type may now hold.
+     *
+     * <p>An owner group is built once, at onboarding, from the permissions that existed that day. Nothing
+     * revisited it — so a module shipped afterwards was invisible to every organisation already on the
+     * platform until somebody hand-edited each owner group, with nothing anywhere saying that was needed. It
+     * surfaced the first time a module was added after onboarding (APPROVALS), and it would have surfaced
+     * once per module for the fifteen still to come.
+     *
+     * <p>Only the <strong>system</strong> group of each organisation — the one that means "the owner, who can
+     * do everything here". Groups an organisation built for itself are theirs, and adding permissions to them
+     * would be the platform quietly widening a role somebody deliberately narrowed.
+     *
+     * <p>Still filtered through the module matrix and {@code platformOnly}, exactly as onboarding is: an
+     * owner gets everything their kind of user may hold, and nothing that was never theirs to hold.
+     */
+    private int topUpOrganisationOwnerGroups() {
+        Map<String, AppModule> modules = appModules.findAll().stream()
+                .collect(Collectors.toMap(AppModule::getCode, Function.identity(), (a, b) -> a));
+        List<Permission> grantable = permissions.findByPlatformOnlyFalseAndStatusNot(
+                AppConstant.STATUS_DELETED);
+
+        int added = 0;
+        for (UserGroup group : userGroups.findSystemGroups()) {
+            // The platform and buyer groups are global and have their own top-ups above.
+            if (group.getTenantId() == null && group.getInstitutionId() == null) continue;
+
+            List<Permission> due = grantable.stream()
+                    .filter(p -> {
+                        AppModule module = modules.get(p.getModuleCode());
+                        return module != null
+                                && AppConstant.isLive(module.getStatus())
+                                && module.allows(group.getUserTypeCode());
+                    })
+                    .filter(p -> group.getPermissions().stream()
+                            .noneMatch(x -> x.getActionCode().equals(p.getActionCode())))
+                    .toList();
+            if (due.isEmpty()) continue;
+
+            group.getPermissions().addAll(due);
+            group.setUpdatedBy(ACTOR);
+            userGroups.save(group);
+            added += due.size();
+            log.info("Owner group '{}' gained {} newly available permission(s)",
+                    group.getName(), due.size());
         }
         return added;
     }

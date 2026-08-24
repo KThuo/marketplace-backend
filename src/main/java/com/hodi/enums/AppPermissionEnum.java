@@ -64,6 +64,17 @@ public enum AppPermissionEnum {
      * the platform sees every partnership, a seller sees their own, a lender sees theirs. That narrowing is
      * {@code TenantScope}'s job, not this permission's.
      */
+    // ── APPROVALS (Maker/Checker) ─────────────────────────────────────────────
+    /**
+     * Sight of the queue, and only that.
+     *
+     * <p>There is deliberately no {@code APPROVALS_DECIDE}. Deciding requires the permission of the module
+     * the request belongs to — {@code PARTNERSHIPS_APPROVE} for a partnership — so a single approve-anything
+     * code would be a way around every module's own gate, granted from one screen. Somebody can hold this and
+     * watch what is waiting without being able to move any of it.
+     */
+    APPROVALS_VIEW("See what is waiting for approval", AppModuleEnum.APPROVALS),
+
     PARTNERSHIPS_VIEW("See partnerships", AppModuleEnum.PARTNERSHIPS),
     PARTNERSHIPS_REQUEST("Propose a partnership", AppModuleEnum.PARTNERSHIPS),
     /**

@@ -41,6 +41,15 @@ public interface UserGroupRepository
     Optional<UserGroup> findSystemGroupForInstitution(@Param("institutionId") Long institutionId);
 
     /**
+     * Every organisation's owner group, for the seeder's top-up.
+     *
+     * <p>Includes the global system groups (platform, buyer); the caller skips those, because each has its
+     * own rule about what it may hold and neither is an organisation's.
+     */
+    @Query("select g from UserGroup g where g.system = true and g.status <> 5")
+    List<UserGroup> findSystemGroups();
+
+    /**
      * Groups a caller may assign to a user of one type: their own organisation's, plus what is global.
      *
      * <p>One query rather than two calls the caller merges, because "which groups can I pick" is one

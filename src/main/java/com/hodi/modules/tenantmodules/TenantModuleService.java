@@ -120,10 +120,16 @@ public class TenantModuleService {
     }
 
     /**
-     * Switches on every core module for a newly onboarded organisation.
+     * Switches on every core module for one organisation.
      *
-     * <p>Called from {@code TenantService.create}, and idempotent so it can be re-run to repair an
-     * organisation created before a new core module existed — which is the normal way a core module ships.
+     * <p>Called from {@code TenantService.create} at onboarding, and again from the seeder on every boot for
+     * every live organisation — because "a core module the platform just shipped" and "an organisation
+     * onboarded before it existed" is the normal case, not the exception. Until the seeder called it, a new
+     * core module was enabled for organisations created afterwards and invisible to everyone else, with
+     * nothing anywhere reporting the difference.
+     *
+     * <p>Idempotent: an already-enabled row is left alone, and a row somebody deliberately disabled is
+     * re-enabled only because a core module is one that cannot be switched off in the first place.
      */
     @Transactional
     public int enableCoreModules(Long tenantId) {
