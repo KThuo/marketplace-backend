@@ -1,0 +1,67 @@
+target/
+*.class
+*.jar
+*.war
+!.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Env / secrets
+.env
+.env.local
+*.env
+
+# Runtime configuration is NOT committed — the whole folder. application.properties and
+# logback-spring.xml are placed per environment (local / test / prod) by whoever owns that
+# environment, not shipped in the repo.
+#
+# Leading slash, and it matters. A bare `config/` matches a directory of that name at ANY depth, so it
+# would also swallow src/main/java/com/hodi/config/ — the Java package holding SecurityConfig,
+# RedisConfig and CacheConfig. Those would be ignored, never committed, and invisible to
+# `git status` (ignored files are not listed), so the repository would not contain a compilable copy
+# of the application. Anchoring the pattern keeps this entry's intent — the deployment folder at the
+# repository root — without claiming every directory that happens to share its name.
+/config/
+
+# Maven
+.mvn/timing.properties
+
+# Playwright MCP test artifacts
+.playwright-mcp/
+
+# Local file-storage uploads (S3 fallback)
+uploads/
+
+# Claude Code local settings (shared settings.json is committed)
+.claude/settings.local.json*
+
+# Worktrees created by Claude Code sessions — separate repos, never part of this one.
+.claude/worktrees/
+
+# JVM crash / attach artifacts
+hs_err_pid*.log
+replay_pid*.log
+.attach_pid*
+
+# Build & IDE leftovers
+out/
+HELP.md
+.flattened-pom.xml
+dependency-reduced-pom.xml
+*.orig
+*.rej
+.fleet/
+.zed/
