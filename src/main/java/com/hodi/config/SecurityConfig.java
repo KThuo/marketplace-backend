@@ -84,6 +84,17 @@ public class SecurityConfig {
             "/api/v1/public/buyers/register",
             "/api/v1/public/buyers/verify",
             "/api/v1/public/buyers/verify/resend",
+            /*
+             * The affordability calculator (M3).
+             *
+             * A POST under /api/v1/public is not public by default — the GET wildcard above covers reads and
+             * writes are named one by one, which is the rule that stopped this from being open the moment it
+             * was written. It is listed here because it is a POST only in shape: it writes nothing, calls
+             * nothing external, holds no state and returns arithmetic over the numbers in the request. It
+             * takes income figures and keeps none of them; the endpoint that keeps them is
+             * /api/v1/me/affordability, and that one requires a session.
+             */
+            "/api/v1/public/affordability/estimate",
     };
 
     private final PublicMarketplaceFilter publicMarketplaceFilter;

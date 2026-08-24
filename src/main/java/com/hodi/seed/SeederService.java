@@ -433,10 +433,14 @@ public class SeederService {
          */
         byType.put("LISTING_MANAGER", List.of("DASHBOARD_VIEW"));
         byType.put("SALES_AGENT", List.of("DASHBOARD_VIEW"));
+        // Reading the catalogue, not writing it. An officer quoting a rate to a buyer needs to see the
+        // products; changing one is the administrator's, and publishing one is separate again.
         byType.put("MORTGAGE_OFFICER", List.of(
-                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW"));
+                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
+                "MORTGAGE_PRODUCTS_VIEW"));
         byType.put("CREDIT_ANALYST", List.of(
-                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW"));
+                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
+                "MORTGAGE_PRODUCTS_VIEW"));
         // No AUDIT_VIEW: the audit trail is what distinguishes PLATFORM_AUDITOR from support, and the AUDIT
         // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
         // its own user type could never hold, which surfaced as "these permissions are not available for this
@@ -445,7 +449,8 @@ public class SeederService {
                 "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
                 "PARTNERSHIPS_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
-                "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW"));
+                "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
+                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW"));
 
         int touched = 0;
         for (var entry : byType.entrySet()) {

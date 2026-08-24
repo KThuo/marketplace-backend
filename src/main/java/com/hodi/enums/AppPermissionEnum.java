@@ -159,6 +159,28 @@ public enum AppPermissionEnum {
      */
     APP_SETTINGS_VIEW_SECRET("Reveal a stored secret", AppModuleEnum.APP_SETTINGS),
 
+    // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
+    MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
+    MORTGAGE_PRODUCTS_CREATE("Create a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
+    MORTGAGE_PRODUCTS_UPDATE("Change a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
+    /**
+     * Its own code rather than part of {@code UPDATE}, and the reason is the same one that separates issuing
+     * a temporary password from editing a phone number: drafting a rate and putting it in front of the public
+     * are different acts, and an institution may well want them done by different people.
+     */
+    MORTGAGE_PRODUCTS_PUBLISH("Publish or withdraw a mortgage product",
+            AppModuleEnum.MORTGAGE_PRODUCTS),
+    MORTGAGE_PRODUCTS_DEACTIVATE("Deactivate a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
+    MORTGAGE_PRODUCTS_ACTIVATE("Activate a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
+    MORTGAGE_PRODUCTS_DELETE("Archive a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
+
+    // ── AFFORDABILITY ─────────────────────────────────────────────────────────
+    /**
+     * Reading the platform's list of affordability checks. Platform-only, like the module that holds it —
+     * and even with it, the response carries outcomes rather than anybody's income.
+     */
+    AFFORDABILITY_VIEW("See affordability checks", AppModuleEnum.AFFORDABILITY, true),
+
     // ── AUDIT ─────────────────────────────────────────────────────────────────
     AUDIT_VIEW("See the audit trail", AppModuleEnum.AUDIT),
 

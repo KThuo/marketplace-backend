@@ -222,6 +222,49 @@ public enum ConfigKey {
             "Google Maps key",
             "Browser key for the embedded map on a listing. Empty shows a link to Google Maps instead.",
             false, false),
+    // ── AFFORDABILITY (M3 — plan §3.11) ──────────────────────────────────────
+    /**
+     * Which assessor answers "what can this household carry".
+     *
+     * <p>{@code MOCK} until the OCP microservice contract exists. The switch is a configuration row rather
+     * than a build-time choice so the day it does exist, going live is a new class and an edit here — with
+     * the way back being the same edit, which is what makes trying it a reversible decision.
+     */
+    AFFORDABILITY_PROVIDER(
+            "affordability.provider", "STRING", "AFFORDABILITY", "MOCK",
+            "Affordability provider",
+            "Which assessor scores an affordability check. MOCK uses the platform's own documented rules; "
+                    + "OCP calls the credit microservice. An unknown value falls back to MOCK and logs.",
+            false, false),
+    AFFORDABILITY_DTI_CEILING(
+            "affordability.dti.ceiling.percent", "INTEGER", "AFFORDABILITY", "40",
+            "Debt-to-income ceiling (%)",
+            "The share of net monthly income a repayment may take before the mock assessor calls a "
+                    + "household stretched. Kenyan lenders commonly sit between 35 and 50.", false, false),
+    AFFORDABILITY_MARGINAL_BAND(
+            "affordability.marginal.band.percent", "INTEGER", "AFFORDABILITY", "10",
+            "Marginal band (%)",
+            "How far past the ceiling still counts as MARGINAL rather than NOT_ELIGIBLE. A hard line at "
+                    + "the ceiling turns a shilling into a refusal, which is not how a lender reads it.",
+            false, false),
+    AFFORDABILITY_DEFAULT_RATE(
+            "affordability.default.rate.percent", "STRING", "AFFORDABILITY", "13.5",
+            "Indicative rate (%)",
+            "The rate assumed when no specific product is in play. Only ever used for the headline "
+                    + "figure — a quote against a real product uses that product's own rate.", false, false),
+    AFFORDABILITY_DEFAULT_TERM(
+            "affordability.default.term.months", "INTEGER", "AFFORDABILITY", "240",
+            "Default term (months)",
+            "The term the calculator opens with. Twenty years.", false, false),
+    OCP_BASE_URL(
+            "ocp.base.url", "STRING", "AFFORDABILITY", "",
+            "OCP base URL",
+            "Credit microservice endpoint. Declared now so the real provider is a class and two rows, "
+                    + "not a migration.", false, false),
+    OCP_API_KEY(
+            "ocp.api.key", "STRING", "AFFORDABILITY", "",
+            "OCP API key", "Credential for the credit microservice.", true, false),
+
     STORAGE_LOCAL_DIR(
             "storage.local.dir", "STRING", "STORAGE", "uploads",
             "Local media directory",

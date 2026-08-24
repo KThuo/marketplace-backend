@@ -10,6 +10,7 @@ import com.hodi.common.util.RrnGenerator;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.auth.RefreshTokenService;
+import com.hodi.modules.finance.MortgageProductRepository;
 import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.permissions.Permission;
 import com.hodi.modules.permissions.PermissionRepository;
@@ -70,6 +71,7 @@ public class LendingInstitutionService {
     private final LendingInstitutionRepository repository;
     private final UserRepository users;
     private final UserProfileRepository profiles;
+    private final MortgageProductRepository mortgageProducts;
     private final UserProfileService userProfiles;
     private final UserGroupRepository userGroups;
     private final UserTypeRepository userTypes;
@@ -304,6 +306,9 @@ public class LendingInstitutionService {
         LendingInstitution saved = repository.save(institution);
         if (renamed) {
             profiles.renameInstitutionLabel(saved.getId(), saved.getName());
+            // The label cache on this institution's products, which a marketplace panel renders without
+            // joining. One writer, and this is it — the same arrangement TenantService has with listings.
+            mortgageProducts.renameInstitutionLabel(saved.getId(), saved.getName());
         }
         audit.record(AppConstant.ACTION_UPDATE, "LendingInstitution", saved.getId(), before,
                 snapshot(saved));

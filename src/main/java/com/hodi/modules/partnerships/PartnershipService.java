@@ -225,12 +225,19 @@ public class PartnershipService {
          *
          * It lands in the queue of the side that did NOT propose — they are the ones who owe an answer — and
          * the platform sees every queue, which is what keeps a one-person organisation from being stuck.
+         *
+         * <p><strong>A platform-initiated proposal goes to the seller.</strong> The first version scoped it
+         * to neither side, on the reading that the platform sees everything anyway; the effect was a request
+         * in nobody's queue that no lender could see and that the platform's own proposer was barred from
+         * deciding by Maker/Checker — permanently stuck, and invisible while it was. The seller is the right
+         * home for it because the seller is the party giving something up: a partnership opens *their*
+         * portfolio, and theirs is the consent that matters.
          */
         approvals.submit(
                 AppConstant.APPROVAL_ENTITY_PARTNERSHIP,
                 saved.getId(),
                 AppConstant.APPROVAL_ACTION_ACTIVATE,
-                AppConstant.ACTOR_LENDER.equals(side) ? saved.getTenantId() : null,
+                AppConstant.ACTOR_SELLER.equals(side) ? null : saved.getTenantId(),
                 AppConstant.ACTOR_SELLER.equals(side) ? saved.getInstitutionId() : null,
                 saved.getTenantName() + " ↔ " + saved.getInstitutionName(),
                 request.note());

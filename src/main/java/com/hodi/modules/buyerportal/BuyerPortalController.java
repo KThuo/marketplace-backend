@@ -8,6 +8,7 @@ import com.hodi.modules.buyerportal.SavedListingService.SaveListingRequest;
 import com.hodi.modules.buyerportal.SavedListingService.SavedListingResponse;
 import com.hodi.modules.buyerportal.SearchAlertService.AlertResponse;
 import com.hodi.modules.buyerportal.SearchAlertService.SaveAlertRequest;
+import com.hodi.modules.finance.AffordabilityService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * A person's own things: their shortlist and their saved searches.
+ * A person's own things: their shortlist, their saved searches and their affordability checks.
  *
  * <h2>No {@code @PreAuthorize}, deliberately</h2>
  *
@@ -43,6 +44,7 @@ public class BuyerPortalController {
 
     private final SavedListingService saved;
     private final SearchAlertService alerts;
+    private final AffordabilityService affordability;
 
     // ── shortlist ─────────────────────────────────────────────────────────────
 
@@ -113,11 +115,12 @@ public class BuyerPortalController {
 
     // ── the account page's figures ────────────────────────────────────────────
 
-    /** Two counts in one call, so the overview does not open with three requests to draw two numbers. */
+    /** Every count the overview draws, in one call rather than one request per number. */
     @GetMapping("/summary")
     public ApiResponse<Map<String, Long>> summary() {
         return ApiResponse.success(Map.of(
                 "savedListings", saved.myCount(),
-                "searchAlerts", alerts.myRunningCount()));
+                "searchAlerts", alerts.myRunningCount(),
+                "affordabilityChecks", affordability.myCount()));
     }
 }

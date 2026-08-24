@@ -6,8 +6,8 @@
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
 **Status:** **Phases 0a and 0b are built and verified** (§7, §8). **Phase 1 is under way**: M2's listings and
-marketplace landed first (§9), and M2's buyer-side rows plus §3.8's consent store landed with them (§10).
-Sections 3.3–3.6 and 3.9 remain planning.
+marketplace (§9), M2's buyer-side rows plus §3.8's consent store (§10), and M3 — mortgage products and
+affordability behind a provider interface (§11). Sections 3.3–3.6 and 3.9 remain planning; M4 is next.
 
 ---
 
@@ -189,6 +189,42 @@ Separate from the profile because "prove they opted in on this date" is the requ
 profile row cannot answer it. Transactional notifications are not opt-out-able and are marked as such in the purpose
 list rather than by convention.
 
+### 3.11 Affordability and mortgage products *(M3)* — **BUILT** (§11)
+
+The BRD's headline is a listing and the finance against it, side by side. Three parts, and only one of them
+is blocked on anybody else.
+
+```
+mortgage_product      -- institution_id, amount and term bounds, rate, LTV, deposit, fees, DTI ceiling, published
+affordability_check   -- user_id, the inputs, the decision, the provider's own response kept verbatim
+```
+
+**Products are a lender's own rows**, scoped by `institution_id` through the existing principal — no new
+visibility machinery. They are published rather than approved: §3.2's Maker/Checker is listed against M6, M8,
+M10 and M13, and adding a queue here would be inventing a control the BRD does not ask for. What a product
+does need is a *publish* permission distinct from *update*, because putting a rate in front of the public is a
+different act from drafting one.
+
+**Which products a buyer sees against a listing is decided by the partnership table**, which already answers
+"which lenders may work this seller's portfolio" (`findActiveInstitutionIdsForTenant`). That is the whole
+join: no new column, and the arrangement that governs the portfolio governs the finance shown against it.
+
+**Affordability goes through an interface with two implementations.** `AffordabilityProvider` is the contract;
+`MockAffordabilityProvider` is a documented, tunable rule set (net income × a configured DTI ceiling → the
+repayment a household can carry → the annuity inversion → a loan, plus deposit → a price). The provider is
+chosen by a configuration key, so the day the OCP contract exists it is a new class and a changed row, not a
+change to anything that calls it. The dependency blocks *correct numbers*, not the funnel around them, and
+every screen says the figures are indicative.
+
+**Two response shapes again, for the same reason as the listing.** A check holds somebody's income. The
+person who entered it sees everything back; the platform's own list sees the outcome, the derived figures and
+which listing it was run against, and never the raw inputs. Lender staff see neither — a lender learns a
+buyer's finances when the buyer applies to them, which is M4, and not before.
+
+**Offers are computed on read, not stored.** They are indicative and derived from products that change; a
+frozen copy would be a promise the platform did not make. The check itself is stored, because "what did I
+work out in March" is a fair question and the inputs are the answer.
+
 ### 3.9 Document vault *(with M8)*
 
 Split what the BRD splits: `StorageService` keeps public media (listing photographs, avatars);
@@ -220,7 +256,7 @@ endpoint paged and indexed; a matching frontend page in the same turn as the end
 |---|---|---|---|
 | **M1** Buyer onboarding & profile | extends existing `BUYERS` | `consent_preference`, `consent_preference_history` | §3.1 profiles, §3.8 consent |
 | **M2** Discovery & search | `PROPERTIES` (public read), `SAVED_LISTINGS`, `SEARCH_ALERTS` | `property`, `property_media`, `property_document`, `saved_listing`, `search_alert` | Redis cache regions (`hodimp:` prefixed) designed in, not retrofitted |
-| **M3** Affordability | `AFFORDABILITY`, `MORTGAGE_PRODUCTS` | `affordability_check`, `mortgage_product` | **Blocked** on the OCP microservice contract |
+| **M3** Affordability | `AFFORDABILITY`, `MORTGAGE_PRODUCTS` | `affordability_check`, `mortgage_product` | Built against a mock behind `AffordabilityProvider`; only *authoritative numbers* wait on OCP |
 | **M4** Leads & buyer dashboard | `ENQUIRIES`, `SITE_VISITS`, `PURCHASE_REQUESTS` | `enquiry_ticket`, `site_visit`, `purchase_request` | CRM connector (M14) for the mortgage path |
 | **M5** Valuation | `VALUERS`, `VALUATIONS` | `valuer_profile`, `valuation_request`, `valuation_report` | §3.5 assignment-scoped visibility |
 | **M6** Auction | `AUCTIONS` | `auction_listing`, `auctioneer` | §3.2 approvals; isolation from M2 search results is a hard rule (UC006) |
@@ -243,7 +279,7 @@ turn lands backend **and** frontend together.
 |---|---|---|
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
-| **1** | M2 (property + search + media) **— listings, marketplace, shortlist, saved searches and the consent store done** → M3 (mock affordability behind the real interface) → M4 | 6–8 |
+| **1** | M2 and M3 **done — listings, marketplace, shortlist, saved searches, consent store, mortgage products, affordability** → M4 next | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
@@ -557,3 +593,79 @@ over the same window found nothing, and a newly published matching listing produ
 3. **`skipped` and `failed` are not the same delivery outcome.** The alert row carries the buyer's version —
    it arrived or it did not — and the audit row carries the per-channel reason underneath it, because a
    gateway that rejected a message and a channel switched off in configuration are different conversations.
+
+
+---
+
+## 11. Phase 1 / M3 — the finance beside the listing
+
+The other half of the platform's headline sentence.
+
+### What landed
+
+**`mortgage_products`.** A lender's own rows, scoped by `institutionId` off the principal exactly as a
+listing is scoped by `tenantId` — no new visibility machinery. Published rather than approved: §3.2's
+Maker/Checker list is M6, M8, M10 and M13, and inventing a control the BRD does not ask for is not free.
+What publication does get is `MORTGAGE_PRODUCTS_PUBLISH`, separate from `_UPDATE`, because drafting a rate
+and putting it in front of the public are different acts.
+
+**`affordability_checks`.** Keyed on the person for the third time in this codebase and for the third
+version of the same reason: income is a fact about a household, not about an actor. The assessor's own
+answer is kept verbatim in `provider_payload` — when somebody asks why a figure was what it was, the answer
+has to be the thing that produced it rather than this application's reading of it.
+
+**`AffordabilityProvider`, with `MockAffordabilityProvider` behind it.** Not a stub: net income after
+obligations × a configured DTI ceiling → the repayment a household can carry → the annuity read backwards →
+a loan, plus deposit → a price. Three outcomes rather than two, because a household a shilling past the
+ceiling is not in the same position as one at twice it. The provider is chosen by a configuration row, so
+the day OCP exists it is a new class and an edited value — and the way back is the same edit.
+
+**Which lenders appear against a listing is the partnership table**, which already answered "which lenders
+may work this seller's portfolio". No new column: the arrangement that governs the portfolio governs the
+rates shown against it, and a seller partnered with nobody shows an honest empty panel rather than the whole
+market.
+
+**Front end.** A three-step product wizard whose pricing step carries a live worked example — a rate, an LTV
+ceiling and a minimum deposit interact in ways nobody holds in their head, and a lender should see what a
+buyer will be shown before publishing rather than after. A finance panel on every listing. A public
+calculator at `/affordability` that a stranger can use and a signed-in person's account keeps. A read-only
+platform list.
+
+### Two privacy splits, both at the response rather than in a template
+
+`ProductResponse` vs `PublicProductResponse` is the listing split again. `AffordabilityResponse` vs
+`AffordabilitySummary` is the one that matters: the platform's list carries outcomes and derived figures and
+**no income at all** — verified at the wire, not just on screen. Lender staff see neither; a lender learns a
+buyer's finances when that buyer applies, which is M4. `AFFORDABILITY` is consequently the narrowest module
+matrix in the catalogue, admitting platform types only.
+
+Recording a check deliberately writes **no audit row**. The check is the record, it is the person's own, and
+copying their income into the one table designed to be widely readable would undo the split above.
+
+### Behaviour verified
+
+A product drafted through the wizard and published from the list; the worked example's repayment matching
+the server's to the shilling on the same terms; the finance panel on a KES 14.5m listing showing three
+partnered-lender options with deposits and repayments that check out by hand; the calculator returning
+MARGINAL at 43.25% against a 40% ceiling with the advice that a longer term or larger deposit would close
+it; the saved check appearing under "your previous answers"; the platform's list returning no income field;
+and a platform administrator reading all three products but refused 403 on both edit and withdraw.
+
+### Three defects found by building it
+
+1. **A POST under `/api/v1/public` is not public.** `PUBLIC_GET` carries the `/public/**` wildcard; writes
+   are named one by one. The calculator returned 401 until it was listed — which is the rule working, and
+   the entry now carries the reason it is safe: it writes nothing, calls nothing, holds no state.
+
+2. **A platform-initiated partnership landed in nobody's queue.** `PartnershipService` scoped the approval
+   to the side that did not propose, and when *neither* side proposed both columns came out null. The
+   request was invisible to both organisations and undecidable by the platform, whose own proposer
+   Maker/Checker bars. It goes to the seller now: a partnership opens their portfolio, so theirs is the
+   consent that matters.
+
+3. **The sidebar's overflow was invisible, and `scrollHeight` said it was fine.** Two new nav entries pushed
+   the menu past the viewport; because the sidebar does not scroll, `nav { flex: 1 }` simply compressed it
+   and the last item rendered underneath the footer. `scrollHeight === clientHeight` still reported no
+   overflow — the check that had passed a turn earlier. The nav no longer shrinks below its content, so the
+   sidebar becomes honestly too tall and the page scrolls; the correct measurement is the last link's bottom
+   against the footer's top.

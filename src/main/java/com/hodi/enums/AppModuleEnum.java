@@ -145,6 +145,33 @@ public enum AppModuleEnum {
             true, 95,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
                     + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+    /**
+     * A lender's own products (M3).
+     *
+     * <p>Lender staff and the platform. Sellers are deliberately absent: a seller sees which lenders they are
+     * partnered with, and the rates those lenders offer are shown to <em>buyers</em> against listings — a
+     * seller editing or even browsing another organisation's pricing sheet is not a thing the arrangement
+     * between them implies.
+     */
+    MORTGAGE_PRODUCTS("MORTGAGE_PRODUCTS", "Mortgage Products",
+            "What each lender offers — rates, terms, deposit and who qualifies",
+            true, 35,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+
+    /**
+     * Affordability checks (M3), and <strong>platform staff only</strong>.
+     *
+     * <p>The narrowest module matrix in the catalogue, and the reason is the data rather than the feature: a
+     * check is somebody's household income. A buyer sees their own through the buyer portal, resolved from
+     * their identity and needing no permission. A lender learns a buyer's finances when that buyer applies to
+     * them — which is M4 — and not by browsing a list. Even here the list carries the outcome and the derived
+     * figures, never the raw inputs; the two response records are separate types, as they are for a listing.
+     */
+    AFFORDABILITY("AFFORDABILITY", "Affordability",
+            "What buyers have worked out they can carry, and how the assessor answered",
+            false, 36,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR"),
+
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,

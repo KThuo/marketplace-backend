@@ -127,6 +127,28 @@ public final class AppConstant {
     public static final String ALERT_OUTCOME_NO_CONSENT = "NO_CONSENT";
     public static final String ALERT_OUTCOME_FAILED     = "FAILED";
 
+    // ── Mortgage products (M3, BRD FR025–FR030) ──────────────────────────────
+    public static final String PRODUCT_MORTGAGE      = "MORTGAGE";
+    public static final String PRODUCT_CONSTRUCTION  = "CONSTRUCTION";
+    public static final String PRODUCT_PLOT_PURCHASE = "PLOT_PURCHASE";
+    public static final String PRODUCT_EQUITY_RELEASE = "EQUITY_RELEASE";
+    public static final String PRODUCT_REFINANCE     = "REFINANCE";
+
+    public static final String RATE_FIXED    = "FIXED";
+    public static final String RATE_VARIABLE = "VARIABLE";
+    public static final String RATE_REDUCING = "REDUCING";
+
+    // ── Affordability (M3, BRD FR031–FR034) ──────────────────────────────────
+    // Three answers, not two. A household a shilling past the ceiling is not in the same position as one at
+    // twice it, and telling them the same thing is how a calculator loses the person it was built for.
+    public static final String AFFORDABILITY_ELIGIBLE     = "ELIGIBLE";
+    public static final String AFFORDABILITY_MARGINAL     = "MARGINAL";
+    public static final String AFFORDABILITY_NOT_ELIGIBLE = "NOT_ELIGIBLE";
+
+    /** The assessors. MOCK is this platform's own documented rules; OCP is the credit microservice. */
+    public static final String PROVIDER_MOCK = "MOCK";
+    public static final String PROVIDER_OCP  = "OCP";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -166,6 +188,9 @@ public final class AppConstant {
     public static final String AUDIT_CONSENT_UPDATE   = "CONSENT_UPDATE";
     /** A saved search was delivered, or was not, and why. */
     public static final String AUDIT_ALERT_RUN        = "SEARCH_ALERT_RUN";
+    /** A product went in front of the public, or came back off it. */
+    public static final String AUDIT_PRODUCT_PUBLISH  = "PRODUCT_PUBLISH";
+    public static final String AUDIT_PRODUCT_WITHDRAW = "PRODUCT_WITHDRAW";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────
