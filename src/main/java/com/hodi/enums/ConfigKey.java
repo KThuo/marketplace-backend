@@ -108,38 +108,45 @@ public enum ConfigKey {
     // hosts; when that lands, flipping these to overridable is the whole change.
     THEME_PRIMARY(
             "theme.primary", "STRING", "THEME", "#0B2545",
-            "Primary colour", "Ink surfaces — sidebar, auth panel, body text.", false, false),
+            "Primary colour", "Ink surfaces — sidebar, auth panel, body text.", false, true),
     THEME_ACCENT(
             "theme.accent", "STRING", "THEME", "#1B7F79",
-            "Accent colour", "Primary actions and links.", false, false),
+            "Accent colour", "Primary actions and links.", false, true),
     THEME_ACCENT_LIGHT(
             "theme.accent.light", "STRING", "THEME", "#4FB3A9",
-            "Light accent", "Gradient terminus and headline accents.", false, false),
+            "Light accent", "Gradient terminus and headline accents.", false, true),
     THEME_INK(
             "theme.ink", "STRING", "THEME", "#0B2545",
             "Ink base",
             "The configured ink is --ink-800; 850 and 900 are darker derivations computed at runtime. "
                     + "CSS defaults that disagree cause a colour shift between first paint and hydration.",
-            false, false),
+            false, true),
     THEME_DARK_ENABLED(
             "theme.dark.enabled", "BOOLEAN", "THEME", "true",
-            "Dark mode available", "Offer the light/dark toggle.", false, false),
+            "Dark mode available", "Offer the light/dark toggle.", false, true),
     THEME_LOGO_URL(
             "theme.logo.url", "STRING", "THEME", "",
-            "Logo URL", "Overrides the inline SVG lockup when set.", false, false),
+            "Logo URL", "Overrides the inline SVG lockup when set.", false, true),
     THEME_LOGO_MARK_URL(
             "theme.logo.mark.url", "STRING", "THEME", "",
-            "Logo mark URL", "Overrides the inline SVG mark when set.", false, false),
+            "Logo mark URL", "Overrides the inline SVG mark when set.", false, true),
     THEME_FAVICON_URL(
+            // Deliberately NOT overridable, unlike the rest of the palette: the favicon is the browser tab
+            // of one marketplace on one host, so a per-seller value would be a seller renaming the shared
+            // site's tab rather than branding their own workspace.
             "theme.favicon.url", "STRING", "THEME", "",
             "Favicon URL", "Browser tab icon.", false, false),
     UI_FIELD_HINTS(
             "ui.field.hints", "BOOLEAN", "THEME", "true",
-            "Show field hints", "Render the helper text under form fields.", false, false),
+            "Show field hints", "Render the helper text under form fields.", false, true),
 
     // ── GENERAL ───────────────────────────────────────────────────────────────
     COMPANY_NAME(
             "company.name", "STRING", "GENERAL", "Hodi Market Place",
+            // The four COMPANY_* keys stay platform-only, unlike axis where they are per-tenant. Axis's
+            // tenants are separate businesses with their own storefronts; Hodi's sellers work inside one
+            // marketplace, and their own contact details already live on the tenant row. A seller overriding
+            // "platform name" would be renaming the marketplace in its own browser title.
             "Platform name", "Shown in the browser title, emails and the brand lockup.", false, false),
     COMPANY_EMAIL(
             "company.email", "STRING", "GENERAL", "hello@hodi.local",

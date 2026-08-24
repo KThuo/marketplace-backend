@@ -8,7 +8,11 @@ import com.hodi.modules.configurations.ConfigurationAdminService.ConfigurationRe
 import com.hodi.modules.configurations.ConfigurationAdminService.OverrideResponse;
 import com.hodi.modules.configurations.ConfigurationAdminService.UpdateConfigRequest;
 import lombok.RequiredArgsConstructor;
+import com.hodi.infra.storage.StorageService;
+import com.hodi.logging.RequestAction;
+import com.hodi.tenant.TenantContext;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -20,6 +24,47 @@ import java.util.Map;
 public class ConfigurationController {
 
     private final ConfigurationAdminService service;
+    private final ThemeService themeService;
+    private final StorageService storage;
+
+    /**
+     * The brand as this caller sees it.
+     *
+     * <p>The same shape as {@code /api/v1/public/theme} and deliberately so — the client's theme store handles
+     * one response, not two. The difference is only which layer answers: a seller's request has their tenant
+     * bound, so their overrides apply and their workspace carries their colours, while the public marketplace
+     * keeps the platform's.
+     *
+     * <p>Authenticated but not permission-gated: this is what the caller's own screen looks like, and requiring
+     * APP_SETTINGS_VIEW to know your own workspace's colour would leave everybody without that permission
+     * looking at the platform default.
+     */
+    @GetMapping("/theme")
+    public ApiResponse<Map<String, Object>> theme() {
+        return ApiResponse.success(themeService.theme());
+    }
+
+    /**
+     * Uploads a brand image and hands back its URL, for the caller to save into a theme key.
+     *
+     * <p>An upload rather than a URL field, because the alternative is asking somebody to host their own logo
+     * and paste a link — which is how a brand ends up pointing at a Dropbox share that expires. Nothing is
+     * saved to configuration here: the URL goes into the form's draft, so a mistaken pick is undone by not
+     * saving.
+     *
+     * <p>Stored per organisation when a seller uploads (their prefix, their export, their deletion) and in the
+     * shared prefix when the platform does — a logo every visitor sees does not belong inside one seller's
+     * folder.
+     */
+    @PostMapping("/brand-logo")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_UPDATE') or hasAuthority('APP_SETTINGS_OVERRIDE')")
+    @RequestAction("UPLOAD_BRAND_LOGO")
+    public ApiResponse<Map<String, String>> brandLogo(@RequestParam("file") MultipartFile file) {
+        var stored = TenantContext.getTenantId() == null
+                ? storage.storeShared(file, "brand")
+                : storage.store(file, "brand");
+        return ApiResponse.success("Uploaded", Map.of("url", stored.url(), "key", stored.key()));
+    }
 
     @GetMapping("/list")
     @PreAuthorize("hasAuthority('APP_SETTINGS_VIEW')")

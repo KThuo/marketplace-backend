@@ -211,8 +211,20 @@ public class UserService {
     @Transactional
     public TemporaryPasswordResponse create(CreateUserRequest request) {
         UserPrincipal caller = AuthContext.require();
-        UserType type = userTypes.findById(HashIdUtil.decodeId(request.userTypeId()))
-                .orElseThrow(() -> new ResourceNotFoundException("User type", request.userTypeId()));
+
+        /*
+         * The group decides the type, not the caller.
+         *
+         * A user group belongs to exactly one user type — that is enforced when the group is created — so
+         * asking for both was asking one question twice. The old form did, and every path that accepted the
+         * pair then had to check they agreed; this way there is nothing to disagree.
+         */
+        UserGroup named = userGroups.findById(HashIdUtil.decodeId(request.userGroupId()))
+                .orElseThrow(() -> new ResourceNotFoundException("User group", request.userGroupId()));
+        UserType type = userTypes.findByCode(named.getUserTypeCode())
+                .orElseThrow(() -> new HodiException(
+                        "\"%s\" names a kind of user that no longer exists.".formatted(named.getName()),
+                        HttpStatus.CONFLICT));
 
         if (AppConstant.ACTOR_BUYER.equals(type.getActorClass())) {
             throw new HodiException(
@@ -229,6 +241,8 @@ public class UserService {
 
         Affiliation affiliation = resolveAffiliation(caller, type, request.tenantId(),
                 request.institutionId());
+        // Re-resolved through the same guard every other path uses: the group has to be one this affiliation
+        // may hold, live, and not a shared template. Looking it up above only told us which type it names.
         UserGroup group = resolveGroup(request.userGroupId(), type, affiliation);
 
         String temporary = temporaryPassword();
@@ -277,10 +291,37 @@ public class UserService {
         user.setEmail(email);
         user.setPhone(blankToNull(request.phone()));
 
+        /*
+         * Changing the group can change the kind of user, and has to be allowed to.
+         *
+         * The form no longer asks for a user type, so moving somebody from "Sales Agents" to "Mortgage
+         * Officers" is the only way to change what they are — and if this method insisted the new group match
+         * the type already on the profile, that move would be impossible and the type would be frozen at
+         * creation. So the type is re-read from the group and re-stamped, through the same guards a create
+         * goes through: an actor class that matches the organisation, and no minting of platform staff by
+         * somebody who is not.
+         */
         if (request.userGroupId() != null) {
-            UserType type = userTypes.findById(profile.getUserTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User type",
-                            profile.getUserTypeId()));
+            UserGroup named = userGroups.findById(HashIdUtil.decodeId(request.userGroupId()))
+                    .orElseThrow(() -> new ResourceNotFoundException("User group",
+                            request.userGroupId()));
+            UserType type = userTypes.findByCode(named.getUserTypeCode())
+                    .orElseThrow(() -> new HodiException(
+                            "\"%s\" names a kind of user that no longer exists.".formatted(named.getName()),
+                            HttpStatus.CONFLICT));
+            UserPrincipal caller = AuthContext.require();
+            assertMayAssignType(caller, type);
+            if (!type.getActorClass().equals(profile.getProfileType())) {
+                // A seller's staff member cannot become lender staff by way of a group: the organisation on
+                // the profile would then be the wrong kind for the actor class, and TenantScope would resolve
+                // visibility through a column that is null.
+                throw new HodiException(
+                        ("\"%s\" is a group for %s users. Moving somebody between organisations of "
+                                + "different kinds is not a change of group.")
+                                .formatted(named.getName(), type.getActorClass()),
+                        HttpStatus.BAD_REQUEST);
+            }
+
             UserGroup group = resolveGroup(request.userGroupId(), type,
                     new Affiliation(profile.getTenantId(), profile.getTenantName(),
                             profile.getInstitutionId(), profile.getInstitutionName()));
@@ -288,6 +329,9 @@ public class UserService {
                 assertNotLastOwner(profile, group.getId());
                 profile.setUserGroupId(group.getId());
                 profile.setUserGroupName(group.getName());
+                profile.setUserTypeId(type.getId());
+                profile.setUserTypeCode(type.getCode());
+                profile.setUserTypeName(type.getName());
                 profile.setStatus(AppConstant.STATUS_EDITED);
                 profile.setStatusFlag(AppConstant.FLAG_EDITED);
                 profile.setUpdatedBy(AuthContext.username());

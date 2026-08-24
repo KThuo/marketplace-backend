@@ -3,6 +3,7 @@ package com.hodi.modules.publicapi;
 import com.hodi.common.ApiResponse;
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.modules.configurations.ThemeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -26,6 +27,7 @@ import java.util.Map;
 public class PublicController {
 
     private final ConfigurationService configs;
+    private final ThemeService themeService;
 
     /**
      * Brand tokens, so the marketplace and the login screen are themed before anybody signs in.
@@ -33,28 +35,14 @@ public class PublicController {
      * <p>Unauthenticated by necessity: the first paint happens before there is a session, and a theme fetched
      * after authentication would mean every visitor sees the default palette flash first.
      *
-     * <p>Global-only in this phase. Hodi is one marketplace with one brand, so there is no tenant to resolve a
-     * theme for — and because these keys are not overridable, an organisation cannot shadow them even if a
-     * tenant were bound. Per-seller theming becomes meaningful alongside vanity seller hosts; when it does,
-     * this endpoint grows a slug parameter and the keys become overridable, with no structural change.
+     * <p><strong>The platform's brand, always.</strong> No tenant is bound on this path, so
+     * {@code ConfigurationService} resolves the global layer — which is the right answer for a marketplace
+     * shared by every seller. A seller's own palette is a property of their workspace, and the workspace asks
+     * for it through {@code /api/v1/configurations/theme} once it knows who is asking.
      */
     @GetMapping("/theme")
     public ApiResponse<Map<String, Object>> theme() {
-        Map<String, Object> theme = new HashMap<>();
-        theme.put("primary", configs.getString(ConfigKey.THEME_PRIMARY));
-        theme.put("accent", configs.getString(ConfigKey.THEME_ACCENT));
-        theme.put("accentLight", emptyToNull(configs.getString(ConfigKey.THEME_ACCENT_LIGHT)));
-        theme.put("ink", configs.getString(ConfigKey.THEME_INK));
-        theme.put("logoUrl", emptyToNull(configs.getString(ConfigKey.THEME_LOGO_URL)));
-        theme.put("logoMarkUrl", emptyToNull(configs.getString(ConfigKey.THEME_LOGO_MARK_URL)));
-        theme.put("faviconUrl", emptyToNull(configs.getString(ConfigKey.THEME_FAVICON_URL)));
-        theme.put("appName", configs.getString(ConfigKey.COMPANY_NAME));
-        theme.put("darkEnabled", configs.getBoolean(ConfigKey.THEME_DARK_ENABLED));
-        theme.put("fieldHints", configs.getBoolean(ConfigKey.UI_FIELD_HINTS));
-        theme.put("contactEmail", emptyToNull(configs.getString(ConfigKey.COMPANY_EMAIL)));
-        theme.put("contactPhone", emptyToNull(configs.getString(ConfigKey.COMPANY_PHONE)));
-        theme.put("contactAddress", emptyToNull(configs.getString(ConfigKey.COMPANY_ADDRESS)));
-        return ApiResponse.success(theme);
+        return ApiResponse.success(themeService.theme());
     }
 
     /**
@@ -73,10 +61,5 @@ public class PublicController {
         policy.put("phoneVerificationRequired",
                 configs.getBoolean(ConfigKey.BUYER_PHONE_VERIFICATION_REQUIRED));
         return ApiResponse.success(policy);
-    }
-
-    /** Blank is not a value a client should have to special-case; null is. */
-    private static String emptyToNull(String value) {
-        return value == null || value.isBlank() ? null : value;
     }
 }

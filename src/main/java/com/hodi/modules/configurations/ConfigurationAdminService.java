@@ -301,6 +301,7 @@ public class ConfigurationAdminService {
     public PagedResponse<ConfigurationLogResponse> log(PagedDataRequest request) {
         Long tenantId = TenantContext.getTenantId();
         Specification<ConfigurationLog> spec = SearchSpecs.allOf(
+                SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.between("createdAt",
                         request.getFrom() == null ? null
                                 : request.getFrom().atStartOfDay().atOffset(

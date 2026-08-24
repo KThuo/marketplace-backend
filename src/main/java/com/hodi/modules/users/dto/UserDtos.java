@@ -58,8 +58,11 @@ public final class UserDtos {
             String createdBy) {}
 
     /**
-     * @param userTypeId the class of user. Its actor class decides which organisation this user belongs to,
-     *                   and therefore which of the two organisation fields below is even looked at.
+     * @param userGroupId <strong>the only access field.</strong> A group belongs to exactly one user type, so
+     *                    asking for both was asking the same question twice and inviting the two answers to
+     *                    disagree — a group for Mortgage Officers assigned to somebody typed as a Sales Agent
+     *                    is a user whose permissions resolve against one axis and whose module access resolves
+     *                    against another. The type is read off the group.
      * @param tenantId ignored unless the caller is platform staff. A seller owner's new staff go to their own
      *                 organisation and nowhere else, so accepting this from them would be accepting an
      *                 instruction we then have to refuse.
@@ -85,9 +88,7 @@ public final class UserDtos {
             @Size(max = 32, message = "That phone number is too long")
             String phone,
 
-            @NotBlank(message = "Choose which kind of user this is")
-            String userTypeId,
-
+            @NotBlank(message = "Choose the user group this person belongs to")
             String userGroupId,
 
             String tenantId,

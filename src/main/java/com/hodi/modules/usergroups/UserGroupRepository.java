@@ -41,14 +41,25 @@ public interface UserGroupRepository
     Optional<UserGroup> findSystemGroupForInstitution(@Param("institutionId") Long institutionId);
 
     /**
-     * Groups an organisation may assign to a user: their own, plus the global templates.
+     * Groups a caller may assign to a user of one type: their own organisation's, plus what is global.
      *
      * <p>One query rather than two calls the caller merges, because "which groups can I pick" is one
      * question and answering it in two places is how the two answers diverge.
+     *
+     * <p><strong>Platform staff have no organisation, and that used to mean no groups at all.</strong> The
+     * first two branches compare against a null tenant and a null institution, which in SQL matches nothing,
+     * so a platform administrator only ever saw the global <em>templates</em> — never "Platform Super Admin",
+     * the very group the seeder creates for them. Creating platform staff was therefore impossible without
+     * first cloning a template, and nothing said so. A caller with no organisation now sees the global groups
+     * whether or not they are templates; assigning a template is still refused downstream, because a template
+     * is a shape to clone rather than a role to hold.
      */
     @Query("select g from UserGroup g where g.status <> 5 and g.userTypeCode = :userTypeCode "
-            + "and (g.tenantId = :tenantId or g.institutionId = :institutionId "
-            + "     or (g.tenantId is null and g.institutionId is null and g.template = true)) "
+            + "and ((:tenantId is not null and g.tenantId = :tenantId) "
+            + "     or (:institutionId is not null and g.institutionId = :institutionId) "
+            + "     or (g.tenantId is null and g.institutionId is null "
+            + "         and (g.template = true "
+            + "              or (:tenantId is null and :institutionId is null)))) "
             + "order by g.name")
     List<UserGroup> findAssignable(@Param("userTypeCode") String userTypeCode,
                                    @Param("tenantId") Long tenantId,

@@ -203,29 +203,39 @@ public class UserGroupService {
     }
 
     /**
-     * Clones a global template into the caller's own organisation.
+     * Clones a global template into the layer the caller owns.
      *
      * <p>The clone is independent from this moment: it copies the template's permissions rather than
      * referencing it, so later edits to the template do not reach it. That is the property that makes
      * templates useful — an organisation can start from a sensible role and then diverge without the platform
      * quietly changing their access underneath them.
+     *
+     * <p><strong>Platform staff clone into the global layer.</strong> This used to refuse them outright — "no
+     * organisation to clone into. Edit the template instead" — which was wrong twice over: editing the shared
+     * template to make one platform role would change what every organisation cloning it afterwards receives,
+     * and it left platform staff with no way at all to assign a Support Administrator, since a template cannot
+     * be held by a user. The copy they get is a global, non-template group: theirs to assign, and no longer
+     * the shape everybody else starts from.
      */
     @Transactional
     public UserGroupResponse cloneTemplate(String templateHashId, CloneTemplateRequest request) {
         UserPrincipal caller = AuthContext.require();
-        if (caller.isPlatformStaff()) {
-            throw new HodiException(
-                    "Platform staff have no organisation to clone into. Edit the template instead.",
-                    HttpStatus.BAD_REQUEST);
-        }
         UserGroup template = repository.findById(HashIdUtil.decodeId(templateHashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Template", templateHashId));
         if (!template.isTemplate() || !template.isGlobal()) {
             throw new HodiException("That is not a template.", HttpStatus.BAD_REQUEST);
         }
 
+        /*
+         * A platform clone has to be renamed, because it lands in the same layer as the template it came
+         * from and the name is unique there. "Support Administrator" would collide with the template of that
+         * name; "Support Administrator (platform)" says what it is.
+         */
+        String fallback = caller.isPlatformStaff()
+                ? template.getName() + " (platform)"
+                : template.getName();
         String name = request.name() == null || request.name().isBlank()
-                ? template.getName()
+                ? fallback
                 : request.name().trim();
         assertNameFree(name, caller, null);
 

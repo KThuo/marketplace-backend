@@ -416,9 +416,13 @@ public class SeederService {
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW"));
         byType.put("CREDIT_ANALYST", List.of(
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW"));
+        // No AUDIT_VIEW: the audit trail is what distinguishes PLATFORM_AUDITOR from support, and the AUDIT
+        // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
+        // its own user type could never hold, which surfaced as "these permissions are not available for this
+        // kind of user" the first time anybody tried to clone it.
         byType.put("SUPPORT_ADMIN", List.of(
                 "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
-                "PARTNERSHIPS_VIEW", "AUDIT_VIEW"));
+                "PARTNERSHIPS_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW"));
 

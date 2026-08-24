@@ -44,7 +44,9 @@ public enum AppModuleEnum {
     TENANTS("TENANTS", "Seller Organisations",
             "Seller lifecycle — onboarding, suspension, reinstatement, termination",
             true, 10,
-            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER"),
+            // PLATFORM_AUDITOR reads only: their template holds TENANTS_VIEW and nothing else here. An
+            // auditor who cannot resolve an organisation's name is reading a trail of ids.
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER"),
     /**
      * Admits lender staff for the same reason TENANTS admits sellers — their own institution's profile —
      * and admits sellers because choosing a finance partner means reading the directory of lenders.
@@ -54,7 +56,8 @@ public enum AppModuleEnum {
     INSTITUTIONS("INSTITUTIONS", "Lending Institutions",
             "Banks, SACCOs and other lenders whose officers work seller portfolios",
             true, 20,
-            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN,MORTGAGE_OFFICER,"
+                    + "CREDIT_ANALYST"),
     /**
      * Reached from all three sides, because a partnership has three legitimate parties: the seller who
      * wants finance offered on their portfolio, the lender who wants the portfolio, and the platform that
@@ -66,7 +69,8 @@ public enum AppModuleEnum {
             // Officers and analysts are admitted to *read*: a mortgage officer needs to know which sellers
             // they may work, and that list is this module. Proposing, approving and revoking are separate
             // permissions, so admitting them here does not let them create or end an arrangement.
-            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN,MORTGAGE_OFFICER,"
+                    + "CREDIT_ANALYST"),
     USER_TYPES("USER_TYPES", "User Types",
             "Global user-type catalogue",
             true, 40,
