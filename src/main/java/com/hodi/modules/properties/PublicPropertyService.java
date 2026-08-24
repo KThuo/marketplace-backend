@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,7 +53,34 @@ public class PublicPropertyService {
 
     @Transactional(readOnly = true)
     public PagedResponse<PublicPropertyResponse> search(PublicSearchRequest request) {
+        var page = repository.findAll(criteria(request), request.toPageable(sortOf(request.getSort())));
+        return PagedResponse.from(page, this::toCard);
+    }
+
+    /**
+     * What has become live since a moment in time, matching the same criteria.
+     *
+     * <p>The saved-search dispatcher's query, and deliberately this class's — a buyer's standing search has
+     * to mean exactly what the same filters mean on the marketplace today, including whatever a later facet
+     * adds. Building it beside the alert table instead would be a second implementation of the same search,
+     * and the two would agree only until somebody changed one.
+     *
+     * <p>{@code publishedAt} strictly after {@code since}, so a listing is reported once: the caller stores
+     * the moment it ran and passes it back next time.
+     */
+    @Transactional(readOnly = true)
+    public List<Property> newMatches(PublicSearchRequest criteria, OffsetDateTime since, int limit) {
         Specification<Property> spec = SearchSpecs.allOf(
+                criteria(criteria),
+                (root, query, cb) -> cb.greaterThan(root.get("publishedAt"), since));
+        return repository.findAll(spec,
+                        SearchSpecs.page(0, limit, Sort.by(Sort.Direction.DESC, "publishedAt")))
+                .getContent();
+    }
+
+    /** The filters, in one place, so the marketplace and a saved search cannot mean different things. */
+    private Specification<Property> criteria(PublicSearchRequest request) {
+        return SearchSpecs.allOf(
                 live(),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("propertyType", blankToNull(request.getPropertyType())),
@@ -61,9 +89,6 @@ public class PublicPropertyService {
                 priceBetween(request.getMinPrice(), request.getMaxPrice()),
                 bedroomsBetween(request.getMinBedrooms(), request.getMaxBedrooms()),
                 greenOnly(request.getGreenOnly()));
-
-        var page = repository.findAll(spec, request.toPageable(sortOf(request.getSort())));
-        return PagedResponse.from(page, this::toCard);
     }
 
     /**

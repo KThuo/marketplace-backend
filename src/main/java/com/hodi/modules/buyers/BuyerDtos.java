@@ -27,7 +27,18 @@ public final class BuyerDtos {
             @Size(max = 32, message = "That phone number is too long") String phone,
 
             @NotBlank(message = "Choose a password")
-            @Size(max = 128, message = "That password is too long") String password) {}
+            @Size(max = 128, message = "That password is too long") String password,
+
+            /**
+             * Whether they asked to be told when a saved search finds something (plan §3.8).
+             *
+             * <p>Absent means no. A nullable Boolean rather than a primitive so that "they did not answer"
+             * and "they answered no" arrive here as the same thing they were on the form — and so that a
+             * client which forgets the field can never be read as consent. There is deliberately no
+             * marketing equivalent: the registration form asks one specific question, and a second consent
+             * bundled behind the first is not informed.
+             */
+            Boolean propertyAlertsOptIn) {}
 
     /**
      * @param channel {@code EMAIL} or {@code PHONE}. Names which channel is being confirmed rather than

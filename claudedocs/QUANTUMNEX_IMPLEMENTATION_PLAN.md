@@ -5,8 +5,9 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phases 0a and 0b are built and verified** (§7, §8), and **Phase 1 has started** with M2's first
-slice (§9). Sections 3.3–3.6, 3.8 and 3.9 remain planning.
+**Status:** **Phases 0a and 0b are built and verified** (§7, §8). **Phase 1 is under way**: M2's listings and
+marketplace landed first (§9), and M2's buyer-side rows plus §3.8's consent store landed with them (§10).
+Sections 3.3–3.6 and 3.9 remain planning.
 
 ---
 
@@ -177,7 +178,7 @@ New actor class `VENDOR`; `vendor_profile`, `vendor_category` (taxonomy, seeded 
 - Append-only: a `BEFORE UPDATE OR DELETE` trigger on `audit_logs` that raises, plus a role that lacks
   `UPDATE`/`DELETE` on it. Retention becomes a partition drop rather than a `DELETE`.
 
-### 3.8 Consent *(with M1)*
+### 3.8 Consent *(with M1)* — **BUILT** (§10)
 
 ```
 consent_preference          -- user_id, channel (EMAIL|SMS|PUSH), purpose (PROMOTIONAL|TRANSACTIONAL|...), granted
@@ -242,7 +243,7 @@ turn lands backend **and** frontend together.
 |---|---|---|
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
-| **1** | M2 (property + search + media) **— listings and marketplace done, saved listings and alerts next** → M1 consent → M3 (mock affordability behind the real interface) → M4 | 6–8 |
+| **1** | M2 (property + search + media) **— listings, marketplace, shortlist, saved searches and the consent store done** → M3 (mock affordability behind the real interface) → M4 | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
@@ -484,3 +485,75 @@ worse than its absence).
    scroll container, which stops `position: sticky` working for everything inside it. The workspace sidebar
    had been scrolling away with the page all along, with nothing wrong in its own CSS. It is `overflow-x:
    clip` now, which prevents sideways scrolling without creating the container.
+
+
+---
+
+## 10. Phase 1 / M2, second slice — a buyer's own rows, and the consent store
+
+The three things held back from the first slice, built together because the third is the gate on the second.
+
+### What landed
+
+**The consent store (§3.8, FR004–FR005).** `consent_preferences` holds one current position per (person,
+channel, purpose); `consent_preference_history` holds every movement of it, written **by trigger** and
+refusing UPDATE and DELETE. The trigger rather than the service is the point: "the code always remembers to
+record the change" is the assumption the table exists to remove, so a repair script or a future bulk import
+still leaves a trail. Transactional messages are not opt-out-able and the database says so with a CHECK —
+verified by trying it as superuser, which is refused.
+
+Keyed on `user_id`, not the profile, which is the one place since Phase 0a that deliberately ignores the
+actor split: consent is a fact about a natural person and the inbox they answer on, and a per-profile store
+would let the same person be simultaneously opted in and opted out on the same address.
+
+**The shortlist (FR020–FR021).** `saved_listings`, also keyed on the person — saving a house is something a
+human does, not something an actor does, and hiding a shortlist when somebody switches to their seller
+profile would be a bug rather than isolation. It is the only table in the schema without the soft lifecycle:
+un-saving deletes the row, because a bookmark somebody removed should stop existing rather than linger as an
+archived row the unique index still collides with. A snapshot of title, price, town and cover image is taken
+at save time and used **only** when the listing is no longer public, so a sold or withdrawn listing reads as
+news rather than as a stale price.
+
+**Saved searches (FR022–FR024).** `search_alerts` stores the criteria as columns, one for one with
+`PublicSearchRequest`, and `PublicPropertyService.newMatches` re-runs them through the *same* specification
+builder the marketplace endpoint uses — one implementation of the search, so a standing search cannot come to
+mean something different from the same filters typed today. `SearchAlertDispatcher` polls what is due and
+hands each row to `SearchAlertRunner`, a separate bean so `REQUIRES_NEW` actually goes through the proxy.
+
+There is deliberately **no channel column** on `search_alerts`. Which way an alert arrives is resolved from
+the consent store at send time, every time, so somebody who opts out this morning stops hearing from every
+search they have ever saved this morning without anything going back to edit those rows. An empty channel set
+means silence — never a fallback to email, which would make the recorded refusal decorative.
+
+**Front end.** A heart on every marketplace card and on the detail page, backed by one Pinia store so the
+same listing cannot be filled in one place and empty in another; "Save this search" turning the current
+filters into an alert, showing the criteria back as a sentence first; and three pages in the buyer's own area
+— the shortlist, the saved searches with what each one has actually done, and the consent grid with the
+person's own history under it. Registration gained one unticked box: the property-alerts consent, captured in
+the same transaction as the account.
+
+### Behaviour verified
+
+Registration with the box ticked writes six consent rows with IP and user agent, alerts granted and marketing
+refused; the transactional CHECK refuses a false as superuser; the history table refuses an UPDATE as
+superuser; hearts survive a reload from `/me/saved-listings/references`; a withdrawn listing falls back to
+its snapshot with the reason and the date; consent switched off makes the alert report itself *Silent* on its
+own screen with the fix one click away; the dispatcher run with alerts off records `NO_CONSENT` and sends
+nothing; with consent restored it composed and delivered both messages against a stub gateway; a second run
+over the same window found nothing, and a newly published matching listing produced exactly one more alert.
+
+### Two things worth recording
+
+1. **Listings are addressed by `reference` in this module, not by id.** The client is holding ids encoded
+   under `PublicMarketplace`'s fixed salt; `/api/v1/me/**` is not on that path, so the caller's own salt
+   applies and the same string decodes to nothing. A reference is salt-free and is already the marketplace's
+   own handle. Alerts keep ordinary ids — they are the caller's own rows and were never encoded publicly.
+
+2. **A child component's root element is matched by its parent's scoped CSS.** The heart used `class="chip"`
+   with an `on` modifier; the marketplace's own filter-chip rule (`.chip.on`) then painted every saved heart
+   solid brand-green. Component-internal class names are prefixed now. The same shape bit twice in one turn —
+   a ghost `AppButton` given `class="danger"` was painted solid red by AppButton's own `danger` variant.
+
+3. **`skipped` and `failed` are not the same delivery outcome.** The alert row carries the buyer's version —
+   it arrived or it did not — and the audit row carries the per-channel reason underneath it, because a
+   gateway that rejected a message and a channel switched off in configuration are different conversations.

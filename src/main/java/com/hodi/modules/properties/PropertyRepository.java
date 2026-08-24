@@ -28,6 +28,15 @@ public interface PropertyRepository
     @Query("select p from Property p where p.id = :id and p.listingState = 'LIVE' and p.status <> 5")
     Optional<Property> findLiveById(@Param("id") Long id);
 
+    /**
+     * By reference, in whatever state it is in.
+     *
+     * <p>Only for callers holding an existing relationship to the listing — a shortlist entry saved while it
+     * was live and now asking what became of it. Never for discovery: {@link #findLiveByReference} is the
+     * lookup for anyone who has not already been shown the listing.
+     */
+    Optional<Property> findByReference(String reference);
+
     /** How many live listings a seller has — the dashboard's figure, and cheap enough to ask per card. */
     @Query("select count(p) from Property p where p.tenantId = :tenantId "
             + "and p.listingState = 'LIVE' and p.status <> 5")

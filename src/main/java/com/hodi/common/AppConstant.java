@@ -94,6 +94,39 @@ public final class AppConstant {
     /** The decision being asked for. One entity can need several over its life. */
     public static final String APPROVAL_ACTION_ACTIVATE = "ACTIVATE";
 
+    // ── Consent (plan §3.8, BRD FR004–FR005) ────────────────────────────────
+    // Channels somebody can be reached on, and the three reasons they might be. The purposes are not a
+    // taxonomy of messages — they are the granularity at which a person is asked to agree, which is why
+    // there are three of them and not thirty.
+    public static final String CONSENT_CHANNEL_EMAIL = "EMAIL";
+    public static final String CONSENT_CHANNEL_SMS   = "SMS";
+
+    /**
+     * Messages that carry out something the person asked for: a reset link, a viewing confirmation, a
+     * receipt. Not opt-out-able, and the consent table's own CHECK refuses a row that says otherwise.
+     */
+    public static final String CONSENT_TRANSACTIONAL   = "TRANSACTIONAL";
+    /** New listings matching a saved search. The only purpose the alert dispatcher will send under. */
+    public static final String CONSENT_PROPERTY_ALERTS = "PROPERTY_ALERTS";
+    public static final String CONSENT_PROMOTIONAL     = "PROMOTIONAL";
+
+    /** How an answer was obtained. Evidence about the evidence. */
+    public static final String CONSENT_SOURCE_REGISTRATION = "REGISTRATION";
+    public static final String CONSENT_SOURCE_PREFERENCES  = "PREFERENCES";
+
+    // ── Saved searches (M2, BRD FR022–FR024) ─────────────────────────────────
+    /** As soon as the dispatcher next polls — a poll a buyer cannot tell apart from a push. */
+    public static final String ALERT_INSTANT = "INSTANT";
+    public static final String ALERT_DAILY   = "DAILY";
+    public static final String ALERT_WEEKLY  = "WEEKLY";
+
+    /** Why a due alert sent nothing. Recorded on the row so the buyer's own screen can explain itself. */
+    public static final String ALERT_OUTCOME_SENT       = "SENT";
+    public static final String ALERT_OUTCOME_NO_MATCHES = "NO_MATCHES";
+    /** Matches found, nowhere to send them: every channel is switched off in the consent store. */
+    public static final String ALERT_OUTCOME_NO_CONSENT = "NO_CONSENT";
+    public static final String ALERT_OUTCOME_FAILED     = "FAILED";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -129,6 +162,10 @@ public final class AppConstant {
     public static final String AUDIT_BUYER_REGISTER   = "BUYER_REGISTER";
     public static final String AUDIT_BUYER_VERIFY     = "BUYER_VERIFY";
     public static final String AUDIT_CONFIG_UPDATE    = "CONFIG_UPDATE";
+    /** A person changed what they may be contacted about. The proof-of-consent trail's second copy. */
+    public static final String AUDIT_CONSENT_UPDATE   = "CONSENT_UPDATE";
+    /** A saved search was delivered, or was not, and why. */
+    public static final String AUDIT_ALERT_RUN        = "SEARCH_ALERT_RUN";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────

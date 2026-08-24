@@ -7,6 +7,7 @@ import com.hodi.enums.ConfigKey;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.auth.OtpChallengeService;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.modules.consent.ConsentService;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
 import com.hodi.modules.profiles.UserProfile;
@@ -63,6 +64,7 @@ public class BuyerRegistrationService {
     private final PasswordService passwords;
     private final OtpChallengeService otpChallenges;
     private final ConfigurationService configs;
+    private final ConsentService consent;
     private final AuditService audit;
 
     /** What the client needs to move to the "enter your code" screen. */
@@ -153,6 +155,16 @@ public class BuyerRegistrationService {
         User saved = users.save(buyer);
         // No organisation, by definition: a buyer belongs to nobody and is scoped by their own identity.
         userProfiles.provisionFirst(saved.getId(), buyerType, buyerGroup, null, null, null, null);
+        /*
+         * Their opening position on being contacted, in the same transaction as the account (plan §3.8).
+         *
+         * Here rather than on first sign-in because the verification email is about to be sent, and a
+         * transactional consent recorded after the message it authorises is a record that proves nothing.
+         * The one thing they were actually asked is the property-alerts tick; everything else is recorded
+         * as the refusal it is, with a source saying nobody asked.
+         */
+        consent.captureAtRegistration(saved.getId(),
+                Boolean.TRUE.equals(request.propertyAlertsOptIn()));
         audit.record(AppConstant.AUDIT_BUYER_REGISTER, "User", saved.getId(), null,
                 "self-registered as " + saved.getUsername());
         log.info("Buyer {} registered", saved.getUsername());
