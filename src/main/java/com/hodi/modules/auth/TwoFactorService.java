@@ -5,6 +5,7 @@ import com.hodi.common.exception.HodiException;
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.security.password.PasswordService;
@@ -35,6 +36,7 @@ import java.time.OffsetDateTime;
 public class TwoFactorService {
 
     private final UserRepository users;
+    private final UserProfileRepository profiles;
     private final TotpService totp;
     private final ConfigurationService configs;
     private final PasswordService passwords;
@@ -95,7 +97,11 @@ public class TwoFactorService {
         if (!passwords.matches(currentPassword, user.getPassword())) {
             throw new HodiException("That is not your current password", HttpStatus.BAD_REQUEST);
         }
-        if (configs.getBoolean(ConfigKey.AUTH_TOTP_REQUIRED) && !user.isBuyerActor()) {
+        // Across every profile: somebody who is a buyer *and* a seller's owner is staff, and letting them
+        // turn off the second factor from their buyer profile would be a way around the staff rule.
+        boolean staffAnywhere = profiles.findLiveForUser(userId).stream()
+                .anyMatch(profile -> !profile.isBuyerActor());
+        if (configs.getBoolean(ConfigKey.AUTH_TOTP_REQUIRED) && staffAnywhere) {
             throw new HodiException(
                     "Two-factor authentication is required for staff accounts and cannot be turned off.",
                     HttpStatus.CONFLICT);

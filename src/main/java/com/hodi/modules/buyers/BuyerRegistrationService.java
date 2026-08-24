@@ -9,6 +9,9 @@ import com.hodi.modules.auth.OtpChallengeService;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
+import com.hodi.modules.profiles.UserProfile;
+import com.hodi.modules.profiles.UserProfileRepository;
+import com.hodi.modules.profiles.UserProfileService;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.modules.usertypes.UserType;
@@ -53,6 +56,8 @@ public class BuyerRegistrationService {
     public static final String BUYER_GROUP_NAME = "Buyer";
 
     private final UserRepository users;
+    private final UserProfileRepository profiles;
+    private final UserProfileService userProfiles;
     private final UserTypeRepository userTypes;
     private final UserGroupRepository userGroups;
     private final PasswordService passwords;
@@ -89,17 +94,24 @@ public class BuyerRegistrationService {
              * stuck: they cannot register (the address is taken) and cannot sign in (unverified), with no way
              * out that does not involve support.
              */
-            if (held.isBuyerActor() && held.getEmailVerifiedAt() == null) {
+            if (hasBuyerProfile(held) && held.getEmailVerifiedAt() == null) {
                 log.debug("Re-issuing a verification code for an unverified registration");
                 var challenge = otpChallenges.issueEmailVerification(held);
                 return new RegistrationOutcome(challenge.token(), challenge.channel(),
                         challenge.sentToMasked(), true);
             }
             /*
-             * A real, verified account. Answer as though registration succeeded, and issue no challenge — the
-             * client shows the same "check your email" screen either way, so the response shape must not
-             * differ. The token is a decoy in the sense that it is absent; the client's next step fails the
-             * same way a mistyped address would.
+             * A real account. Answer as though registration succeeded, and issue no challenge — the client
+             * shows the same "check your email" screen either way, so the response shape must not differ. The
+             * token is a decoy in the sense that it is absent; the client's next step fails the same way a
+             * mistyped address would.
+             *
+             * This branch also catches the address of somebody who is staff and not yet a buyer, and it
+             * deliberately does NOT add them a buyer profile. FR073 says one person may hold both, and they
+             * can: from inside their own account, authenticated (see AuthService.addBuyerProfile). Doing it
+             * here would let anybody who knows a colleague's address write a profile onto their account, and
+             * applying the submitted password would be worse still — a password reset with no proof of
+             * anything.
              */
             log.info("Registration attempted for an address that already has an account");
             return new RegistrationOutcome(null, "EMAIL",
@@ -121,13 +133,6 @@ public class BuyerRegistrationService {
                 .email(email)
                 .username(deriveUsername(email))
                 .phone(phone)
-                .userTypeId(buyerType.getId())
-                .userTypeCode(buyerType.getCode())
-                .userTypeName(buyerType.getName())
-                .actorClass(buyerType.getActorClass())
-                // No organisation, by definition. A buyer belongs to nobody and is scoped by identity.
-                .userGroupId(buyerGroup.getId())
-                .userGroupName(buyerGroup.getName())
                 .enabled(true)
                 .status(AppConstant.STATUS_ACTIVE)
                 .statusFlag(AppConstant.FLAG_ACTIVE)
@@ -146,6 +151,8 @@ public class BuyerRegistrationService {
         }
 
         User saved = users.save(buyer);
+        // No organisation, by definition: a buyer belongs to nobody and is scoped by their own identity.
+        userProfiles.provisionFirst(saved.getId(), buyerType, buyerGroup, null, null, null, null);
         audit.record(AppConstant.AUDIT_BUYER_REGISTER, "User", saved.getId(), null,
                 "self-registered as " + saved.getUsername());
         log.info("Buyer {} registered", saved.getUsername());
@@ -199,7 +206,7 @@ public class BuyerRegistrationService {
         String email = request.email() == null ? "" : request.email().trim().toLowerCase();
         var existing = users.findByEmail(email);
 
-        if (existing.isEmpty() || !existing.get().isBuyerActor()
+        if (existing.isEmpty() || !hasBuyerProfile(existing.get())
                 || existing.get().getEmailVerifiedAt() != null) {
             log.debug("Resend requested for an address with nothing pending");
             return new RegistrationOutcome(null, "EMAIL",
@@ -208,6 +215,16 @@ public class BuyerRegistrationService {
         var challenge = otpChallenges.issueEmailVerification(existing.get());
         return new RegistrationOutcome(challenge.token(), challenge.channel(),
                 challenge.sentToMasked(), true);
+    }
+
+    /**
+     * Whether this person already browses as a buyer.
+     *
+     * <p>A question about their profiles now, not about the person: somebody can be a seller's owner and a
+     * buyer at once, and "is this a buyer account" has no single answer for them.
+     */
+    private boolean hasBuyerProfile(User user) {
+        return profiles.findLiveForUser(user.getId()).stream().anyMatch(UserProfile::isBuyerActor);
     }
 
     private String deriveUsername(String email) {

@@ -15,6 +15,9 @@ import org.springframework.transaction.annotation.Transactional;
  * in {@code users} with unique username and email, so there is exactly one login pipeline and one session
  * model rather than a separate one for the marketplace. Which surface somebody may then reach is decided by
  * their user type and permissions, not by which form they signed in through.
+ *
+ * <p>Loads the <em>default</em> profile, because this path has no token to name one: it is used where Spring
+ * Security wants a UserDetails for an identifier and nothing more is known yet.
  */
 @Service
 @RequiredArgsConstructor
@@ -28,7 +31,7 @@ public class CustomUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
         String id = identifier == null ? "" : identifier.trim();
         return users.findByUsernameIgnoreCaseOrEmail(id, id.toLowerCase())
-                .map(principals::build)
+                .map(principals::buildDefault)
                 // Deliberately generic: the message must not reveal whether an account exists.
                 .orElseThrow(() -> new UsernameNotFoundException("Invalid credentials"));
     }

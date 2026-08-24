@@ -1,6 +1,5 @@
 package com.hodi.modules.auth.dto;
 
-import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -79,6 +78,8 @@ public final class AuthDtos {
      */
     public record MeResponse(
             String id,
+            /** The active profile. Everything below that describes an actor was resolved from it. */
+            String profileId,
             String firstName,
             String lastName,
             String fullName,
@@ -104,9 +105,48 @@ public final class AuthDtos {
             boolean usernameChangeable,
             boolean emailVerified,
             boolean phoneVerified,
+            /**
+             * Whether this profile is actually being held back pending verification.
+             *
+             * <p>Not the same as {@code !emailVerified}, and the difference is the whole reason it is sent:
+             * whether verification is <em>demanded</em> depends on two configuration keys and on whether this
+             * person also holds a staff profile (a staff account was vouched for by whoever created it, and
+             * never goes through the buyer verification flow at all). The client used to derive it from
+             * {@code emailVerified} and trapped a staff member who had added a buyer profile on the "confirm
+             * your email" screen, waiting for a code that was never going to be sent.
+             */
+            boolean verificationRequired,
             OffsetDateTime passwordExpiresAt,
             OffsetDateTime lastLogin,
-            List<String> permissions) {}
+            List<String> permissions,
+            /**
+             * Every profile this person holds, the active one included.
+             *
+             * <p>Sent on every {@code /me} rather than fetched on demand, because the switcher has to know
+             * whether to render at all — and a person with one profile (almost everybody) must not pay a
+             * request to discover they have nothing to switch to.
+             */
+            List<ProfileSummary> profiles) {}
+
+    /**
+     * One profile in the switcher.
+     *
+     * @param label what to show: the organisation, or "Platform"/"Buyer" for the two that have none
+     */
+    public record ProfileSummary(
+            String id,
+            String profileType,
+            String userTypeCode,
+            String userTypeName,
+            String userGroupName,
+            String label,
+            String kycStatus,
+            boolean active,
+            boolean isDefault) {}
+
+    /** Switching profile issues a new session on that profile; nothing about the old one is mutated. */
+    public record SwitchProfileRequest(
+            @NotBlank(message = "Choose a profile") String profileId) {}
 
     /** One organisation in the caller's view, named rather than numbered so the UI can say who it is. */
     public record VisibleTenant(String id, String name, String tenantRef) {}
@@ -118,9 +158,13 @@ public final class AuthDtos {
             @NotBlank(message = "Enter a new password")
             @Size(max = 128, message = "That password is too long") String newPassword) {}
 
+    /**
+     * @param identifier an email address or a phone number (BRD FR007). Deliberately not validated as an
+     *                   email: the field accepts both, and an {@code @Email} constraint here would reject
+     *                   every phone number with a validation message that names the wrong thing.
+     */
     public record ForgotPasswordRequest(
-            @NotBlank(message = "Enter your email address")
-            @Email(message = "That does not look like an email address") String email) {}
+            @NotBlank(message = "Enter your email address or phone number") String identifier) {}
 
     public record ResetPasswordRequest(
             @NotBlank(message = "The reset link is incomplete") String code,

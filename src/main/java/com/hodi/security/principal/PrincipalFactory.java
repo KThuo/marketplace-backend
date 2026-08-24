@@ -2,7 +2,10 @@ package com.hodi.security.principal;
 
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.common.exception.UnauthorizedException;
 import com.hodi.modules.partnerships.PartnershipRepository;
+import com.hodi.modules.profiles.UserProfile;
+import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.users.User;
 import com.hodi.security.EffectivePermissionResolver;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +14,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 
 /**
- * Builds a {@link UserPrincipal} from a user row: resolves the effective permission set, the set of
+ * Builds a {@link UserPrincipal} from a person and one of their profiles: resolves the effective permission set, the set of
  * organisations whose rows the user may read, and whether the account has cleared verification.
  *
  * <h2>Resolving the visible-tenant set</h2>
@@ -43,21 +46,42 @@ public class PrincipalFactory {
 
     private final EffectivePermissionResolver permissions;
     private final PartnershipRepository partnerships;
+    private final UserProfileRepository profiles;
     private final ConfigurationService configs;
 
-    public UserPrincipal build(User user) {
-        boolean unrestricted = user.isPlatformActor();
-        List<Long> visible = resolveVisibleTenants(user, unrestricted);
-        return UserPrincipal.of(user, permissions.resolve(user), visible, unrestricted, isVerified(user));
+    public UserPrincipal build(User user, UserProfile profile) {
+        boolean unrestricted = profile.isPlatformActor();
+        List<Long> visible = resolveVisibleTenants(profile, unrestricted);
+        return UserPrincipal.of(user, profile, permissions.resolve(profile), visible, unrestricted,
+                isVerified(user, profile));
     }
 
-    private List<Long> resolveVisibleTenants(User user, boolean unrestricted) {
+    /**
+     * The same, on the profile a fresh login lands on.
+     *
+     * <p>A person with no live profile cannot be a principal at all: there is no actor class to resolve, no
+     * user type to match against a module, and no organisation. That is a broken account rather than an
+     * unauthorised one, but it has to fail here — building a principal with the fields left null would give
+     * somebody the "both organisation columns are empty" shape, which is what a platform administrator looks
+     * like.
+     */
+    public UserPrincipal buildDefault(User user) {
+        return build(user, requireDefaultProfile(user.getId()));
+    }
+
+    public UserProfile requireDefaultProfile(Long userId) {
+        return profiles.findDefaultForUser(userId)
+                .or(() -> profiles.findLiveForUser(userId).stream().findFirst())
+                .orElseThrow(() -> new UnauthorizedException("This account has no active profile"));
+    }
+
+    private List<Long> resolveVisibleTenants(UserProfile profile, boolean unrestricted) {
         if (unrestricted) return List.of();
-        if (user.getTenantId() != null) return List.of(user.getTenantId());
-        if (user.getInstitutionId() != null) {
-            return partnerships.findActiveTenantIdsForInstitution(user.getInstitutionId());
+        if (profile.getTenantId() != null) return List.of(profile.getTenantId());
+        if (profile.getInstitutionId() != null) {
+            return partnerships.findActiveTenantIdsForInstitution(profile.getInstitutionId());
         }
-        // Buyers, and any staff row not yet attached to an organisation.
+        // Buyers, and any staff profile not yet attached to an organisation.
         return List.of();
     }
 
@@ -68,9 +92,19 @@ public class PrincipalFactory {
      * authenticate, so there is nothing for a code sent to their own address to prove. The two requirements
      * are read live rather than baked into the row, so turning phone verification on tomorrow applies to
      * everybody who has not done it — which is the point of it being configuration.
+     *
+     * <p>"Only buyers" is about the <em>person</em>, not the profile. Somebody who also holds a staff profile
+     * was provisioned by an administrator who was already authenticated, and their address has been vouched
+     * for by whoever created the account — so their buyer profile is verified too. Reading it per profile
+     * instead produced a trap: a staff member who added a buyer profile switched onto it and found every
+     * request refused pending a verification code that had never been sent, because staff accounts do not go
+     * through the buyer verification flow at all.
      */
-    private boolean isVerified(User user) {
-        if (!user.isBuyerActor()) return true;
+    private boolean isVerified(User user, UserProfile profile) {
+        if (!profile.isBuyerActor()) return true;
+        boolean staffElsewhere = profiles.findLiveForUser(user.getId()).stream()
+                .anyMatch(other -> !other.isBuyerActor());
+        if (staffElsewhere) return true;
         if (configs.getBoolean(ConfigKey.BUYER_EMAIL_VERIFICATION_REQUIRED)
                 && user.getEmailVerifiedAt() == null) {
             return false;

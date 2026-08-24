@@ -11,6 +11,9 @@ import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.auth.RefreshTokenService;
 import com.hodi.modules.institutions.LendingInstitution;
 import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.profiles.UserProfile;
+import com.hodi.modules.profiles.UserProfileRepository;
+import com.hodi.modules.profiles.UserProfileService;
 import com.hodi.modules.tenants.Tenant;
 import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.modules.usergroups.UserGroup;
@@ -22,11 +25,12 @@ import com.hodi.modules.users.dto.UserDtos.UserListRequest;
 import com.hodi.modules.users.dto.UserDtos.UserResponse;
 import com.hodi.modules.usertypes.UserType;
 import com.hodi.modules.usertypes.UserTypeRepository;
-import com.hodi.security.TenantScope;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.password.PasswordService;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Sort;
@@ -37,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Staff administration: platform staff, seller staff and lender staff.
@@ -45,6 +51,19 @@ import java.time.OffsetDateTime;
  * {@code com.hodi.modules.buyers.BuyerRegistrationService}). They are visible through this module's list so
  * support can find somebody, but there is no path here that mints one, because a staff-created buyer with a
  * temporary password is an account nobody has proved they own.
+ *
+ * <h2>The list is a list of profiles</h2>
+ *
+ * <p>Since a person can hold more than one profile (BRD FR073), "the users of this organisation" is a
+ * question about profiles: it is the profile that carries the user type, the group and the organisation.
+ * Somebody who is both a buyer and a seller's owner appears twice, which is correct — they are two actors
+ * with one credential, and an administrator of one organisation should see the one that concerns them.
+ *
+ * <p>The actions on a row nevertheless act on the <strong>account</strong>: deactivating, resetting a
+ * password and signing somebody out are all things you do to a credential, and a person locked out of one
+ * profile but not another would be a state nobody asked for. Removing somebody from an organisation without
+ * touching their credential is a different operation, and belongs with the phase that gives organisations
+ * their own membership screens.
  *
  * <h2>Organisation affiliation is derived, not submitted</h2>
  *
@@ -64,6 +83,8 @@ public class UserService {
             "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
     private final UserRepository repository;
+    private final UserProfileRepository profiles;
+    private final UserProfileService userProfiles;
     private final UserTypeRepository userTypes;
     private final UserGroupRepository userGroups;
     private final TenantRepository tenants;
@@ -77,35 +98,72 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public PagedResponse<UserResponse> list(UserListRequest request) {
-        Specification<User> spec = SearchSpecs.allOf(
+        Specification<UserProfile> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
-                SearchSpecs.fuzzy("searchText", request.getSearch()),
+                search(request.getSearch()),
                 SearchSpecs.statusIn(request.effectiveStatuses()),
-                SearchSpecs.eq("actorClass", blankToNull(request.getActorClass())),
+                SearchSpecs.eq("profileType", blankToNull(request.getActorClass())),
                 SearchSpecs.eq("userTypeCode", blankToNull(request.getUserTypeCode())),
                 SearchSpecs.eq("tenantId", HashIdUtil.decodeId(request.getTenantId())),
                 SearchSpecs.eq("institutionId", HashIdUtil.decodeId(request.getInstitutionId())),
                 SearchSpecs.eq("userGroupId", HashIdUtil.decodeId(request.getUserGroupId())),
                 lockedFilter(request.getLocked()),
                 visibleTo(AuthContext.require()));
-        var page = repository.findAll(spec,
-                request.toPageable(Sort.by(Sort.Direction.ASC, "firstName", "lastName")));
-        return PagedResponse.from(page, this::toResponse);
+
+        var page = profiles.findAll(spec, request.toPageable(
+                Sort.by(Sort.Direction.ASC, "userTypeName", "id")));
+
+        // One query for the people on this page rather than one per row: the list is paged, so this is at
+        // most a page's worth of ids, and the alternative is the N+1 the label caches exist to avoid.
+        List<Long> userIds = page.getContent().stream().map(UserProfile::getUserId).distinct().toList();
+        var people = repository.findByIdIn(userIds).stream()
+                .collect(java.util.stream.Collectors.toMap(User::getId, u -> u));
+
+        return PagedResponse.from(page, profile -> toResponse(people.get(profile.getUserId()), profile));
     }
 
     /**
-     * Which users the caller may see.
+     * Free-text search across the person and the profile.
      *
-     * <p>Not a plain {@code TenantScope.restrict("tenantId")}, because the {@code users} table holds three
-     * populations that a tenant predicate alone gets wrong in both directions. A lender's staff carry no
-     * tenant at all, so restricting on {@code tenant_id} would hide a lender admin's own colleagues from
-     * them; and buyers carry no organisation either, so the same predicate would hide every buyer from
-     * support. So:
+     * <p>Two generated columns, because the searchable facts live on two rows: the name and address on the
+     * person, the role and organisation on the profile. Each typed word has to match one or the other — ANDed
+     * across words, ORed across the two columns — so "wanjiru acacia" finds Wanjiru at Acacia Ridge, which
+     * neither column could answer alone.
+     */
+    private Specification<UserProfile> search(String term) {
+        if (term == null || term.isBlank()) return null;
+        List<String> tokens = new ArrayList<>();
+        for (String token : term.trim().toLowerCase().split("\\s+")) {
+            if (!token.isEmpty()) tokens.add(token);
+        }
+        if (tokens.isEmpty()) return null;
+
+        return (root, query, cb) -> {
+            Join<UserProfile, User> user = root.join("user", jakarta.persistence.criteria.JoinType.INNER);
+            List<Predicate> all = new ArrayList<>(tokens.size());
+            for (String token : tokens) {
+                String like = "%" + token + "%";
+                // The columns are lower-cased by the database, so the term is lowered rather than the
+                // column — wrapping a column in lower() would make its trigram index unusable.
+                all.add(cb.or(cb.like(root.get("searchText"), like),
+                        cb.like(user.get("searchText"), like)));
+            }
+            return cb.and(all.toArray(new Predicate[0]));
+        };
+    }
+
+    /**
+     * Which profiles the caller may see.
+     *
+     * <p>Not {@code TenantScope.restrict("tenantId")}, because this list holds four populations that a tenant
+     * predicate alone gets wrong in both directions. A lender's staff carry no tenant, so restricting on
+     * {@code tenant_id} would hide a lender admin's own colleagues from them; buyers carry no organisation
+     * either, so the same predicate would hide every buyer from support. So:
      *
      * <ul>
      *   <li>platform staff — everyone;
-     *   <li>seller staff — their own organisation's staff, and nobody else's;
-     *   <li>lender staff — their own institution's staff. Deliberately <em>not</em> the staff of the sellers
+     *   <li>seller staff — their own organisation's people, and nobody else's;
+     *   <li>lender staff — their own institution's people. Deliberately <em>not</em> the staff of the sellers
      *       they are partnered with: a partnership grants sight of a portfolio, not of another
      *       organisation's people.
      * </ul>
@@ -113,7 +171,7 @@ public class UserService {
      * <p>That last point is the one worth being explicit about, because {@code TenantScope} would have said
      * otherwise. Visible-tenant scope is about business data; staff records are not business data.
      */
-    private Specification<User> visibleTo(UserPrincipal caller) {
+    private Specification<UserProfile> visibleTo(UserPrincipal caller) {
         if (caller.isPlatformStaff()) return null;
         if (caller.getTenantId() != null) {
             return (root, query, cb) -> cb.equal(root.get("tenantId"), caller.getTenantId());
@@ -126,16 +184,19 @@ public class UserService {
         return (root, query, cb) -> cb.disjunction();
     }
 
-    private Specification<User> lockedFilter(Boolean locked) {
+    /** Locked is a property of the credential, so this one filters through the join. */
+    private Specification<UserProfile> lockedFilter(Boolean locked) {
         if (locked == null) return null;
-        return (root, query, cb) -> locked
-                ? cb.isTrue(root.get("locked"))
-                : cb.isFalse(root.get("locked"));
+        return (root, query, cb) -> {
+            Join<UserProfile, User> user = root.join("user", jakarta.persistence.criteria.JoinType.INNER);
+            return locked ? cb.isTrue(user.get("locked")) : cb.isFalse(user.get("locked"));
+        };
     }
 
     @Transactional(readOnly = true)
     public UserResponse find(String hashId) {
-        return toResponse(requireVisible(hashId));
+        UserProfile profile = requireVisible(hashId);
+        return toResponse(account(profile), profile);
     }
 
     // ── writes ────────────────────────────────────────────────────────────────
@@ -177,16 +238,6 @@ public class UserService {
                 .email(email)
                 .username(username)
                 .phone(blankToNull(request.phone()))
-                .userTypeId(type.getId())
-                .userTypeCode(type.getCode())
-                .userTypeName(type.getName())
-                .actorClass(type.getActorClass())
-                .tenantId(affiliation.tenantId())
-                .tenantName(affiliation.tenantName())
-                .institutionId(affiliation.institutionId())
-                .institutionName(affiliation.institutionName())
-                .userGroupId(group == null ? null : group.getId())
-                .userGroupName(group == null ? null : group.getName())
                 .mustChangePassword(true)
                 .enabled(true)
                 .status(AppConstant.STATUS_ACTIVE)
@@ -201,16 +252,20 @@ public class UserService {
         user.setMustChangePassword(true);
 
         User saved = repository.save(user);
-        audit.record(AppConstant.ACTION_CREATE, "User", saved.getId(), null, snapshot(saved));
-        log.info("Created {} user {} in {}", saved.getActorClass(), saved.getUsername(),
+        UserProfile profile = userProfiles.provisionFirst(saved.getId(), type, group,
+                affiliation.tenantId(), affiliation.tenantName(),
+                affiliation.institutionId(), affiliation.institutionName());
+        audit.record(AppConstant.ACTION_CREATE, "User", saved.getId(), null, snapshot(saved, profile));
+        log.info("Created {} user {} in {}", type.getActorClass(), saved.getUsername(),
                 affiliation.label());
         return new TemporaryPasswordResponse(saved.getUsername(), temporary);
     }
 
     @Transactional
     public UserResponse update(String hashId, UpdateUserRequest request) {
-        User user = requireManageable(hashId);
-        String before = snapshot(user);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
+        String before = snapshot(user, profile);
 
         String email = request.email().trim().toLowerCase();
         if (!email.equals(user.getEmail()) && repository.existsByEmail(email)) {
@@ -223,15 +278,20 @@ public class UserService {
         user.setPhone(blankToNull(request.phone()));
 
         if (request.userGroupId() != null) {
-            UserType type = userTypes.findById(user.getUserTypeId())
-                    .orElseThrow(() -> new ResourceNotFoundException("User type", user.getUserTypeId()));
+            UserType type = userTypes.findById(profile.getUserTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("User type",
+                            profile.getUserTypeId()));
             UserGroup group = resolveGroup(request.userGroupId(), type,
-                    new Affiliation(user.getTenantId(), user.getTenantName(),
-                            user.getInstitutionId(), user.getInstitutionName()));
+                    new Affiliation(profile.getTenantId(), profile.getTenantName(),
+                            profile.getInstitutionId(), profile.getInstitutionName()));
             if (group != null) {
-                assertNotLastOwner(user, group.getId());
-                user.setUserGroupId(group.getId());
-                user.setUserGroupName(group.getName());
+                assertNotLastOwner(profile, group.getId());
+                profile.setUserGroupId(group.getId());
+                profile.setUserGroupName(group.getName());
+                profile.setStatus(AppConstant.STATUS_EDITED);
+                profile.setStatusFlag(AppConstant.FLAG_EDITED);
+                profile.setUpdatedBy(AuthContext.username());
+                profiles.save(profile);
             }
         }
 
@@ -240,17 +300,19 @@ public class UserService {
         user.setUpdatedBy(AuthContext.username());
 
         User saved = repository.save(user);
-        audit.record(AppConstant.ACTION_UPDATE, "User", saved.getId(), before, snapshot(saved));
-        return toResponse(saved);
+        audit.record(AppConstant.ACTION_UPDATE, "User", saved.getId(), before,
+                snapshot(saved, profile));
+        return toResponse(saved, profile);
     }
 
     @Transactional
     public void deactivate(String hashId, String reason) {
-        User user = requireManageable(hashId);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
         assertNotSelf(user, "deactivate");
-        assertNotLastOwner(user, null);
+        assertNotLastOwner(profile, null);
 
-        String before = snapshot(user);
+        String before = snapshot(user, profile);
         user.setEnabled(false);
         user.setStatus(AppConstant.STATUS_INACTIVE);
         user.setStatusFlag(AppConstant.FLAG_INACTIVE);
@@ -267,13 +329,15 @@ public class UserService {
          * period.
          */
         refreshTokens.revokeAllForUser(user.getId());
-        audit.record(AppConstant.ACTION_DEACTIVATE, "User", user.getId(), before, snapshot(user));
+        audit.record(AppConstant.ACTION_DEACTIVATE, "User", user.getId(), before,
+                snapshot(user, profile));
     }
 
     @Transactional
     public void activate(String hashId) {
-        User user = requireManageable(hashId);
-        String before = snapshot(user);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
+        String before = snapshot(user, profile);
         user.setEnabled(true);
         user.setLocked(false);
         user.setLockedUntil(null);
@@ -283,29 +347,33 @@ public class UserService {
         user.setDeactivationReason(null);
         user.setUpdatedBy(AuthContext.username());
         repository.save(user);
-        audit.record(AppConstant.ACTION_ACTIVATE, "User", user.getId(), before, snapshot(user));
+        audit.record(AppConstant.ACTION_ACTIVATE, "User", user.getId(), before,
+                snapshot(user, profile));
     }
 
     @Transactional
     public void archive(String hashId) {
-        User user = requireManageable(hashId);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
         assertNotSelf(user, "delete");
-        assertNotLastOwner(user, null);
+        assertNotLastOwner(profile, null);
 
-        String before = snapshot(user);
+        String before = snapshot(user, profile);
         user.setEnabled(false);
         user.setStatus(AppConstant.STATUS_DELETED);
         user.setStatusFlag(AppConstant.FLAG_DELETED);
         user.setUpdatedBy(AuthContext.username());
         repository.save(user);
         refreshTokens.revokeAllForUser(user.getId());
-        audit.record(AppConstant.ACTION_DELETE, "User", user.getId(), before, snapshot(user));
+        audit.record(AppConstant.ACTION_DELETE, "User", user.getId(), before,
+                snapshot(user, profile));
     }
 
     /** Issues a fresh temporary password, shown once. Also clears any lockout — that is the point. */
     @Transactional
     public TemporaryPasswordResponse resetPassword(String hashId) {
-        User user = requireManageable(hashId);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
         String temporary = temporaryPassword();
         passwords.applyTo(user, temporary);
         user.setMustChangePassword(true);
@@ -326,7 +394,8 @@ public class UserService {
 
     @Transactional
     public int revokeSessions(String hashId) {
-        User user = requireManageable(hashId);
+        UserProfile profile = requireManageable(hashId);
+        User user = account(profile);
         int revoked = refreshTokens.revokeAllForUser(user.getId());
         user.setSessionsValidFrom(OffsetDateTime.now());
         repository.save(user);
@@ -351,8 +420,8 @@ public class UserService {
      *
      * <p>For an organisation's own administrator the answer is fixed and the request has no say. For platform
      * staff the answer comes from the request but must agree with the user type's actor class — a
-     * {@code LENDER} type placed in a tenant would produce a user whose visible-tenant set resolves through a
-     * partnership lookup on an institution they do not have, which is a broken account rather than a
+     * {@code LENDER} type placed in a tenant would produce a profile whose visible-tenant set resolves through
+     * a partnership lookup on an institution it does not have, which is a broken account rather than a
      * dangerous one, but broken in a way nothing downstream would explain.
      */
     private Affiliation resolveAffiliation(UserPrincipal caller, UserType type,
@@ -420,7 +489,7 @@ public class UserService {
      * <p>A group from another organisation would be a cross-organisation reference that
      * {@code EffectivePermissionResolver} would happily honour — it looks the group up by id and never asks
      * whose it is. This is the check that stops that, and it is why the group id is validated against the
-     * user's affiliation rather than the caller's.
+     * profile's affiliation rather than the caller's.
      */
     private UserGroup resolveGroup(String groupHashId, UserType type, Affiliation affiliation) {
         Long groupId = HashIdUtil.decodeId(groupHashId);
@@ -463,31 +532,38 @@ public class UserService {
 
     // ── guards ────────────────────────────────────────────────────────────────
 
-    private User requireVisible(String hashId) {
-        User user = repository.findById(HashIdUtil.decodeId(hashId))
+    /** The account behind a profile. A profile without one is a referential impossibility, not a 404. */
+    private User account(UserProfile profile) {
+        return repository.findById(profile.getUserId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Profile " + profile.getId() + " has no user row"));
+    }
+
+    private UserProfile requireVisible(String hashId) {
+        UserProfile profile = profiles.findById(HashIdUtil.decodeId(hashId))
                 .orElseThrow(() -> new ResourceNotFoundException("User", hashId));
         UserPrincipal caller = AuthContext.require();
-        if (caller.isPlatformStaff()) return user;
+        if (caller.isPlatformStaff()) return profile;
 
         boolean mine = (caller.getTenantId() != null
-                        && caller.getTenantId().equals(user.getTenantId()))
+                        && caller.getTenantId().equals(profile.getTenantId()))
                 || (caller.getInstitutionId() != null
-                        && caller.getInstitutionId().equals(user.getInstitutionId()));
+                        && caller.getInstitutionId().equals(profile.getInstitutionId()));
         if (!mine) {
             // Not-found rather than forbidden: confirming the account exists leaks that somebody works for
             // another organisation.
             throw new ResourceNotFoundException("User", hashId);
         }
-        return user;
+        return profile;
     }
 
     /** Visible, and not a buyer — buyers are read-only through this module. */
-    private User requireManageable(String hashId) {
-        User user = requireVisible(hashId);
-        if (user.isBuyerActor() && !AuthContext.require().isPlatformStaff()) {
+    private UserProfile requireManageable(String hashId) {
+        UserProfile profile = requireVisible(hashId);
+        if (profile.isBuyerActor() && !AuthContext.require().isPlatformStaff()) {
             throw new HodiException("Buyer accounts are managed by their owner.", HttpStatus.FORBIDDEN);
         }
-        return user;
+        return profile;
     }
 
     private void assertNotSelf(User user, String verb) {
@@ -504,18 +580,18 @@ public class UserService {
      * deliberately at the point of the change rather than a warning, because the person making it is usually
      * tidying up and would not read the warning.
      *
-     * @param movingToGroupId the group the user is being moved to, or null when they are being removed
+     * @param movingToGroupId the group the profile is being moved to, or null when it is being removed
      *                        outright. Passing the target lets the guard allow a sideways move between two
      *                        owner-carrying groups, which is a legitimate thing to want.
      */
-    private void assertNotLastOwner(User user, Long movingToGroupId) {
-        if (user.getUserGroupId() == null) return;
+    private void assertNotLastOwner(UserProfile profile, Long movingToGroupId) {
+        if (profile.getUserGroupId() == null) return;
 
-        UserGroup current = userGroups.findById(user.getUserGroupId()).orElse(null);
+        UserGroup current = userGroups.findById(profile.getUserGroupId()).orElse(null);
         if (current == null || !current.isSystem()) return;
         if (movingToGroupId != null && movingToGroupId.equals(current.getId())) return;
 
-        long remaining = repository.countLiveMembers(current.getId());
+        long remaining = profiles.countLiveMembers(current.getId());
         if (remaining <= 1) {
             // Parenthesised, because `.formatted()` binds to the literal immediately before it: without
             // the brackets it applied to the second half of the concatenation, which has no %s in it, and
@@ -579,8 +655,9 @@ public class UserService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private UserResponse toResponse(User user) {
+    private UserResponse toResponse(User user, UserProfile profile) {
         return new UserResponse(
+                HashIdUtil.encodeId(profile.getId()),
                 HashIdUtil.encodeId(user.getId()),
                 user.getFirstName(),
                 user.getLastName(),
@@ -589,17 +666,17 @@ public class UserService {
                 user.getUsername(),
                 user.getPhone(),
                 storage.urlFor(user.getAvatarKey()),
-                HashIdUtil.encodeId(user.getUserTypeId()),
-                user.getUserTypeCode(),
-                user.getUserTypeName(),
-                user.getActorClass(),
-                HashIdUtil.encodeId(user.getUserGroupId()),
-                user.getUserGroupName(),
-                HashIdUtil.encodeId(user.getTenantId()),
-                user.getTenantName(),
-                HashIdUtil.encodeId(user.getInstitutionId()),
-                user.getInstitutionName(),
-                organisationLabel(user),
+                HashIdUtil.encodeId(profile.getUserTypeId()),
+                profile.getUserTypeCode(),
+                profile.getUserTypeName(),
+                profile.getProfileType(),
+                HashIdUtil.encodeId(profile.getUserGroupId()),
+                profile.getUserGroupName(),
+                HashIdUtil.encodeId(profile.getTenantId()),
+                profile.getTenantName(),
+                HashIdUtil.encodeId(profile.getInstitutionId()),
+                profile.getInstitutionName(),
+                profile.organisationLabel(),
                 user.isTotpEnabled(),
                 user.isSmsOtpEnabled(),
                 user.isCurrentlyLocked(),
@@ -608,6 +685,8 @@ public class UserService {
                 user.getEmailVerifiedAt() != null,
                 user.getPhoneVerifiedAt() != null,
                 user.getLastLogin(),
+                // The account's status, not the profile's: it is what decides whether this person can sign
+                // in, and it is what every action on the row changes.
                 user.getStatus(),
                 user.getStatusFlag(),
                 user.getDeactivationReason(),
@@ -615,19 +694,14 @@ public class UserService {
                 user.getCreatedBy());
     }
 
-    /** The scope column: which organisation this person belongs to, in one string. */
-    private static String organisationLabel(User user) {
-        if (user.getTenantName() != null) return user.getTenantName();
-        if (user.getInstitutionName() != null) return user.getInstitutionName();
-        return user.isBuyerActor() ? "Buyer" : "Platform";
-    }
-
-    private static String snapshot(User user) {
+    private static String snapshot(User user, UserProfile profile) {
         return ("{\"username\":\"%s\",\"email\":\"%s\",\"userType\":\"%s\",\"group\":\"%s\","
-                + "\"tenantId\":%s,\"institutionId\":%s,\"enabled\":%s,\"status\":%d}")
-                .formatted(user.getUsername(), user.getEmail(), user.getUserTypeCode(),
-                        user.getUserGroupName() == null ? "" : user.getUserGroupName(),
-                        String.valueOf(user.getTenantId()), String.valueOf(user.getInstitutionId()),
-                        user.isEnabled(), user.getStatus());
+                + "\"tenantId\":%s,\"institutionId\":%s,\"enabled\":%s,\"status\":%d,"
+                + "\"profileId\":%s}")
+                .formatted(user.getUsername(), user.getEmail(), profile.getUserTypeCode(),
+                        profile.getUserGroupName() == null ? "" : profile.getUserGroupName(),
+                        String.valueOf(profile.getTenantId()),
+                        String.valueOf(profile.getInstitutionId()),
+                        user.isEnabled(), user.getStatus(), String.valueOf(profile.getId()));
     }
 }

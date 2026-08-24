@@ -1,6 +1,8 @@
 package com.hodi.modules.auth;
 
+import com.hodi.common.AppConstant;
 import com.hodi.common.exception.UnauthorizedException;
+import com.hodi.modules.audit.AuditService;
 import com.hodi.security.jwt.JwtService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository repository;
     private final JwtService jwt;
+    private final AuditService audit;
     private final TransactionTemplate newTransaction;
 
     @Value("${hodi.auth.refresh-reaper-cron:0 15 3 * * *}")
@@ -52,7 +55,7 @@ public class RefreshTokenService {
     public record Issued(String raw, RefreshToken record, long maxAgeSeconds) {}
 
     @Transactional
-    public Issued issue(Long userId, String sessionClass, String userAgent, String ip) {
+    public Issued issue(Long userId, Long profileId, String sessionClass, String userAgent, String ip) {
         String raw = randomToken();
         int windowMinutes = jwt.windowMinutes(sessionClass);
         int grace = jwt.refreshGraceSeconds();
@@ -62,6 +65,7 @@ public class RefreshTokenService {
                 .jti(newJti())
                 .tokenHash(hash(raw))
                 .userId(userId)
+                .profileId(profileId)
                 .sessionClass(sessionClass)
                 .expiresAt(expiresAt)
                 .userAgent(truncate(userAgent, 512))
@@ -95,20 +99,28 @@ public class RefreshTokenService {
                 log.warn("Refresh token reuse detected for user {} — revoking all sessions",
                         existing.getUserId());
                 revokeAllInNewTransaction(existing.getUserId());
+                // Recorded, not just logged. "Somebody presented a spent session token" is precisely the
+                // kind of event an access review asks about afterwards, and an application log is not the
+                // audit trail.
+                audit.recordAuth(AppConstant.AUDIT_TOKEN_REUSE, existing.getUserId(), null, null,
+                        AppConstant.OUTCOME_FAILED,
+                        "spent refresh token presented again — every session revoked", ip, userAgent);
             }
             throw new UnauthorizedException("Session expired");
         }
 
-        Issued replacement = issue(existing.getUserId(), existing.getSessionClass(), userAgent, ip);
+        Issued replacement = issue(existing.getUserId(), existing.getProfileId(),
+                existing.getSessionClass(), userAgent, ip);
         existing.setRevoked(true);
         existing.setRevokedAt(OffsetDateTime.now());
         existing.setReplacedBy(replacement.record().getJti());
         repository.save(existing);
 
-        return new Rotation(existing.getUserId(), existing.getSessionClass(), replacement);
+        return new Rotation(existing.getUserId(), existing.getProfileId(),
+                existing.getSessionClass(), replacement);
     }
 
-    public record Rotation(Long userId, String sessionClass, Issued replacement) {}
+    public record Rotation(Long userId, Long profileId, String sessionClass, Issued replacement) {}
 
     @Transactional
     public void revoke(String presented) {

@@ -1,6 +1,7 @@
 package com.hodi.security.principal;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
 import lombok.Getter;
 import org.springframework.security.core.GrantedAuthority;
@@ -18,6 +19,11 @@ import java.util.Set;
  * {@code ROLE_}-prefixed user type, so both {@code hasAuthority('USERS_CREATE')} and
  * {@code hasRole('SUPER_ADMIN')} work.
  *
+ * <p><strong>Two rows, not one.</strong> The credential comes from {@code users} and everything
+ * authorisation depends on — actor class, user type, group, organisation — from the caller's
+ * <em>active profile</em>. The same person signed in on their buyer profile and on their seller-owner
+ * profile is two different principals with the same {@link #userId}, which is the point of FR073.
+ *
  * <p>Carries the resolved <strong>visible-tenant set</strong> as well as the permission set, because both
  * are needed on every request and both are expensive to work out. For a lender's staff the set is the
  * sellers their institution is partnered with — several organisations, none of them their own — which is why
@@ -27,6 +33,13 @@ import java.util.Set;
 public class UserPrincipal implements UserDetails {
 
     private final Long userId;
+
+    /**
+     * The active profile. Named in the access token, verified against the user on every request, and the
+     * row every field below it was resolved from.
+     */
+    private final Long profileId;
+
     private final String username;
     private final String password;
     private final String email;
@@ -71,26 +84,34 @@ public class UserPrincipal implements UserDetails {
 
     private final Collection<GrantedAuthority> authorities;
 
-    private UserPrincipal(User user, Set<String> permissions, List<Long> visibleTenantIds,
-                          boolean unrestrictedTenants, boolean verified) {
+    /** Whether Compliance has cleared this profile — the KYC gate reads it (plan §3.3). */
+    private final boolean kycCleared;
+
+    private UserPrincipal(User user, UserProfile profile, Set<String> permissions,
+                          List<Long> visibleTenantIds, boolean unrestrictedTenants, boolean verified) {
         this.userId = user.getId();
+        this.profileId = profile.getId();
         this.username = user.getUsername();
         this.password = user.getPassword();
         this.email = user.getEmail();
         this.fullName = user.fullName();
-        this.userTypeCode = user.getUserTypeCode();
-        this.actorClass = user.getActorClass();
-        this.tenantId = user.getTenantId();
-        this.tenantName = user.getTenantName();
-        this.institutionId = user.getInstitutionId();
-        this.institutionName = user.getInstitutionName();
+        this.userTypeCode = profile.getUserTypeCode();
+        this.actorClass = profile.getProfileType();
+        this.tenantId = profile.getTenantId();
+        this.tenantName = profile.getTenantName();
+        this.institutionId = profile.getInstitutionId();
+        this.institutionName = profile.getInstitutionName();
+        this.kycCleared = profile.isKycCleared();
         this.unrestrictedTenants = unrestrictedTenants;
         this.visibleTenantIds = visibleTenantIds == null ? List.of() : List.copyOf(visibleTenantIds);
         this.accountLocked = user.isCurrentlyLocked();
         // isLive, not status == 1: every update in this codebase stamps STATUS_EDITED as a
         // changed-since-activation marker, so testing for ACTIVE alone would mean editing somebody's phone
         // number locked them out.
-        this.accountEnabled = user.isEnabled() && AppConstant.isLive(user.getStatus());
+        // The profile's own status counts too: somebody removed from an organisation has a live credential
+        // and a dead profile, and a session on that profile must stop working.
+        this.accountEnabled = user.isEnabled() && AppConstant.isLive(user.getStatus())
+                && AppConstant.isLive(profile.getStatus());
         this.mustChangePassword = user.isMustChangePassword();
         this.passwordExpiresAt = user.getPasswordExpiresAt();
         this.verified = verified;
@@ -98,8 +119,8 @@ public class UserPrincipal implements UserDetails {
 
         Collection<GrantedAuthority> list = new ArrayList<>();
         permissions.forEach(code -> list.add(new SimpleGrantedAuthority(code)));
-        if (user.getUserTypeCode() != null) {
-            list.add(new SimpleGrantedAuthority("ROLE_" + user.getUserTypeCode()));
+        if (profile.getUserTypeCode() != null) {
+            list.add(new SimpleGrantedAuthority("ROLE_" + profile.getUserTypeCode()));
         }
         this.authorities = List.copyOf(list);
     }
@@ -157,9 +178,11 @@ public class UserPrincipal implements UserDetails {
         return isBuyer() ? AppConstant.SESSION_CLASS_BUYER : AppConstant.SESSION_CLASS_ADMIN;
     }
 
-    public static UserPrincipal of(User user, Set<String> permissions, List<Long> visibleTenantIds,
-                                   boolean unrestrictedTenants, boolean verified) {
-        return new UserPrincipal(user, permissions, visibleTenantIds, unrestrictedTenants, verified);
+    public static UserPrincipal of(User user, UserProfile profile, Set<String> permissions,
+                                   List<Long> visibleTenantIds, boolean unrestrictedTenants,
+                                   boolean verified) {
+        return new UserPrincipal(user, profile, permissions, visibleTenantIds, unrestrictedTenants,
+                verified);
     }
 
     @Override public Collection<? extends GrantedAuthority> getAuthorities() { return authorities; }

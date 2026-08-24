@@ -46,14 +46,17 @@ public class BuyerVerificationRequiredFilter extends OncePerRequestFilter {
      * Exactly what an unverified buyer needs.
      *
      * <p>{@code /auth/me} so the client can see the state and say so; the public verify endpoints so they can
-     * finish; {@code /auth/logout} because refusing to let somebody sign out would be perverse; and
+     * finish; {@code /auth/logout} because refusing to let somebody sign out would be perverse;
      * {@code /auth/refresh} because verifying an email can take longer than one idle window and being signed
-     * out mid-way would send them back to the start.
+     * out mid-way would send them back to the start; and {@code /auth/switch-profile} because somebody who
+     * holds another profile should be able to leave this one — without it, switching onto an unverified buyer
+     * profile was a trap with only sign-out as the way out.
      */
     private static final List<String> ALLOWED = List.of(
             "/api/v1/auth/me",
             "/api/v1/auth/logout",
             "/api/v1/auth/refresh",
+            "/api/v1/auth/switch-profile",
             "/api/v1/public/");
 
     private final ObjectMapper objectMapper;

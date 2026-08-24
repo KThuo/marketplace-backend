@@ -9,7 +9,7 @@ import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.usergroups.UserGroupRepository;
-import com.hodi.modules.users.UserRepository;
+import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.usertypes.dto.UserTypeDtos.CreateUserTypeRequest;
 import com.hodi.modules.usertypes.dto.UserTypeDtos.UpdateUserTypeRequest;
 import com.hodi.modules.usertypes.dto.UserTypeDtos.UserTypeResponse;
@@ -42,7 +42,7 @@ import java.util.List;
 public class UserTypeService {
 
     private final UserTypeRepository repository;
-    private final UserRepository users;
+    private final UserProfileRepository profiles;
     private final UserGroupRepository userGroups;
     private final AuditService audit;
 
@@ -107,6 +107,10 @@ public class UserTypeService {
         type.setUpdatedBy(AuthContext.username());
 
         UserType saved = repository.save(type);
+        // The label cache on every profile holding this type. One writer, here — the rule the denormalisation
+        // convention exists for. Previously the copy sat on `users` and nothing re-stamped it, so renaming a
+        // type left every holder displaying the old name until they were next edited.
+        profiles.renameUserTypeLabel(saved.getId(), saved.getName());
         audit.record(AppConstant.ACTION_UPDATE, "UserType", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
@@ -176,7 +180,7 @@ public class UserTypeService {
     }
 
     private long countHolders(UserType type) {
-        return users.countLiveByUserTypeCode(type.getCode());
+        return profiles.countLiveByUserTypeCode(type.getCode());
     }
 
     private UserTypeResponse toResponse(UserType type) {

@@ -27,6 +27,15 @@ public class AuditLog {
     @Column(name = "tenant_id") private Long tenantId;
 
     @Column(name = "actor_user_id") private Long actorUserId;
+
+    /**
+     * Which of the actor's profiles was active.
+     *
+     * <p>The user type and actor class recorded below are properties of a profile now, so without this the
+     * trail says "a seller staff member did this" for somebody who also holds a platform profile, and
+     * nothing says which hat they were wearing.
+     */
+    @Column(name = "actor_profile_id") private Long actorProfileId;
     @Column(name = "actor_username", length = 64) private String actorUsername;
     @Column(name = "actor_user_type", length = 32) private String actorUserType;
     /** Which population the actor belonged to, so a trail can be read without joining user_types. */

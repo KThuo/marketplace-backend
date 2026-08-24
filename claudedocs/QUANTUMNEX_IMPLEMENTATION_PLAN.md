@@ -5,8 +5,8 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** planning document. Nothing in sections 3–5 is built yet. Section 2 is a verdict against code that is
-built and verified.
+**Status:** **Phase 0a is built and verified** (see §7 for what landed and what it cost). Sections 3.2–3.6, 3.8,
+3.9 and 4 remain planning. Section 2 is a verdict against code that is built and verified.
 
 ---
 
@@ -41,7 +41,7 @@ Verdicts are against the code on `main` as of this document, not against intent.
 
 | Requirement | Verdict | Gap detail | Fix |
 |---|---|---|---|
-| Dual Buyer+Seller profile (FR073) | **Missing** | `users.email` is `UNIQUE`; `actor_class`, `tenant_id`, `institution_id` and `user_type_id` are all columns on `users`, with `CHECK (tenant_id IS NULL OR institution_id IS NULL)`. One login = one actor, permanently. | `user_profiles` table + active-profile claim in the JWT. See §3.1. |
+| Dual Buyer+Seller profile (FR073) | **Missing** → now **Covered** (§7) | `users.email` is `UNIQUE`; `actor_class`, `tenant_id`, `institution_id` and `user_type_id` are all columns on `users`, with `CHECK (tenant_id IS NULL OR institution_id IS NULL)`. One login = one actor, permanently. | `user_profiles` table + active-profile claim in the JWT. See §3.1. |
 | Maker/Checker segregation (FR070, FR122) | **Partial** | The only segregation that exists is `PartnershipService.assertMayApprove`, and it separates *sides* (the seller side cannot approve its own proposal), not *users* — a second user of the same seller can approve their colleague's proposal. There is no generic mechanism, so every future approval (listing, KYC, auction, promotion, vendor product) would re-implement it. | Generic `approval_workflow` with a `submitted_by <> checked_by` constraint. See §3.2. |
 | Seller entity-type KYC fields (FR066) | **Partial** | `tenants.seller_type` exists and is captured at onboarding, but nothing consumes it: there is no per-type required-document list, no document upload for KYC, and no validation that differs by type. | `kyc_requirement_config` + `kyc_submission` + `kyc_document`. See §3.3. |
 | Agent role + e-signature (FR160–FR161) | **Missing** | `SALES_AGENT` is a *seller staff* user type — an employee inside a seller organisation. The BRD's agent registers independently, accepts T&Cs with a captured signature artifact, and flags each listing self-owned vs client-owned. No signature storage exists. | New actor class `AGENT` + `agent_profile` + `signature_artifact` + `listing_agreement`. See §3.4. |
@@ -49,10 +49,10 @@ Verdicts are against the code on `main` as of this document, not against intent.
 | Vendor role (FR170) | **Missing** | No vendor, no category taxonomy. Structurally the easiest of the three: a vendor is a small tenant-like organisation whose children are catalogue items rather than properties. | New actor class `VENDOR` + `vendor_profile` + `vendor_category`. See §3.6. |
 | Staff business-unit scoping (FR049, FR100) | **Partial** | The mechanism exists and is the right one — platform user types (`SUPER_ADMIN`, `SUPPORT_ADMIN`, `PLATFORM_AUDITOR`) crossed with `app_modules.allowed_user_types` — but the business units the BRD names do not: Property Operations, Recoveries Unit, Valuation Team. Recoveries staff seeing only auction listings is a user type plus a module matrix row, not new machinery. | Seed the four platform user types and the module matrix rows in the phase that introduces each module. No schema change. |
 | KYC-gated listing permission (FR075) | **Missing** | There is no KYC and no listing. Note what *is* already right: `onboarding_status` on `tenants` gates activation, and `EffectivePermissionResolver` is the single choke point every permission passes through — so the gate belongs there, not in a controller. | Resolver drops listing-write permissions unless the profile's `kyc_status = APPROVED`. See §3.3. |
-| Access audit log (FR006, FR123, FR156) | **Partial** | `audit_logs` exists with actor identity, before/after payloads, IP and user agent, and every CUD path writes to it. Three gaps: (a) `AUDIT_LOGIN`/`AUDIT_LOGOUT` are declared in `AppConstant` and never used, so authentication events are not recorded at all; (b) failed logins are not recorded; (c) the table is a normal table — nothing stops an `UPDATE`. | Record auth events; add an append-only guard. See §3.7. |
+| Access audit log (FR006, FR123, FR156) | **Partial** → now **Covered** (§7) | `audit_logs` exists with actor identity, before/after payloads, IP and user agent, and every CUD path writes to it. Three gaps: (a) `AUDIT_LOGIN`/`AUDIT_LOGOUT` are declared in `AppConstant` and never used, so authentication events are not recorded at all; (b) failed logins are not recorded; (c) the table is a normal table — nothing stops an `UPDATE`. | Record auth events; add an append-only guard. See §3.7. |
 | Consent/preference store (FR004–FR005) | **Missing** | No consent anything. Notification preferences do not exist either. | `consent_preference` with an append-only history. See §3.8. |
 | KYC document encryption (FR006, NFR Security) | **Partial** | `StorageService` is sound as far as it goes: tenant-prefixed keys, content-type allowlist on sniffed type, 10 MB cap, S3-or-filesystem by runtime config. But every object is equally reachable by anyone who can call the module, there is no per-document ACL, no server-side encryption declaration, and no separation between "media" and "documents" — which the BRD's own architecture (§4.1) separates. | Document vault with per-document ACL + SSE. See §3.9. |
-| Recovery by email **and** phone (FR007) | **Partial** | `PasswordResetService.request` takes an email and only an email. SMS delivery does not exist anywhere in the codebase. | Accept either identifier; add an SMS sender alongside `EmailSender`. See §3.10. |
+| Recovery by email **and** phone (FR007) | **Partial** → now **Covered** (§7) | `PasswordResetService.request` took an email and only an email. *Corrected after checking:* an SMS sender did already exist — `NotifyClient.sendSensitiveSms`, credentials in `configurations`, body redacted in logs — so the gap was only the reset path, not the channel. | Accept either identifier and deliver by the channel it came in on. See §3.10. |
 
 Also worth recording, because the source plan's §2.3 guesses at these and guesses low:
 
@@ -73,7 +73,7 @@ Also worth recording, because the source plan's §2.3 guesses at these and guess
 Ordered by what blocks what. 3.1 and 3.2 block most of section 4; the rest can land alongside the module that first
 needs them, and are marked as such.
 
-### 3.1 Profiles: one login, many actors *(blocks M1, M8, M9, M10)*
+### 3.1 Profiles: one login, many actors *(blocks M1, M8, M9, M10)* — **BUILT**
 
 **Migration.** New table, one row per existing user, then `users` loses the actor-defining columns:
 
@@ -167,7 +167,7 @@ service with the PI rule from FR041 (`PI sum assured ≥ property price`, active
 New actor class `VENDOR`; `vendor_profile`, `vendor_category` (taxonomy, seeded and admin-editable),
 `catalogue_item`. Vendors are organisation-scoped exactly like sellers, so they reuse `TenantScope` unchanged.
 
-### 3.7 Auth events and an append-only audit *(small; do it in Phase 0)*
+### 3.7 Auth events and an append-only audit *(small; do it in Phase 0)* — **BUILT**
 
 - Write `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `TOKEN_REUSE_DETECTED`, `PASSWORD_RESET` and `PROFILE_SWITCH` to
   `audit_logs`; `AUDIT_LOGIN` and `AUDIT_LOGOUT` already exist as constants and are simply unused.
@@ -193,12 +193,14 @@ a new `DocumentService` handles KYC and legal documents with a `document_acl` ro
 encryption declared on write, no public URL form (access is always a short-lived signed fetch through an endpoint
 that checks the ACL and writes an audit row), and its own bucket or prefix.
 
-### 3.10 Recovery by phone *(small; do it in Phase 0)*
+### 3.10 Recovery by phone *(small; do it in Phase 0)* — **BUILT**
 
 `PasswordResetService.request` takes an identifier and resolves it as email *or* phone; delivery follows the channel
-of the identifier. Needs an `SmsSender` alongside the existing `EmailSender` — the same shape, with the gateway
-credentials in `configurations` as encrypted values. The indistinguishable-response behaviour for unknown
-identifiers stays exactly as it is.
+of the identifier. The indistinguishable-response behaviour for unknown identifiers stays exactly as it is.
+
+**Correction to the audit:** §2's table said an SMS sender did not exist. It does — `NotifyClient.sendSensitiveSms`,
+with the gateway credentials already in `configurations` as encrypted values and the message body redacted in every
+log line. Only the reset path was email-only, which is a much smaller gap than the table implied.
 
 ---
 
@@ -236,7 +238,7 @@ turn lands backend **and** frontend together.
 
 | Phase | Contents | Turns (estimate) |
 |---|---|---|
-| **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery; SMS sender | 3–4 |
+| **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | 1–2 |
 | **1** | M2 (property + search + media) → M1 consent → M3 (mock affordability behind the real interface) → M4 | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
@@ -288,3 +290,78 @@ These change the shape of the work, so they are worth answering before code rath
    but the *schema* of the answer (document codes, expiry, per-type versioning) needs confirming early.
 6. **Auction isolation** — confirm that auction listings are excluded from buyer search entirely (UC006), rather than
    filtered by a facet. Exclusion is a different query path, not a flag.
+
+
+---
+
+## 7. Phase 0a as built
+
+Landed on `main` in both repositories, verified end to end against a database that already held the previous
+schema (so the migration was exercised as a real upgrade, not a fresh install).
+
+### Schema
+
+`V20260824090000__user_profiles.sql` — creates `user_profiles`, backfills one row per existing user, then drops
+`user_type_*`, `user_group_*`, `actor_class`, `tenant_*` and `institution_*` from `users`. `users.search_text` is
+rebuilt person-only and the labels get their own index on the profile. Two partial unique indexes carry the rules
+that matter: one profile of a kind per organisation, and exactly one default per person. `refresh_tokens` and
+`audit_logs` each gain a profile column.
+
+`V20260824090100__audit_append_only.sql` — statement-level triggers that refuse `UPDATE` and `DELETE` on
+`audit_logs`. Verified by trying both as superuser: both raise, and the row is unchanged. Retention is therefore a
+partition drop, which is noted on the table's own comment.
+
+### What the profile claim is, and why it is safe
+
+The access token carries `pid`. It is the only authorisation-adjacent claim in the token, and it is a *selection*
+among profiles the subject already holds, never an entitlement: `JwtAuthenticationFilter` loads the profile by
+(id, userId) and refuses anything that does not belong to the subject. Verified by hand-signing three tokens with
+the deployment secret — one naming another user's profile, one naming a profile that does not exist, one naming its
+own — and getting 401, 401, 200.
+
+### Defects found by building it
+
+Six, all fixed:
+
+1. **HashIds in the login response were salted "system".** The salt is per user from the security context, and on
+   the login path there is no context yet — so `profiles[].id` in a login response did not decode on the
+   authenticated request that sent it back, and switching profile straight after signing in failed with a 500.
+   `me()` now encodes against the user's own name explicitly. This was latent before profiles: every id in a login
+   response had it, and nothing had yet round-tripped one.
+2. **A staff member who added a buyer profile was trapped on it.** `BuyerVerificationRequiredFilter` refused
+   everything outside its allowlist, and `/auth/switch-profile` was not on it — so the only way off an unverified
+   buyer profile was to sign out. Added to the allowlist.
+3. **Verification was asked of people it was never asked of.** Staff accounts do not go through buyer
+   verification, so a staff member's buyer profile was permanently "unverified" and pending a code nobody would
+   ever send. `PrincipalFactory.isVerified` now exempts anybody holding a live staff profile — the person was
+   vouched for by whoever created their account.
+4. **The client re-derived that rule and got a different answer.** `needsVerification` was
+   `isBuyer && !emailVerified`, which sent the same person to the "confirm your email" screen the server was
+   letting through. `MeResponse` now carries `verificationRequired` and the client reads it.
+5. **The buyer dashboard card contradicted the details table** — "Confirmed" against "Not yet", because one asked
+   whether anything was outstanding and the other whether the address was confirmed. Both now say what they mean.
+6. **`recordAuth` wrote a bare string into a JSONB column**, so every login, failed login and logout was silently
+   dropped with an error in the log. Found by looking at the table rather than at the code.
+
+### Behaviour verified
+
+Login lands on the profile matching the requested session class (a person holding both gets their buyer profile at
+the marketplace and their staff profile at the workspace, with the right idle window each time); switching issues a
+new session, revokes the old refresh row and blacklists the old access token; a refresh keeps the profile it was
+issued for; the users list is now a list of profiles and searches across both the person's and the profile's
+generated columns ("wanjiru acacia" finds one row); a buyer-only unverified account is still gated with a 403 while
+`/auth/me` stays reachable; and password recovery by "0733 444 555" finds an account stored as "254733444555" while
+an unmatched identifier creates nothing and says the same thing either way.
+
+### Deliberately not done in 0a
+
+- **Removing somebody from an organisation** without touching their credential. The row actions on the users list
+  act on the account, as they did before; per-profile retirement belongs with the phase that gives organisations
+  their own membership screens.
+- **Adding a buyer profile during registration.** An unauthenticated request naming somebody else's address must
+  never write a profile onto their account, and applying the submitted password would be a password reset with no
+  proof of anything. It is a self-service action on the profile page instead, and registration still answers
+  identically for every existing address.
+- **AGENT, VALUER and VENDOR profile types.** The CHECK constraint lists the four that exist; each new one arrives
+  with its module, its permissions and its screens, because a profile type with none of those is a value nothing
+  can hold.

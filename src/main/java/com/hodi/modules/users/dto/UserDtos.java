@@ -13,8 +13,17 @@ public final class UserDtos {
 
     private UserDtos() {}
 
+    /**
+     * One person, on one profile.
+     *
+     * <p>{@code id} is the <strong>profile</strong>, because a list of "users" is now a list of somebody in an
+     * organisation, and a person holding two profiles legitimately appears twice. {@code userId} is the
+     * account behind it: the two are different things, and the actions on a row — deactivate, reset the
+     * password, sign out everywhere — all act on the account.
+     */
     public record UserResponse(
             String id,
+            String userId,
             String firstName,
             String lastName,
             String fullName,

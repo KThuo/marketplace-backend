@@ -10,6 +10,7 @@ import com.hodi.modules.auth.dto.AuthDtos.MeResponse;
 import com.hodi.modules.auth.dto.AuthDtos.PasswordPolicyResponse;
 import com.hodi.modules.auth.dto.AuthDtos.ResetPasswordRequest;
 import com.hodi.modules.auth.dto.AuthDtos.SessionResponse;
+import com.hodi.modules.auth.dto.AuthDtos.SwitchProfileRequest;
 import com.hodi.modules.auth.dto.AuthDtos.VerifyOtpRequest;
 import com.hodi.infra.storage.StorageService;
 import com.hodi.logging.RequestAction;
@@ -66,6 +67,43 @@ public class AuthController {
     }
 
     /**
+     * Moves the session onto another of the caller's profiles.
+     *
+     * <p>Returns a new session, cookie and all, exactly as a login does — the client's handling is identical,
+     * which is the point: switching profile is authenticating again as a different actor, not changing a
+     * setting. The old session is revoked on the way through.
+     */
+    @PostMapping("/switch-profile")
+    @RequestAction("SWITCH_PROFILE")
+    public ResponseEntity<ApiResponse<LoginResponse>> switchProfile(
+            @Valid @RequestBody SwitchProfileRequest request,
+            @RequestParam(required = false) String sessionClass,
+            HttpServletRequest http) {
+        var presented = cookies.read(http, sessionClass);
+        var issued = authService.switchProfile(AuthContext.requireUserId(), request.profileId(),
+                presented.token(), bearer(http), http.getHeader(HttpHeaders.USER_AGENT),
+                clientIp(http));
+        return withCookie(issued);
+    }
+
+    /**
+     * Adds a buyer profile to the caller's own account (BRD FR073).
+     *
+     * <p>Self-service and authenticated, which is the whole design: registration cannot do this, because an
+     * unauthenticated request naming somebody else's address would then write a profile onto their account.
+     * Here the caller has already proved who they are, and they are adding something to themselves.
+     *
+     * <p>Returns the updated identity rather than a session — the new profile is theirs to switch to when
+     * they want it, and silently moving them out of the workspace they are working in would be rude.
+     */
+    @PostMapping("/profiles/buyer")
+    @RequestAction("ADD_BUYER_PROFILE")
+    public ApiResponse<MeResponse> addBuyerProfile() {
+        return ApiResponse.success("You can now browse as a buyer",
+                authService.addBuyerProfile(AuthContext.requireUserId()));
+    }
+
+    /**
      * Rotates the session.
      *
      * <p>Unauthenticated by routing: the access token it is replacing has usually expired, which is the whole
@@ -94,7 +132,8 @@ public class AuthController {
     public ResponseEntity<ApiResponse<Void>> logout(
             @RequestParam(required = false) String sessionClass, HttpServletRequest http) {
         var presented = cookies.read(http, sessionClass);
-        authService.logout(bearer(http), presented.token());
+        authService.logout(bearer(http), presented.token(), http.getRemoteAddr(),
+                http.getHeader("User-Agent"));
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookies.clear("ADMIN"))
                 .header(HttpHeaders.SET_COOKIE, cookies.clear("BUYER"))
@@ -158,11 +197,11 @@ public class AuthController {
     @RequestAction("FORGOT_PASSWORD")
     public ApiResponse<Void> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request,
                                             HttpServletRequest http) {
-        passwordReset.request(request.email(), clientIp(http));
-        // Identical answer whether or not the address has an account. An endpoint that distinguishes them is
-        // an account-enumeration oracle, and this one is unauthenticated.
+        passwordReset.request(request.identifier(), clientIp(http));
+        // Identical answer whether or not the identifier has an account. An endpoint that distinguishes them
+        // is an account-enumeration oracle, and this one is unauthenticated.
         return ApiResponse.success(
-                "If that address has an account, a reset link is on its way.", null);
+                "If that account exists, a reset link is on its way.", null);
     }
 
     @PostMapping("/reset-password")

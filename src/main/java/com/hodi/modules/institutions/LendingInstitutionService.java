@@ -17,6 +17,8 @@ import com.hodi.modules.appmodules.AppModule;
 import com.hodi.modules.appmodules.AppModuleRepository;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
+import com.hodi.modules.profiles.UserProfileRepository;
+import com.hodi.modules.profiles.UserProfileService;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.modules.usertypes.UserType;
@@ -67,6 +69,8 @@ public class LendingInstitutionService {
 
     private final LendingInstitutionRepository repository;
     private final UserRepository users;
+    private final UserProfileRepository profiles;
+    private final UserProfileService userProfiles;
     private final UserGroupRepository userGroups;
     private final UserTypeRepository userTypes;
     private final PermissionRepository permissions;
@@ -262,14 +266,6 @@ public class LendingInstitutionService {
                 .email(email)
                 .username(deriveUsername(email))
                 .phone(blankToNull(request.adminPhone()))
-                .userTypeId(adminType.getId())
-                .userTypeCode(adminType.getCode())
-                .userTypeName(adminType.getName())
-                .actorClass(adminType.getActorClass())
-                .institutionId(institution.getId())
-                .institutionName(institution.getName())
-                .userGroupId(group.getId())
-                .userGroupName(group.getName())
                 .enabled(true)
                 .status(AppConstant.STATUS_ACTIVE)
                 .statusFlag(AppConstant.FLAG_ACTIVE)
@@ -277,7 +273,12 @@ public class LendingInstitutionService {
                 .build();
         passwords.applyTo(admin, temporary);
         admin.setMustChangePassword(true);
-        return users.save(admin);
+        User saved = users.save(admin);
+        // The profile is what makes them a lender administrator; the row above only makes them a person who
+        // can sign in.
+        userProfiles.provisionFirst(saved.getId(), adminType, group, null, null,
+                institution.getId(), institution.getName());
+        return saved;
     }
 
     @Transactional
@@ -302,7 +303,7 @@ public class LendingInstitutionService {
 
         LendingInstitution saved = repository.save(institution);
         if (renamed) {
-            users.renameInstitutionLabel(saved.getId(), saved.getName());
+            profiles.renameInstitutionLabel(saved.getId(), saved.getName());
         }
         audit.record(AppConstant.ACTION_UPDATE, "LendingInstitution", saved.getId(), before,
                 snapshot(saved));
@@ -329,8 +330,8 @@ public class LendingInstitutionService {
         repository.save(institution);
 
         int sessions = 0;
-        for (User staff : users.findLiveByInstitution(institution.getId())) {
-            sessions += refreshTokens.revokeAllForUser(staff.getId());
+        for (Long staffId : profiles.findLiveUserIdsByInstitution(institution.getId())) {
+            sessions += refreshTokens.revokeAllForUser(staffId);
         }
         audit.record(AppConstant.ACTION_DEACTIVATE, "LendingInstitution", institution.getId(),
                 before, snapshot(institution));
@@ -436,7 +437,7 @@ public class LendingInstitutionService {
                 institution.getContactEmail(),
                 institution.getContactPhone(),
                 institution.getCountry(),
-                users.countByInstitutionIdAndStatusNot(institution.getId(), AppConstant.STATUS_DELETED),
+                profiles.countByInstitution(institution.getId(), AppConstant.STATUS_DELETED),
                 partnerships.findActiveTenantIdsForInstitution(institution.getId()).size(),
                 institution.getStatus(),
                 institution.getStatusFlag(),

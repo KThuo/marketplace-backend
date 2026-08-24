@@ -3,6 +3,7 @@ package com.hodi.security.jwt;
 import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
@@ -36,6 +37,13 @@ import java.util.Date;
  * resolved from the database on every request by {@code JwtAuthenticationFilter} — a claim nobody verifies is
  * an invitation to start trusting it, and the whole point of rebuilding the principal per request is that
  * revoking a role or a partnership takes effect immediately rather than at token expiry.
+ *
+ * <p>The one exception is the <strong>active profile</strong>, and it is an exception because it is not
+ * derivable: a person holding both a buyer and a seller profile has two legitimate answers, and only the
+ * token knows which one this session is. It is a selection, not an entitlement — the filter verifies the
+ * profile belongs to the subject and is live before resolving anything from it, so a tampered {@code pid}
+ * buys nothing. Switching profiles re-issues the token rather than mutating anything, so a buyer session can
+ * never be widened into a seller session by editing a claim.
  */
 @Service
 @RequiredArgsConstructor
@@ -44,6 +52,9 @@ public class JwtService {
     /** Claim names. Only the ones this service writes and the filter reads. */
     public static final String CLAIM_USERNAME = "username";
     public static final String CLAIM_SESSION_CLASS = "sessionClass";
+
+    /** The active profile — see the class comment for why this one claim exists. */
+    public static final String CLAIM_PROFILE = "pid";
 
     /**
      * Issued-at in epoch milliseconds.
@@ -85,13 +96,14 @@ public class JwtService {
     }
 
     /** Access-token TTL equals the window: an idle client's token dies with the window. */
-    public String generateAccess(User user, String sessionClass) {
+    public String generateAccess(User user, UserProfile profile, String sessionClass) {
         long ttlMs = windowMinutes(sessionClass) * 60_000L;
         long now = System.currentTimeMillis();
         return Jwts.builder()
                 .issuer(issuer)
                 .subject(String.valueOf(user.getId()))
                 .claim(CLAIM_USERNAME, user.getUsername())
+                .claim(CLAIM_PROFILE, profile.getId())
                 .claim(CLAIM_SESSION_CLASS, sessionClass)
                 .claim(CLAIM_ISSUED_MS, now)
                 .issuedAt(new Date(now))
@@ -126,6 +138,27 @@ public class JwtService {
 
     public String username(Claims claims) {
         return claims.get(CLAIM_USERNAME, String.class);
+    }
+
+    /**
+     * The active profile named by the token, or null when it names none.
+     *
+     * <p>Null for a token minted before profiles existed and still inside its window. The filter treats that
+     * as "use the default profile" rather than refusing it: the alternative is signing out everybody at the
+     * moment of deployment, and a token whose subject is verified is no less trustworthy for predating a
+     * column.
+     */
+    public Long profileId(Claims claims) {
+        Object raw = claims.get(CLAIM_PROFILE);
+        if (raw instanceof Number n) return n.longValue();
+        if (raw instanceof String str && !str.isBlank()) {
+            try {
+                return Long.valueOf(str.trim());
+            } catch (NumberFormatException e) {
+                throw new MalformedJwtException("Profile claim is not an id");
+            }
+        }
+        return null;
     }
 
     public String sessionClass(Claims claims) {

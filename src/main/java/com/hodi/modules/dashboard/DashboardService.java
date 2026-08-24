@@ -5,7 +5,7 @@ import com.hodi.modules.auth.RefreshTokenRepository;
 import com.hodi.modules.institutions.LendingInstitutionRepository;
 import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.tenants.TenantRepository;
-import com.hodi.modules.users.UserRepository;
+import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +39,7 @@ public class DashboardService {
     private final TenantRepository tenants;
     private final LendingInstitutionRepository institutions;
     private final PartnershipRepository partnerships;
-    private final UserRepository users;
+    private final UserProfileRepository profiles;
     private final RefreshTokenRepository refreshTokens;
 
     /**
@@ -104,9 +104,9 @@ public class DashboardService {
                     "partnership proposals", "warning", "/app/partnerships?state=pending"));
         }
         cards.add(new Card("staff", "Platform staff",
-                String.valueOf(users.countLiveByUserTypeCode("SUPER_ADMIN")
-                        + users.countLiveByUserTypeCode("SUPPORT_ADMIN")
-                        + users.countLiveByUserTypeCode("PLATFORM_AUDITOR")),
+                String.valueOf(profiles.countLiveByUserTypeCode("SUPER_ADMIN")
+                        + profiles.countLiveByUserTypeCode("SUPPORT_ADMIN")
+                        + profiles.countLiveByUserTypeCode("PLATFORM_AUDITOR")),
                 "with access", "neutral", "/platform/users"));
         cards.add(new Card("sessions", "Live sessions",
                 String.valueOf(refreshTokens.countLiveSessions(OffsetDateTime.now())),
@@ -119,7 +119,7 @@ public class DashboardService {
     private List<Card> sellerCards(UserPrincipal caller) {
         List<Card> cards = new ArrayList<>();
         cards.add(new Card("staff", "Your team",
-                String.valueOf(users.countByTenantIdAndStatusNot(
+                String.valueOf(profiles.countByTenant(
                         caller.getTenantId(), AppConstant.STATUS_DELETED)),
                 "people with access", "neutral", "/app/users"));
 
@@ -157,7 +157,7 @@ public class DashboardService {
                 "/app/partnerships"));
 
         cards.add(new Card("staff", "Your team",
-                String.valueOf(users.countByInstitutionIdAndStatusNot(
+                String.valueOf(profiles.countByInstitution(
                         caller.getInstitutionId(), AppConstant.STATUS_DELETED)),
                 "people with access", "neutral", "/app/users"));
 
@@ -173,9 +173,15 @@ public class DashboardService {
 
     private List<Card> buyerCards(UserPrincipal caller) {
         List<Card> cards = new ArrayList<>();
+        /*
+         * "Ready to use", not "Confirmed" — they are different facts and the card was asserting the wrong
+         * one. isVerified() answers "is this profile being held back", which for somebody who also holds a
+         * staff profile is no even though their address has never been confirmed. A card reading "Confirmed"
+         * beside a details row reading "Not yet" is the platform contradicting itself.
+         */
         cards.add(new Card("verification", "Your account",
-                caller.isVerified() ? "Confirmed" : "Unconfirmed",
-                caller.isVerified() ? "ready to use" : "confirm your email to continue",
+                caller.isVerified() ? "Ready to use" : "Not confirmed",
+                caller.isVerified() ? "nothing outstanding" : "confirm your email to continue",
                 caller.isVerified() ? "positive" : "warning",
                 "/account/profile"));
         // Saved properties, enquiries and applications land here as those slices ship. Deliberately not

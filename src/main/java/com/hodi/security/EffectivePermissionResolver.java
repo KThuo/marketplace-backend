@@ -7,7 +7,7 @@ import com.hodi.modules.permissions.Permission;
 import com.hodi.modules.tenantmodules.TenantModuleRepository;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
-import com.hodi.modules.users.User;
+import com.hodi.modules.profiles.UserProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -57,25 +57,35 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class EffectivePermissionResolver {
 
+    /**
+     * Permissions a profile cannot hold until Compliance has cleared it (BRD FR075, plan §3.3).
+     *
+     * <p>The gate belongs here rather than in a controller for the same reason the module matrix does: this
+     * is the one place every permission passes through, so a screen that forgets to hide a button still
+     * cannot reach the endpoint behind it. Empty until M8 declares the listing permissions — an entry naming
+     * a permission that does not exist yet would be a rule nothing enforces and nobody could test.
+     */
+    private static final Set<String> KYC_GATED = Set.of();
+
     private final UserGroupRepository userGroups;
     private final AppModuleRepository appModules;
     private final TenantModuleRepository tenantModules;
 
     /**
-     * @return the action codes this user may exercise, as Spring Security authorities
+     * @return the action codes this profile may exercise, as Spring Security authorities
      */
-    public Set<String> resolve(User user) {
-        if (user.getUserGroupId() == null) {
+    public Set<String> resolve(UserProfile profile) {
+        if (profile.getUserGroupId() == null) {
             // No group means no permissions. A user with none can authenticate and see their own profile,
             // and nothing else — the correct state for a freshly created account awaiting a role.
             return Set.of();
         }
-        UserGroup group = userGroups.findById(user.getUserGroupId()).orElse(null);
+        UserGroup group = userGroups.findById(profile.getUserGroupId()).orElse(null);
         // isLive rather than status == 1 throughout. Every update stamps STATUS_EDITED as a
         // changed-since-activation marker, so an ACTIVE-only test would mean editing a group zeroed its
         // members' permissions, and editing a module switched off everything in it.
         if (group == null || !AppConstant.isLive(group.getStatus())) {
-            log.debug("User {} has no active user group", user.getId());
+            log.debug("Profile {} has no active user group", profile.getId());
             return Set.of();
         }
 
@@ -85,9 +95,9 @@ public class EffectivePermissionResolver {
 
         // Null means "the tenant-module axis does not apply to this caller" — see the class comment.
         // An empty set would mean the opposite, and would deny everything.
-        Set<String> tenantEnabled = user.getTenantId() == null
+        Set<String> tenantEnabled = profile.getTenantId() == null
                 ? null
-                : Set.copyOf(tenantModules.findEnabledModuleCodes(user.getTenantId()));
+                : Set.copyOf(tenantModules.findEnabledModuleCodes(profile.getTenantId()));
 
         Set<String> granted = new LinkedHashSet<>();
         for (Permission p : group.getPermissions()) {
@@ -100,7 +110,8 @@ public class EffectivePermissionResolver {
                 continue;
             }
             if (tenantEnabled != null && !tenantEnabled.contains(module.getCode())) continue;
-            if (!module.allows(user.getUserTypeCode())) continue;
+            if (!module.allows(profile.getUserTypeCode())) continue;
+            if (!profile.isKycCleared() && KYC_GATED.contains(p.getActionCode())) continue;
 
             granted.add(p.getActionCode());
         }

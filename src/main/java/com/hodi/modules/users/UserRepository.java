@@ -2,7 +2,6 @@ package com.hodi.modules.users;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,62 +26,26 @@ public interface UserRepository extends JpaRepository<User, Long>, JpaSpecificat
     boolean existsByUsernameIgnoreCase(String username);
 
     /**
-     * How many members of one group are still in force, for the lock-out guard.
+     * By phone number, for password recovery that identifies somebody by their phone (BRD FR007).
      *
-     * <p>{@code status <> 5} plus {@code enabled} rather than {@code status = 1}: every update stamps
-     * STATUS_EDITED, so counting only ACTIVE rows would report zero the moment somebody edited the last
-     * owner's phone number, and the guard would then refuse a legitimate edit.
+     * <p>Matched on the generated {@code phone_local} column — the last nine digits — so the format somebody
+     * types does not decide whether they can recover their account. Indexed, because this endpoint is
+     * unauthenticated and a full scan behind an unauthenticated endpoint is a free denial of service.
+     *
+     * <p>Phone is <em>not</em> unique: two family members can share a handset, and staff rows are created by
+     * administrators who sometimes type the office number. So this returns a list and the caller refuses to
+     * act on an ambiguous one — sending a reset link for "whichever account matched" is a way to take over
+     * the account you did not mean to name.
      */
-    @Query("select count(u) from User u where u.userGroupId = :groupId "
-            + "and u.enabled = true and u.status <> 5 and u.status <> 4")
-    long countLiveMembers(@Param("groupId") Long groupId);
+    @Query("select u from User u where u.phoneLocal = :local and u.phoneLocal <> ''")
+    java.util.List<User> findByPhoneLocal(@Param("local") String local);
 
     /**
-     * How many live users hold one user type — for the user-type list's usage column and its
-     * in-use guard.
+     * Everybody, for a search of people rather than of profiles.
      *
-     * <p>A query rather than a filter over {@code findAll()}: the list renders a page of types and this is
-     * evaluated once per row, so the scan-per-row version turned one screen into a full table scan per type.
+     * <p>The counts, the per-organisation lookups and the label rewrites that used to live here moved to
+     * {@code UserProfileRepository} with the columns they read. What is left is the credential: find a
+     * person, check an address is free, check a username is free.
      */
-    @Query("select count(u) from User u where u.userTypeCode = :code "
-            + "and u.status <> 5 and u.status <> 4")
-    long countLiveByUserTypeCode(@Param("code") String code);
-
-    long countByTenantIdAndStatusNot(Long tenantId, Integer status);
-
-    long countByInstitutionIdAndStatusNot(Long institutionId, Integer status);
-
-    /**
-     * Every staff account belonging to one seller, for the suspension cascade.
-     *
-     * <p>Suspending a seller has to reach their people: leaving the accounts signed-in-able would make
-     * "suspended" a label on a row rather than a state of the business.
-     */
-    @Query("select u from User u where u.tenantId = :tenantId and u.status <> 5")
-    java.util.List<User> findLiveByTenant(@Param("tenantId") Long tenantId);
-
-    /** The same, for a lending institution — used when an institution is deactivated. */
-    @Query("select u from User u where u.institutionId = :institutionId and u.status <> 5")
-    java.util.List<User> findLiveByInstitution(@Param("institutionId") Long institutionId);
-
-    /**
-     * Re-stamps the denormalised group name on every member after a group is renamed.
-     *
-     * <p>One writer for this label cache, living in {@code UserGroupService}'s update path — the rule from
-     * the denormalisation convention. An ad-hoc UPDATE elsewhere is how the copy starts disagreeing with
-     * the owner.
-     */
-    @Modifying
-    @Query("update User u set u.userGroupName = :name where u.userGroupId = :groupId")
-    int renameGroupLabel(@Param("groupId") Long groupId, @Param("name") String name);
-
-    /** The same, for a renamed seller organisation. */
-    @Modifying
-    @Query("update User u set u.tenantName = :name where u.tenantId = :tenantId")
-    int renameTenantLabel(@Param("tenantId") Long tenantId, @Param("name") String name);
-
-    /** The same, for a renamed lending institution. */
-    @Modifying
-    @Query("update User u set u.institutionName = :name where u.institutionId = :institutionId")
-    int renameInstitutionLabel(@Param("institutionId") Long institutionId, @Param("name") String name);
+    java.util.List<User> findByIdIn(java.util.Collection<Long> ids);
 }

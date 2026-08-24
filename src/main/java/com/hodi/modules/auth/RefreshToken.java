@@ -38,6 +38,18 @@ public class RefreshToken {
 
     @Column(name = "user_id", nullable = false) private Long userId;
 
+    /**
+     * The profile this session is on.
+     *
+     * <p>Rotation has to hand back the same profile it was issued for. Without it, a person holding both a
+     * buyer and a seller profile would be dropped back to their default every time the token rotated — a
+     * session that quietly changes what it can see, roughly once per idle window.
+     *
+     * <p>Nullable for a token issued before profiles existed; the refresh path falls back to the default
+     * rather than signing everybody out at deployment.
+     */
+    @Column(name = "profile_id") private Long profileId;
+
     /** {@code ADMIN} or {@code BUYER} — decides which idle window governs the rotation. */
     @Column(name = "session_class", nullable = false, length = 16) private String sessionClass;
 

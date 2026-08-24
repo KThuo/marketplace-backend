@@ -17,7 +17,7 @@ import com.hodi.modules.usergroups.dto.UserGroupDtos.CloneTemplateRequest;
 import com.hodi.modules.usergroups.dto.UserGroupDtos.CreateUserGroupRequest;
 import com.hodi.modules.usergroups.dto.UserGroupDtos.UpdateUserGroupRequest;
 import com.hodi.modules.usergroups.dto.UserGroupDtos.UserGroupResponse;
-import com.hodi.modules.users.UserRepository;
+import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.usertypes.UserType;
 import com.hodi.modules.usertypes.UserTypeRepository;
 import com.hodi.security.hashid.HashIdUtil;
@@ -63,7 +63,7 @@ public class UserGroupService {
     private final UserTypeRepository userTypes;
     private final AppModuleRepository appModules;
     private final TenantModuleRepository tenantModules;
-    private final UserRepository users;
+    private final UserProfileRepository profiles;
     private final AuditService audit;
 
     // ── reads ─────────────────────────────────────────────────────────────────
@@ -197,7 +197,7 @@ public class UserGroupService {
         UserGroup saved = repository.save(group);
         // One writer for the denormalised label, living in the owning service — the rule from the
         // denormalisation convention. An ad-hoc UPDATE elsewhere is how the copy starts disagreeing.
-        users.renameGroupLabel(saved.getId(), saved.getName());
+        profiles.renameGroupLabel(saved.getId(), saved.getName());
         audit.record(AppConstant.ACTION_UPDATE, "UserGroup", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
@@ -432,7 +432,7 @@ public class UserGroupService {
      * consequence visible to whoever is causing it.
      */
     private void assertNoLiveMembers(UserGroup group) {
-        long members = users.countLiveMembers(group.getId());
+        long members = profiles.countLiveMembers(group.getId());
         if (members > 0) {
             throw new HodiException(
                     "%d user%s still in this group. Move them to another group first."
@@ -473,7 +473,7 @@ public class UserGroupService {
                 group.isSystem(),
                 ownerLabel(group),
                 codes.size(),
-                users.countLiveMembers(group.getId()),
+                profiles.countLiveMembers(group.getId()),
                 codes,
                 group.getStatus(),
                 group.getStatusFlag(),

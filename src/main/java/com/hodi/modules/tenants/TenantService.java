@@ -13,6 +13,8 @@ import com.hodi.modules.auth.RefreshTokenService;
 import com.hodi.modules.tenantmodules.TenantModuleService;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
+import com.hodi.modules.profiles.UserProfileRepository;
+import com.hodi.modules.profiles.UserProfileService;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.modules.usertypes.UserType;
@@ -73,6 +75,8 @@ public class TenantService {
 
     private final TenantRepository repository;
     private final UserRepository users;
+    private final UserProfileRepository profiles;
+    private final UserProfileService userProfiles;
     private final UserGroupRepository userGroups;
     private final UserTypeRepository userTypes;
     private final PermissionRepository permissions;
@@ -283,14 +287,6 @@ public class TenantService {
                 .email(email)
                 .username(username)
                 .phone(blankToNull(request.ownerPhone()))
-                .userTypeId(ownerType.getId())
-                .userTypeCode(ownerType.getCode())
-                .userTypeName(ownerType.getName())
-                .actorClass(ownerType.getActorClass())
-                .tenantId(tenant.getId())
-                .tenantName(tenant.getName())
-                .userGroupId(group.getId())
-                .userGroupName(group.getName())
                 .enabled(true)
                 .status(AppConstant.STATUS_ACTIVE)
                 .statusFlag(AppConstant.FLAG_ACTIVE)
@@ -298,7 +294,11 @@ public class TenantService {
                 .build();
         passwords.applyTo(owner, temporary);
         owner.setMustChangePassword(true);
-        return users.save(owner);
+        User saved = users.save(owner);
+        // The profile is what attaches them to this organisation as its owner.
+        userProfiles.provisionFirst(saved.getId(), ownerType, group, tenant.getId(), tenant.getName(),
+                null, null);
+        return saved;
     }
 
     // ── lifecycle ─────────────────────────────────────────────────────────────
@@ -338,7 +338,7 @@ public class TenantService {
         Tenant saved = repository.save(tenant);
         if (renamed) {
             // One writer for the label cache, in the owning service — the denormalisation rule.
-            users.renameTenantLabel(saved.getId(), saved.getName());
+            profiles.renameTenantLabel(saved.getId(), saved.getName());
         }
         audit.record(AppConstant.ACTION_UPDATE, "Tenant", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
@@ -370,8 +370,8 @@ public class TenantService {
         repository.save(tenant);
 
         int sessions = 0;
-        for (User staff : users.findLiveByTenant(tenant.getId())) {
-            sessions += refreshTokens.revokeAllForUser(staff.getId());
+        for (Long staffId : profiles.findLiveUserIdsByTenant(tenant.getId())) {
+            sessions += refreshTokens.revokeAllForUser(staffId);
         }
         audit.record(AppConstant.ACTION_SUSPEND, "Tenant", tenant.getId(), before, snapshot(tenant));
         log.info("Suspended seller {} and ended {} session(s)", tenant.getSlug(), sessions);
@@ -412,8 +412,8 @@ public class TenantService {
         tenant.setUpdatedBy(AuthContext.username());
         repository.save(tenant);
 
-        for (User staff : users.findLiveByTenant(tenant.getId())) {
-            refreshTokens.revokeAllForUser(staff.getId());
+        for (Long staffId : profiles.findLiveUserIdsByTenant(tenant.getId())) {
+            refreshTokens.revokeAllForUser(staffId);
         }
         audit.record(AppConstant.ACTION_TERMINATE, "Tenant", tenant.getId(), before, snapshot(tenant));
     }
@@ -534,7 +534,7 @@ public class TenantService {
                 tenant.getActivatedAt(),
                 tenant.getSuspendedAt(),
                 tenant.getSuspensionReason(),
-                users.countByTenantIdAndStatusNot(tenant.getId(), AppConstant.STATUS_DELETED),
+                profiles.countByTenant(tenant.getId(), AppConstant.STATUS_DELETED),
                 partnerships.findActiveInstitutionIdsForTenant(tenant.getId()).size(),
                 tenant.getStatus(),
                 tenant.getStatusFlag(),

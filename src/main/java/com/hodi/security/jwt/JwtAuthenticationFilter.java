@@ -1,5 +1,8 @@
 package com.hodi.security.jwt;
 
+import com.hodi.modules.profiles.UserProfile;
+import com.hodi.modules.profiles.UserProfileRepository;
+import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.security.principal.PrincipalFactory;
 import com.hodi.security.principal.UserPrincipal;
@@ -32,6 +35,12 @@ import java.io.IOException;
  * <p>A blacklisted token is rejected even if still cryptographically valid — that is how logout invalidates
  * an access token that has not yet expired.
  *
+ * <p><strong>The profile claim is a selection, and is verified as one.</strong> The token names which of the
+ * subject's profiles this session is on, because that is the one thing about a session that cannot be
+ * derived from the database — a person holding a buyer profile and a seller-owner profile has two valid
+ * answers. It is checked to belong to the subject and to be live before anything is resolved from it, so a
+ * hand-edited {@code pid} names either a profile the caller already had or nothing at all.
+ *
  * <p>The username claim is checked against the loaded row. It catches an id that has been reused — a
  * restored backup, a re-seeded database — where the row at that id is now somebody else.
  */
@@ -43,6 +52,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtService jwt;
     private final TokenBlacklistService blacklist;
     private final UserRepository users;
+    private final UserProfileRepository profiles;
     private final PrincipalFactory principals;
 
     @Override
@@ -67,17 +77,22 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Claims claims = jwt.parse(token);
 
             Long userId = jwt.userId(claims);
-            UserPrincipal principal = users.findById(userId).map(principals::build).orElse(null);
-            if (principal == null) {
+            User user = users.findById(userId).orElse(null);
+            if (user == null) {
                 log.debug("Token subject {} does not exist", userId);
                 return;
             }
 
             String claimedUsername = jwt.username(claims);
-            if (claimedUsername == null || !claimedUsername.equalsIgnoreCase(principal.getUsername())) {
+            if (claimedUsername == null || !claimedUsername.equalsIgnoreCase(user.getUsername())) {
                 log.warn("Token subject {} no longer names the same user — refused", userId);
                 return;
             }
+
+            UserProfile profile = resolveProfile(userId, jwt.profileId(claims));
+            if (profile == null) return;
+
+            UserPrincipal principal = principals.build(user, profile);
 
             if (!principal.isEnabled() || !principal.isAccountNonLocked()) {
                 log.debug("Token subject {} is disabled or locked", userId);
@@ -118,6 +133,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // from there.
             log.debug("Token rejected: {}", e.getMessage());
         }
+    }
+
+    /**
+     * The profile this session is on, or null when the token names one it may not have.
+     *
+     * <p>An unclaimed profile falls back to the default rather than being refused — see
+     * {@code JwtService.profileId}. A <em>claimed</em> profile that does not belong to this subject is
+     * refused outright and logged at warn: that is not a stale token, it is somebody editing claims.
+     */
+    private UserProfile resolveProfile(Long userId, Long claimedProfileId) {
+        if (claimedProfileId == null) {
+            return profiles.findDefaultForUser(userId)
+                    .or(() -> profiles.findLiveForUser(userId).stream().findFirst())
+                    .orElseGet(() -> {
+                        log.warn("User {} has no active profile — token refused", userId);
+                        return null;
+                    });
+        }
+        UserProfile profile = profiles.findByIdAndUserId(claimedProfileId, userId).orElse(null);
+        if (profile == null) {
+            log.warn("Token for user {} claims profile {}, which is not theirs — refused",
+                    userId, claimedProfileId);
+        }
+        return profile;
     }
 
     private String bearer(HttpServletRequest request) {

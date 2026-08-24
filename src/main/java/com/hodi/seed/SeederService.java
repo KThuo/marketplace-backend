@@ -14,6 +14,7 @@ import com.hodi.modules.permissions.Permission;
 import com.hodi.modules.permissions.PermissionRepository;
 import com.hodi.modules.usergroups.UserGroup;
 import com.hodi.modules.usergroups.UserGroupRepository;
+import com.hodi.modules.profiles.UserProfileService;
 import com.hodi.modules.users.User;
 import com.hodi.modules.users.UserRepository;
 import com.hodi.modules.usertypes.UserType;
@@ -65,6 +66,7 @@ public class SeederService {
     private final PermissionRepository permissions;
     private final UserGroupRepository userGroups;
     private final UserRepository users;
+    private final UserProfileService userProfiles;
     private final ConfigurationRepository configurations;
     private final PasswordEncoder passwordEncoder;
     private final EncryptionUtil encryption;
@@ -591,17 +593,11 @@ public class SeederService {
             return false;
         }
 
-        users.save(User.builder()
+        User admin = users.save(User.builder()
                 .firstName("Platform")
                 .lastName("Administrator")
                 .email(email)
                 .username(bootstrapUsername)
-                .userTypeId(type.getId())
-                .userTypeCode(type.getCode())
-                .userTypeName(type.getName())
-                .actorClass(type.getActorClass())
-                .userGroupId(group.getId())
-                .userGroupName(group.getName())
                 .password(passwordEncoder.encode(bootstrapPassword))
                 .passwordChangedAt(OffsetDateTime.now())
                 .mustChangePassword(true)
@@ -610,6 +606,9 @@ public class SeederService {
                 .statusFlag(AppConstant.FLAG_ACTIVE)
                 .createdBy(ACTOR)
                 .build());
+        // The profile is what makes them a super administrator. Without it the row can authenticate and
+        // resolve nothing — no actor class, no user type, no permissions.
+        userProfiles.provisionFirst(admin.getId(), type, group, null, null, null, null);
         log.warn("Created bootstrap admin '{}' — sign in and change the password immediately",
                 bootstrapUsername);
         return true;

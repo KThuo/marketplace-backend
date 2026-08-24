@@ -37,6 +37,16 @@ public final class AppConstant {
     public static final String ACTOR_LENDER   = "LENDER";
     public static final String ACTOR_BUYER    = "BUYER";
 
+    // ── KYC state (user_profiles.kyc_status — plan §3.3) ─────────────────────
+    // NOT_REQUIRED is not the same as APPROVED even though both clear the gate: a platform
+    // administrator was never asked, an approved seller was asked and passed, and the difference is
+    // the thing Compliance is looking for when they read the row.
+    public static final String KYC_NOT_REQUIRED = "NOT_REQUIRED";
+    public static final String KYC_PENDING      = "PENDING";
+    public static final String KYC_SUBMITTED    = "SUBMITTED";
+    public static final String KYC_APPROVED     = "APPROVED";
+    public static final String KYC_REJECTED     = "REJECTED";
+
     // ── Seller-tenant lifecycle (tenants.onboarding_status) ──────────────────
     public static final String ONBOARDING_PENDING    = "PENDING";
     public static final String ONBOARDING_ACTIVE     = "ACTIVE";
@@ -72,7 +82,11 @@ public final class AppConstant {
 
     // ── Audit operations ─────────────────────────────────────────────────────
     public static final String AUDIT_LOGIN            = "LOGIN";
+    public static final String AUDIT_LOGIN_FAILED     = "LOGIN_FAILED";
     public static final String AUDIT_LOGOUT           = "LOGOUT";
+    public static final String AUDIT_PROFILE_SWITCH   = "PROFILE_SWITCH";
+    /** A refresh token presented twice: either a stale tab or a stolen session. */
+    public static final String AUDIT_TOKEN_REUSE      = "TOKEN_REUSE_DETECTED";
     public static final String AUDIT_REFRESH          = "REFRESH";
     public static final String AUDIT_PASSWORD_CHANGE  = "PASSWORD_CHANGE";
     public static final String AUDIT_PASSWORD_RESET   = "PASSWORD_RESET";

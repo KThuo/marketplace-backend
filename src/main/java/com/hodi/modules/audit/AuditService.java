@@ -1,5 +1,6 @@
 package com.hodi.modules.audit;
 
+import com.hodi.common.AppConstant;
 import com.hodi.logging.PayloadSanitizer;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
@@ -49,6 +50,7 @@ public class AuditService {
                     .actionId(MDC.get("actionId"))
                     .tenantId(TenantContext.getTenantId())
                     .actorUserId(actor == null ? null : actor.getUserId())
+                    .actorProfileId(actor == null ? null : actor.getProfileId())
                     .actorUsername(actor == null ? "system" : actor.getUsername())
                     .actorUserType(actor == null ? null : actor.getUserTypeCode())
                     .actorClass(actor == null ? null : actor.getActorClass())
@@ -67,6 +69,49 @@ public class AuditService {
             // rejecting the user's work because we could not describe it is worse.
             log.error("Failed to write audit row for {} {} {}", operation, entity, entityId, e);
         }
+    }
+
+    /**
+     * An authentication event, recorded whether or not anybody is authenticated.
+     *
+     * <p>{@link #record} reads the actor from the security context, which is exactly what a login, a failed
+     * login and a logout do not have: at those moments the context is empty, or about to be. So the actor is
+     * passed rather than inferred, and the request's address and user agent come with it — "somebody tried
+     * this password eleven times from one address" is the question these rows exist to answer, and neither
+     * half of it is in the security context.
+     *
+     * <p>The identifier on a failed login is recorded; the attempted password never is, here or anywhere.
+     * A log of near-miss passwords is a password list.
+     */
+    public void recordAuth(String operation, Long userId, String username, Long profileId,
+                           String outcome, String detail, String ip, String userAgent) {
+        try {
+            AuditLog row = AuditLog.builder()
+                    .actionId(MDC.get(AppConstant.MDC_ACTION_ID))
+                    .tenantId(TenantContext.getTenantId())
+                    .actorUserId(userId)
+                    .actorProfileId(profileId)
+                    .actorUsername(username == null ? AppConstant.USERNAME_SYSTEM : username)
+                    .operation(operation)
+                    .entity("User")
+                    .entityId(userId)
+                    .outcome(outcome)
+                    // Through the sanitizer, like every other payload: the column is JSONB, so a bare
+                    // string is not a valid value — and this is also what redacts anything that looks like a
+                    // credential before it lands in the trail.
+                    .afterPayload(detail == null ? null : sanitizer.sanitize(detail))
+                    .ipAddress(truncate(ip, 64))
+                    .userAgent(truncate(userAgent, 512))
+                    .build();
+            newTransaction.executeWithoutResult(status -> repository.save(row));
+        } catch (RuntimeException e) {
+            log.error("Failed to write auth audit row for {} user {}", operation, userId, e);
+        }
+    }
+
+    private static String truncate(String value, int max) {
+        if (value == null) return null;
+        return value.length() <= max ? value : value.substring(0, max);
     }
 
     /**
