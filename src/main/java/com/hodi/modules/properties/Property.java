@@ -1,0 +1,134 @@
+package com.hodi.modules.properties;
+
+import com.hodi.common.AppConstant;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+
+/**
+ * One property, offered by one seller.
+ *
+ * <p>The first row in this schema that is not about access. Everything before it decides who may act; this is
+ * what they act on.
+ *
+ * <h2>Two lifecycles, deliberately</h2>
+ *
+ * <p>{@link #listingState} is where the listing stands in the world — a draft, waiting for approval, live,
+ * sold, withdrawn. {@code status} is the soft-delete lifecycle every row in this schema carries. They answer
+ * different questions: a withdrawn listing is a live row somebody may publish again, and an archived one is
+ * gone from every list whatever its listing state says.
+ *
+ * <p>Only {@code LIVE} is public, and the marketplace query is served by a partial index on exactly that — so
+ * a draft cannot appear by somebody forgetting a predicate, because there is no index to serve it from.
+ *
+ * <h2>Money</h2>
+ *
+ * <p>{@link BigDecimal} against NUMERIC, never a double: a price is money, and money in binary floating point
+ * is money that does not add up. The currency travels with the amount, because a seller's currency is their
+ * own column on {@code tenants} rather than the platform's assumption.
+ */
+@Entity
+@Table(name = "properties")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class Property {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "tenant_id", nullable = false) private Long tenantId;
+    @Column(name = "tenant_name", length = 255) private String tenantName;
+
+    /** Human-quotable, and what a buyer reads down the phone. Twelve characters, from RrnGenerator. */
+    @Column(nullable = false, unique = true, length = 16) private String reference;
+
+    @Column(nullable = false, length = 255) private String title;
+    @Column(columnDefinition = "TEXT") private String description;
+
+    @Column(name = "property_type", nullable = false, length = 32) private String propertyType;
+    @Column(name = "listing_type", nullable = false, length = 16)
+    @Builder.Default private String listingType = AppConstant.LISTING_TYPE_SALE;
+    @Column(length = 16) private String tenure;
+
+    @Column(nullable = false, precision = 15, scale = 2) private BigDecimal price;
+    @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
+    @Column(name = "service_charge", precision = 15, scale = 2) private BigDecimal serviceCharge;
+    @Column(name = "price_negotiable", nullable = false)
+    @Builder.Default private boolean priceNegotiable = false;
+
+    private Short bedrooms;
+    private Short bathrooms;
+    @Column(name = "parking_spaces") private Short parkingSpaces;
+    @Column(name = "floor_area_sqm", precision = 10, scale = 2) private BigDecimal floorAreaSqm;
+    @Column(name = "plot_area_acres", precision = 10, scale = 3) private BigDecimal plotAreaAcres;
+    @Column(name = "year_built") private Short yearBuilt;
+
+    @Column(length = 64) private String county;
+    @Column(length = 64) private String town;
+    @Column(length = 128) private String estate;
+    @Column(name = "address_line", columnDefinition = "TEXT") private String addressLine;
+    @Column(precision = 9, scale = 6) private BigDecimal latitude;
+    @Column(precision = 9, scale = 6) private BigDecimal longitude;
+
+    @Column(name = "green_certified", nullable = false)
+    @Builder.Default private boolean greenCertified = false;
+    @Column(name = "green_certification", length = 64) private String greenCertification;
+    @Column(name = "energy_rating", length = 8) private String energyRating;
+    @Column(name = "has_solar", nullable = false) @Builder.Default private boolean hasSolar = false;
+    @Column(name = "has_borehole", nullable = false) @Builder.Default private boolean hasBorehole = false;
+    @Column(name = "rainwater_harvesting", nullable = false)
+    @Builder.Default private boolean rainwaterHarvesting = false;
+
+    @Column(name = "listing_state", nullable = false, length = 16)
+    @Builder.Default private String listingState = AppConstant.LISTING_DRAFT;
+    @Column(name = "published_at") private OffsetDateTime publishedAt;
+    @Column(name = "sold_at") private OffsetDateTime soldAt;
+    @Column(name = "withdrawn_at") private OffsetDateTime withdrawnAt;
+    @Column(name = "withdrawn_reason", columnDefinition = "TEXT") private String withdrawnReason;
+
+    /** Label cache for the card. One writer: {@code PropertyMediaService}. */
+    @Column(name = "primary_image_key", length = 512) private String primaryImageKey;
+
+    @Column(nullable = false) @Builder.Default private Integer status = 1;
+    @Column(name = "status_flag", nullable = false, length = 32)
+    @Builder.Default private String statusFlag = AppConstant.FLAG_ACTIVE;
+    @Column(name = "deactivation_reason", columnDefinition = "TEXT") private String deactivationReason;
+
+    @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
+
+    @UpdateTimestamp @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
+
+    @Column(name = "created_by", length = 64) private String createdBy;
+    @Column(name = "updated_by", length = 64) private String updatedBy;
+
+    @Column(name = "search_text", insertable = false, updatable = false)
+    private String searchText;
+
+    public boolean isDraft() {
+        return AppConstant.LISTING_DRAFT.equals(listingState);
+    }
+
+    public boolean isPending() {
+        return AppConstant.LISTING_PENDING.equals(listingState);
+    }
+
+    public boolean isLive() {
+        return AppConstant.LISTING_LIVE.equals(listingState);
+    }
+
+    /**
+     * Whether a seller may still edit it without asking anybody.
+     *
+     * <p>A draft or a withdrawn listing, yes — nobody is reading it. A live one is different: somebody may be
+     * enquiring about the price on screen, so an edit takes it back through the queue. That rule lives in the
+     * service; this is the question it asks.
+     */
+    public boolean isFreelyEditable() {
+        return isDraft() || AppConstant.LISTING_WITHDRAWN.equals(listingState);
+    }
+}

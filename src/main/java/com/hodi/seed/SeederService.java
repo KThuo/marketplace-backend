@@ -72,6 +72,7 @@ public class SeederService {
     private final UserProfileService userProfiles;
     private final ConfigurationRepository configurations;
     private final TenantRepository tenants;
+    private final com.hodi.modules.configurations.ConfigurationCache configCache;
     private final TenantModuleService tenantModules;
     private final PasswordEncoder passwordEncoder;
     private final EncryptionUtil encryption;
@@ -132,6 +133,19 @@ public class SeederService {
      */
     @Transactional
     public void seed() {
+        /*
+         * The configuration cache is emptied first.
+         *
+         * Values live in Redis, which outlives a restart — so a migration that corrects a configuration value
+         * behind the application's back leaves the old one being served indefinitely. That happened once, to
+         * `storage.local.base.url`: the migration fixed the row, the cache kept the broken value, and every
+         * photograph stayed a broken image across two restarts.
+         *
+         * Emptying it on boot costs one round trip and a handful of misses. Serving a value the database no
+         * longer holds costs however long it takes somebody to think of Redis.
+         */
+        configCache.evictAllGlobal();
+
         int types = seedUserTypes();
         int modules = seedAppModules();
         int perms = seedPermissions();

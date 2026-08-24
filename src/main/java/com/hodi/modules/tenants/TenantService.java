@@ -76,6 +76,7 @@ public class TenantService {
     private final TenantRepository repository;
     private final UserRepository users;
     private final UserProfileRepository profiles;
+    private final com.hodi.modules.properties.PropertyRepository propertiesRepo;
     private final UserProfileService userProfiles;
     private final UserGroupRepository userGroups;
     private final UserTypeRepository userTypes;

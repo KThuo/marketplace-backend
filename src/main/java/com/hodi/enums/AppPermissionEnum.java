@@ -64,6 +64,25 @@ public enum AppPermissionEnum {
      * the platform sees every partnership, a seller sees their own, a lender sees theirs. That narrowing is
      * {@code TenantScope}'s job, not this permission's.
      */
+    // ── PROPERTY LISTINGS ─────────────────────────────────────────────────────
+    PROPERTIES_VIEW("See the organisation's listings", AppModuleEnum.PROPERTIES),
+    PROPERTIES_CREATE("Draft a new listing", AppModuleEnum.PROPERTIES),
+    PROPERTIES_UPDATE("Change a listing", AppModuleEnum.PROPERTIES),
+    /**
+     * Sending a listing for approval, separate from changing one.
+     *
+     * <p>This is the Maker half of Maker/Checker: an agent who may draft and edit need not be somebody who
+     * can put the organisation's name behind a listing, and the two being one permission would make that
+     * distinction unexpressible.
+     */
+    PROPERTIES_SUBMIT("Submit a listing for approval", AppModuleEnum.PROPERTIES),
+    /** The Checker half. Held by whoever answers for what the organisation publishes. */
+    PROPERTIES_APPROVE("Approve and publish a listing", AppModuleEnum.PROPERTIES),
+    PROPERTIES_WITHDRAW("Take a live listing down", AppModuleEnum.PROPERTIES),
+    PROPERTIES_MARK_SOLD("Mark a listing sold", AppModuleEnum.PROPERTIES),
+    PROPERTIES_MEDIA("Add and remove photographs", AppModuleEnum.PROPERTIES),
+    PROPERTIES_DELETE("Archive a listing", AppModuleEnum.PROPERTIES),
+
     // ── APPROVALS (Maker/Checker) ─────────────────────────────────────────────
     /**
      * Sight of the queue, and only that.

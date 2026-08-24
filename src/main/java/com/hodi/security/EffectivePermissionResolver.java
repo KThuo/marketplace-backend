@@ -62,10 +62,18 @@ public class EffectivePermissionResolver {
      *
      * <p>The gate belongs here rather than in a controller for the same reason the module matrix does: this
      * is the one place every permission passes through, so a screen that forgets to hide a button still
-     * cannot reach the endpoint behind it. Empty until M8 declares the listing permissions — an entry naming
-     * a permission that does not exist yet would be a rule nothing enforces and nobody could test.
+     * cannot reach the endpoint behind it.
+     *
+     * <p>Writing a listing is the first thing gated: FR075 says an unapproved seller may not list, and this is
+     * where "may not" is decided. Reading is not gated — a seller waiting on KYC can still see what their
+     * colleagues drafted, and hiding it would look like data loss rather than a hold.
+     *
+     * <p>Inert until M8 starts writing a KYC status other than {@code NOT_REQUIRED}, which is the point of
+     * wiring it now: the rule is in place before the data that triggers it, rather than being retrofitted to
+     * the hottest path in the application afterwards.
      */
-    private static final Set<String> KYC_GATED = Set.of();
+    private static final Set<String> KYC_GATED = Set.of(
+            "PROPERTIES_CREATE", "PROPERTIES_UPDATE", "PROPERTIES_SUBMIT", "PROPERTIES_MEDIA");
 
     private final UserGroupRepository userGroups;
     private final AppModuleRepository appModules;

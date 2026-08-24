@@ -205,6 +205,23 @@ public enum ConfigKey {
     STORAGE_S3_REGION(
             "storage.s3.region", "STRING", "STORAGE", "us-east-1",
             "S3 region", "Region the bucket lives in.", false, false),
+    /**
+     * The browser key for Google Maps.
+     *
+     * <p><strong>Not marked secret</strong>, and that is not an oversight: a Maps browser key is meant to be
+     * in the page — it is protected by an HTTP-referrer restriction on Google's side, not by being hidden.
+     * Masking it here would only stop the client that needs it from reading it, while doing nothing about the
+     * fact that anybody can read it out of a rendered page.
+     *
+     * <p>Empty means no embedded map. The listing page then shows the location and a link that opens Google
+     * Maps, which needs no key at all — so an unconfigured environment degrades to something useful rather
+     * than to a grey box asking for a key.
+     */
+    MAPS_GOOGLE_KEY(
+            "maps.google.key", "STRING", "GENERAL", "",
+            "Google Maps key",
+            "Browser key for the embedded map on a listing. Empty shows a link to Google Maps instead.",
+            false, false),
     STORAGE_LOCAL_DIR(
             "storage.local.dir", "STRING", "STORAGE", "uploads",
             "Local media directory",
@@ -216,9 +233,22 @@ public enum ConfigKey {
     STORAGE_S3_SECRET_KEY(
             "storage.s3.secret.key", "STRING", "STORAGE", "",
             "S3 secret key", "Encrypted at rest and masked in responses.", true, false),
+    /**
+     * Where locally-stored files are served from, as an <em>origin</em> — not a path.
+     *
+     * <p>It used to default to {@code /media}, which {@code StorageService.urlFor} then appended
+     * {@code /media/} to: every local URL came out as {@code /media/media/…} and every photograph was a broken
+     * image. The path is the application's own ({@code MediaController} owns {@code /media/**}), so what this
+     * key configures is the host in front of it — a CDN, or an object store's public origin.
+     *
+     * <p>Empty means same origin, which is the right default: a relative URL works behind any host, needs no
+     * configuration in development, and cannot point at the wrong environment.
+     */
     STORAGE_LOCAL_BASE_URL(
-            "storage.local.base.url", "STRING", "STORAGE", "/media",
-            "Local media base URL", "Path prefix locally-stored files are served under.", false, false),
+            "storage.local.base.url", "STRING", "STORAGE", "",
+            "Local media origin",
+            "Host that serves locally-stored files. Empty means this application, which is usually right.",
+            false, false),
     STORAGE_AVATAR_MAX_KB(
             "storage.avatar.max.kb", "INTEGER", "STORAGE", "2048",
             "Max avatar size (KB)", "Rejected above this before anything is written.", false, false);

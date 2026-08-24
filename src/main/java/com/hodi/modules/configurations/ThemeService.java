@@ -40,6 +40,14 @@ public class ThemeService {
         theme.put("contactEmail", emptyToNull(configs.getString(ConfigKey.COMPANY_EMAIL)));
         theme.put("contactPhone", emptyToNull(configs.getString(ConfigKey.COMPANY_PHONE)));
         theme.put("contactAddress", emptyToNull(configs.getString(ConfigKey.COMPANY_ADDRESS)));
+        /*
+         * Not a brand value, and it rides along anyway.
+         *
+         * This payload is what the client bootstraps from — one request, before anything renders. A second
+         * endpoint for one public key would be a second round trip on every first paint, and a key the map
+         * needs but cannot get until later is a map that flashes empty.
+         */
+        theme.put("mapsApiKey", emptyToNull(configs.getString(ConfigKey.MAPS_GOOGLE_KEY)));
         return theme;
     }
 

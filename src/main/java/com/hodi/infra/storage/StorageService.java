@@ -118,7 +118,15 @@ public class StorageService {
         if (key == null || key.isBlank()) return null;
         String bucket = bucket();
         if (bucket.isBlank()) {
-            return trimTrailingSlash(configs.getString(ConfigKey.STORAGE_LOCAL_BASE_URL)) + "/media/" + key;
+            /*
+             * `/media/<key>` on whatever origin is configured, or on this one when none is.
+             *
+             * The path belongs to MediaController and is not configurable; the origin in front of it is. The
+             * two were conflated once — the key defaulted to "/media" and this line appended "/media/", so
+             * every local URL came out doubled and every image was broken.
+             */
+            String origin = trimTrailingSlash(configs.getString(ConfigKey.STORAGE_LOCAL_BASE_URL));
+            return origin + "/media/" + key;
         }
         String endpoint = configs.getString(ConfigKey.STORAGE_S3_ENDPOINT);
         if (endpoint != null && !endpoint.isBlank()) {

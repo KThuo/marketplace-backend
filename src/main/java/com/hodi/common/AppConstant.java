@@ -62,6 +62,23 @@ public final class AppConstant {
      */
     public static final String PORTFOLIO_SELECTED = "SELECTED";
 
+    // ── Property listings (M2) ───────────────────────────────────────────────
+    // Where a listing stands in the world. Separate from `status`, which is the soft-delete lifecycle every
+    // row carries: a WITHDRAWN listing is a live row somebody may publish again, an archived one is not.
+    public static final String LISTING_DRAFT     = "DRAFT";
+    public static final String LISTING_PENDING   = "PENDING";
+    public static final String LISTING_LIVE      = "LIVE";
+    public static final String LISTING_SOLD      = "SOLD";
+    public static final String LISTING_WITHDRAWN = "WITHDRAWN";
+
+    /** What the listing is for. RENT exists in the CHECK so the eventual lettings slice is additive. */
+    public static final String LISTING_TYPE_SALE = "SALE";
+    public static final String LISTING_TYPE_RENT = "RENT";
+
+    /** Entity type and actions for the approval queue. */
+    public static final String APPROVAL_ENTITY_PROPERTY = "PROPERTY";
+    public static final String APPROVAL_ACTION_PUBLISH  = "PUBLISH";
+
     // ── Approval workflow (Maker/Checker — plan §3.2) ────────────────────────
     // The state of a request, and — where a decision has been made — what it was. PENDING never appears as a
     // decision: a request that has not been decided has no decider, which the table's own CHECK enforces.

@@ -5,8 +5,8 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phases 0a and 0b are built and verified** (§7, §8). Sections 3.3–3.6, 3.8, 3.9 and 4 remain
-planning. Section 2 is a verdict against code that is built and verified.
+**Status:** **Phases 0a and 0b are built and verified** (§7, §8), and **Phase 1 has started** with M2's first
+slice (§9). Sections 3.3–3.6, 3.8 and 3.9 remain planning.
 
 ---
 
@@ -242,7 +242,7 @@ turn lands backend **and** frontend together.
 |---|---|---|
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
-| **1** | M2 (property + search + media) → M1 consent → M3 (mock affordability behind the real interface) → M4 | 6–8 |
+| **1** | M2 (property + search + media) **— listings and marketplace done, saved listings and alerts next** → M1 consent → M3 (mock affordability behind the real interface) → M4 | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
@@ -430,3 +430,57 @@ Approving a partnership left the shell still saying "no sellers in view" directl
 had just been approved. The server rebuilds the principal per request, so the *next* call was correctly scoped
 — it was the client's copy of the identity, taken at sign-in, that was stale. Both the approvals queue and the
 partnership screen now re-read `/auth/me` alongside the list after any decision.
+
+
+---
+
+## 9. Phase 1 / M2, first slice
+
+The first table in this schema that is not about access, and the first screen a stranger came for.
+
+### What landed
+
+`properties` and `property_media`, with the lifecycle DRAFT → PENDING → LIVE → SOLD/WITHDRAWN. Publication is
+a Maker/Checker decision through the queue built in 0b: submitting raises a `PROPERTY`/`PUBLISH` request in the
+seller's own queue, and `PropertyApprovalHandler` is fifty lines because everything about who may decide, when,
+and what is recorded already existed. Editing a live listing takes it back through the queue — a public offer
+somebody may be acting on is not a thing to change quietly.
+
+Seller-side: a four-step listing wizard (the property, where, green, photographs), photograph management with a
+cover image, and the listing list scoped by `TenantScope` — so a partnered lender reads a seller's portfolio
+through the same endpoint without any code here knowing about them.
+
+Public: `/api/v1/public/properties` with search, facets counted off live listings, and detail by *reference*.
+Two response records rather than one with fields blanked — a stranger gets the town and the estate, never the
+address line, and the two being separate types is what stops a field leaking by being forgotten.
+
+The KYC gate from §3.3 is now wired: `PROPERTIES_CREATE/UPDATE/SUBMIT/MEDIA` are in `KYC_GATED`, inert until M8
+starts writing a status other than `NOT_REQUIRED`. Reading is deliberately not gated — a seller waiting on KYC
+can still see what their colleagues drafted.
+
+### Deliberately deferred
+
+Title deeds and approved plans (they are §3.9's document vault, and building them into general media storage
+now is building the thing the plan says to build properly later), saved listings and search alerts (a buyer's
+own rows, which belong beside M1's consent store), and enquiries (M4 — a button that opened nothing would be
+worse than its absence).
+
+### Three defects found by building it
+
+1. **Every locally-stored file resolved to `/media/media/…`.** `storage.local.base.url` was seeded as a path
+   (`/media`) while `StorageService.urlFor` appends `/media/<key>` to it. The key configures the *origin* in
+   front of a path the application owns; it now defaults to empty, meaning same origin, and a migration
+   corrects the stored value.
+2. **The migration fixed the row and the cache kept serving the old value** — configuration lives in Redis,
+   which outlives a restart, so the broken URL survived two deploys. The seeder now empties the configuration
+   cache before it reconciles anything.
+3. **Every page taller than the viewport was clipped at one screenful.** `html, body, #app { height: 100% }`
+   with an opt-in `page-scrolls` class that nothing ever added: the property detail page ended mid-air and the
+   settings screens could not reach their last card. The default is now `min-height`, so a page grows with its
+   content — the failure mode decides the default, and forgetting to opt into scrolling loses content silently
+   while forgetting to opt into a fixed frame merely gives you a scrollbar.
+
+   Fixing that exposed a second one underneath: `html, body { overflow-x: hidden }` makes the document a
+   scroll container, which stops `position: sticky` working for everything inside it. The workspace sidebar
+   had been scrolling away with the page all along, with nothing wrong in its own CSS. It is `overflow-x:
+   clip` now, which prevents sideways scrolling without creating the container.

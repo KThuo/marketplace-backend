@@ -113,6 +113,22 @@ public enum AppModuleEnum {
      * module, so the whole path was unreachable and therefore unverified.
      */
     /**
+     * Property listings — what the platform is for.
+     *
+     * <p>Admits the seller side that maintains them and the platform that oversees them. Lender staff are
+     * deliberately <strong>not</strong> here: a partnered lender reads a seller's portfolio through the public
+     * marketplace and their own mortgage screens, not through the seller's listing management — the module
+     * that holds "create", "submit" and "withdraw" is the seller's own workspace.
+     *
+     * <p>Buyers are not here either. Everything a buyer sees is the public marketplace, which needs no module
+     * because it needs no permission.
+     */
+    PROPERTIES("PROPERTIES", "Listings",
+            "The properties a seller offers, from draft to live to sold",
+            true, 30,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+
+    /**
      * The Maker/Checker queue (plan §3.2).
      *
      * <p>Admits every user type that can hold an approve permission in any module, because the queue is one
