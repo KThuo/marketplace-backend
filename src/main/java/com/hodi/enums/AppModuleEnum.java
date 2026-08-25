@@ -204,6 +204,22 @@ public enum AppModuleEnum {
             true, 50,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER"),
 
+    /**
+     * KYC (M8 slice 1).
+     *
+     * <p>Two audiences with opposite needs, and one module because they meet on one screen: a seller
+     * assembling their own pack, and Compliance judging it. What separates them is the permission —
+     * {@code KYC_SUBMIT} is the seller's, {@code KYC_REVIEW} is the platform's, and the review permission is
+     * also the key that opens the documents in the vault.
+     *
+     * <p>Lender staff are absent. A partnership lets a bank see a seller's portfolio, not their directors'
+     * identity documents.
+     */
+    KYC("KYC", "Compliance",
+            "What a seller must produce to be allowed to list, and what Compliance made of it",
+            true, 55,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER"),
+
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,

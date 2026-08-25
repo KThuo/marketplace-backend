@@ -67,6 +67,16 @@ public interface UserProfileRepository
     List<Long> findLiveUserIdsByInstitution(@Param("institutionId") Long institutionId);
 
     /**
+     * Every live profile of one seller organisation.
+     *
+     * <p>KYC's writer: a decision about an organisation's pack lands on all of its people, not only the one
+     * who assembled it — a colleague should be able to list a property the moment Compliance clears their
+     * employer, and stop the moment it does not.
+     */
+    @Query("select p from UserProfile p where p.tenantId = :tenantId and p.status <> 4 and p.status <> 5")
+    List<UserProfile> findLiveByTenant(@Param("tenantId") Long tenantId);
+
+    /**
      * Re-stamps a renamed group's label on every profile holding it.
      *
      * <p>One writer per label cache, in the service that owns the renamed thing. An ad-hoc UPDATE elsewhere

@@ -5,9 +5,9 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phase 0 and Phase 1 are built and verified.** M2's listings and marketplace (§9), M2's
-buyer-side rows plus §3.8's consent store (§10), M3's mortgage products and affordability (§11), and M4's
-leads (§12). Sections 3.3–3.6 and 3.9 remain planning; **Phase 2 (M8) is next**.
+**Status:** **Phase 0 and Phase 1 are built and verified** (§7–§12). **Phase 2 has started**: §3.3's KYC
+and §3.9's document vault landed together as M8's first slice (§13), which is also what made the KYC
+permission gate live for the first time. Sections 3.4–3.6 remain planning.
 
 ---
 
@@ -133,7 +133,7 @@ regulator's version of this question expects a single answer. Where an organisat
 the answer is that the platform decides, since it already sits outside every organisation. If Compliance later
 wants exceptions, that is a new table and a new conversation, not a flag on this one.
 
-### 3.3 KYC *(with M8)*
+### 3.3 KYC *(with M8)* — **BUILT** (§13)
 
 ```
 kyc_requirement_config   -- profile_type + entity_type → required document codes, versioned
@@ -225,7 +225,7 @@ buyer's finances when the buyer applies to them, which is M4, and not before.
 frozen copy would be a promise the platform did not make. The check itself is stored, because "what did I
 work out in March" is a fair question and the inputs are the answer.
 
-### 3.9 Document vault *(with M8)*
+### 3.9 Document vault *(with M8)* — **BUILT** (§13)
 
 Split what the BRD splits: `StorageService` keeps public media (listing photographs, avatars);
 a new `DocumentService` handles KYC and legal documents with a `document_acl` row per document, server-side
@@ -280,7 +280,7 @@ turn lands backend **and** frontend together.
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
 | **1** | **done** — M2 (listings, marketplace, shortlist, saved searches), M1 consent, M3 (products, affordability), M4 (enquiries, viewings, offers) | 6–8 |
-| **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
+| **2** | M8 — **slice 1 done** (KYC + §3.9 vault, §13). Listing CRUD, media and the approval queue arrived early with M2. Remaining: registration by seller type (including *when* KYC becomes mandatory), and listing progress updates | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
 | **5** | M12, M13, M15 | 5–6 |
@@ -719,3 +719,61 @@ the buyer's screen showed it accepted with the seller's message.
 **Spring Data scans top-level types only.** The four repositories were briefly nested inside a single
 `LeadRepositories` holder — tidy on paper, and the application refused to start with "no qualifying bean".
 Split into four files, which is the convention everywhere else here anyway.
+
+
+---
+
+## 13. Phase 2 / M8, first slice — KYC and the document vault
+
+Two things that had to arrive together: KYC is the first feature handling documents nobody but Compliance
+should see, and building it on the store that serves listing photographs is the mistake §3.9 exists to
+prevent.
+
+### The vault
+
+`VaultStorage` is a second storage class, not a flag on the first. `StorageService` exists to produce URLs a
+browser fetches directly; a CR12 needs the opposite, so the vault has **no `urlFor` and no `url` column** —
+the table comment says not to add one. It writes under its own `vault/` prefix, declares server-side
+encryption and records *which* on the row, computes a SHA-256 of the bytes, and strips the original filename
+out of the key (KYC uploads are named things like `john_doe_id.pdf`, and keys leak into logs).
+
+`DocumentService.read` is the only route to bytes in the application. It resolves `vault_document_acl`,
+refuses if no grant applies, and writes an audit row **either way** — a refused read is the more interesting
+of the two. Platform staff are deliberately not exempt: this is the one place where "the platform sees
+everything" does not hold, and a super administrator with no grant is refused like anybody else.
+
+### KYC
+
+`kyc_requirement_configs` is a versioned catalogue — Compliance changes what a SACCO must produce without a
+deploy, and a submission freezes the version it was judged against so a past approval stays explainable.
+Six seller types seeded, 32 requirement rows.
+
+`kyc_submissions` is keyed on the **profile**, because `user_profiles.kyc_status` is what
+`EffectivePermissionResolver` reads. A decision writes that status onto *every* live seller profile of the
+organisation: a listing manager who never saw the pack can work the moment Compliance clears their employer,
+and stops the moment it does not.
+
+**Submitting deliberately changes nothing about permissions.** `PENDING` fails the gate, so writing it on
+submission would take a seller's listing rights away the moment they started cooperating — punishing the act
+the platform is asking for. The gate moves on a *decision*.
+
+### Behaviour verified
+
+The seller's pack created on first look with the right checklist for a COMPANY; a document uploaded, stored
+with a SHA-256 and served back as an attachment with `no-store`; the owning organisation and a `KYC_REVIEW`
+holder both allowed; **a different seller refused 403, and the refusal recorded as `UNAUTHORIZED` against
+their name**; the pack submitted with permissions unchanged; rejection removing `PROPERTIES_CREATE` from the
+seller's effective set; a fresh pack allowed after rejection; approval restoring the permission.
+
+### Two things worth recording
+
+1. **An approved seller opening the page was handed a blank new pack.** `mine()` created one whenever no
+   *live* pack existed, which reads as "start again" and replaces the evidence of clearance with a checklist.
+   It now prefers the live pack, falls back to the most recent whatever its outcome, and only creates one for
+   a seller who has never had any. Starting again is `renew()` — a decision somebody makes, not a side effect
+   of looking.
+
+2. **Nothing yet makes KYC mandatory.** A seller who never opens a pack stays at `NOT_REQUIRED` and can
+   list. Deciding when clearance becomes a precondition — at onboarding, per seller type, above a listing
+   count — is a policy question for the registration slice. The machinery to enforce whatever it answers is
+   already in place and now demonstrably works.

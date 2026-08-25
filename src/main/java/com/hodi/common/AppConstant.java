@@ -177,6 +177,38 @@ public final class AppConstant {
     public static final String FINANCING_MORTGAGE      = "MORTGAGE";
     public static final String FINANCING_PART_EXCHANGE = "PART_EXCHANGE";
 
+    // ── KYC and the document vault (M8 slice 1, plan §3.3 and §3.9) ──────────
+    /**
+     * The kinds of seller the platform onboards, and the key into the requirement catalogue.
+     *
+     * <p>One list, used by the onboarding form and by {@code kyc_requirement_configs} alike — a requirement
+     * list for a type nobody can choose is dead data, and a type with no requirement list is a seller who
+     * can never clear KYC.
+     */
+    public static final String SELLER_INDIVIDUAL = "INDIVIDUAL";
+    public static final String SELLER_COMPANY    = "COMPANY";
+    public static final String SELLER_SACCO      = "SACCO";
+    public static final String SELLER_DEVELOPER  = "DEVELOPER";
+    public static final String SELLER_AGENCY     = "AGENCY";
+    public static final String SELLER_GOVERNMENT = "GOVERNMENT";
+
+    /** Where a pack stands. MORE_INFO is a refusal that invites the seller back, not a rejection. */
+    public static final String KYC_SUB_DRAFT     = "DRAFT";
+    public static final String KYC_SUB_SUBMITTED = "SUBMITTED";
+    public static final String KYC_SUB_APPROVED  = "APPROVED";
+    public static final String KYC_SUB_REJECTED  = "REJECTED";
+    public static final String KYC_SUB_MORE_INFO = "MORE_INFO";
+
+    /** Compliance's verdict on one document within a pack. */
+    public static final String VERDICT_PENDING  = "PENDING";
+    public static final String VERDICT_ACCEPTED = "ACCEPTED";
+    public static final String VERDICT_REJECTED = "REJECTED";
+
+    /** What the storage layer declared when it wrote an object. Recorded per document, not per deployment. */
+    public static final String ENCRYPTION_NONE    = "NONE";
+    public static final String ENCRYPTION_SSE_S3  = "SSE-S3";
+    public static final String ENCRYPTION_SSE_KMS = "SSE-KMS";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -225,6 +257,11 @@ public final class AppConstant {
     public static final String AUDIT_VISIT_DECIDED    = "VISIT_DECIDED";
     public static final String AUDIT_OFFER_SUBMITTED  = "OFFER_SUBMITTED";
     public static final String AUDIT_OFFER_DECIDED    = "OFFER_DECIDED";
+    /** Somebody read a document out of the vault. Written on every fetch, never sampled. */
+    public static final String AUDIT_DOCUMENT_READ    = "DOCUMENT_READ";
+    public static final String AUDIT_DOCUMENT_UPLOAD  = "DOCUMENT_UPLOAD";
+    public static final String AUDIT_KYC_SUBMITTED    = "KYC_SUBMITTED";
+    public static final String AUDIT_KYC_DECIDED      = "KYC_DECIDED";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────

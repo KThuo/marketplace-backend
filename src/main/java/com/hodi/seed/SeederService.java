@@ -455,12 +455,15 @@ public class SeederService {
         // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
         // its own user type could never hold, which surfaced as "these permissions are not available for this
         // kind of user" the first time anybody tried to clone it.
+        // KYC_VIEW without KYC_REVIEW: support can see where an organisation stands, which is what a
+        // "why can I not list?" call needs, without being able to decide it or open the documents.
         byType.put("SUPPORT_ADMIN", List.of(
                 "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
-                "PARTNERSHIPS_VIEW", "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW"));
+                "PARTNERSHIPS_VIEW", "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
+                "KYC_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW"));
+                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW"));
 
         int touched = 0;
         for (var entry : byType.entrySet()) {

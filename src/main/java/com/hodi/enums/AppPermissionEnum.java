@@ -202,6 +202,20 @@ public enum AppPermissionEnum {
      */
     PURCHASE_REQUESTS_DECIDE("Accept or decline an offer", AppModuleEnum.PURCHASE_REQUESTS),
 
+    // ── KYC ───────────────────────────────────────────────────────────────────
+    /** Seeing your own organisation's pack, or — with the review permission — everybody's. */
+    KYC_VIEW("See KYC packs", AppModuleEnum.KYC),
+    /** Assembling and submitting your own organisation's pack. The seller's half of the module. */
+    KYC_SUBMIT("Upload documents and submit for review", AppModuleEnum.KYC),
+    /**
+     * Compliance's half, and the most powerful permission on the platform.
+     *
+     * <p>It decides whether an organisation may list at all, and it is the ACL key that opens every document
+     * in a pack — identity documents, company registers, tax certificates. Platform-only, and it should be
+     * held by the smallest number of people the work allows.
+     */
+    KYC_REVIEW("Review and decide KYC packs", AppModuleEnum.KYC, true),
+
     // ── AUDIT ─────────────────────────────────────────────────────────────────
     AUDIT_VIEW("See the audit trail", AppModuleEnum.AUDIT),
 

@@ -265,6 +265,31 @@ public enum ConfigKey {
             "ocp.api.key", "STRING", "AFFORDABILITY", "",
             "OCP API key", "Credential for the credit microservice.", true, false),
 
+    // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
+    /**
+     * A separate bucket for documents nobody but Compliance should see.
+     *
+     * <p>Empty falls back to the media bucket, where the {@code vault/} key prefix still separates them —
+     * enough for a prefix policy, not enough for a different retention or a different account. A real
+     * deployment sets this.
+     */
+    VAULT_S3_BUCKET(
+            "vault.s3.bucket", "STRING", "STORAGE", "",
+            "Vault bucket",
+            "Where KYC and legal documents are written. Falls back to the media bucket, separated only by "
+                    + "the vault/ prefix — set this in production.", false, false),
+    /**
+     * A KMS key for the vault. Set, objects are written SSE-KMS; unset, SSE-S3.
+     *
+     * <p>Either way the row records which, because "was this document encrypted at rest" is a question about
+     * a particular document rather than about the deployment somebody happens to be reading it on.
+     */
+    VAULT_KMS_KEY_ID(
+            "vault.kms.key.id", "STRING", "STORAGE", "",
+            "Vault KMS key",
+            "Customer-managed key for vault objects. Empty uses S3-managed encryption (SSE-S3).",
+            false, false),
+
     STORAGE_LOCAL_DIR(
             "storage.local.dir", "STRING", "STORAGE", "uploads",
             "Local media directory",
