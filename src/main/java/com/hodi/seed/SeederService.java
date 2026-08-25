@@ -63,6 +63,7 @@ public class SeederService {
     private static final String ACTOR = AppConstant.USERNAME_SEEDER;
     private static final String PLATFORM_GROUP = "Platform Super Admin";
     private static final String BUYER_GROUP = "Buyer";
+    private static final String VALUER_GROUP = "Valuer";
 
     private final UserTypeRepository userTypes;
     private final AppModuleRepository appModules;
@@ -153,13 +154,14 @@ public class SeederService {
         int templates = seedRoleTemplates();
         int platform = topUpPlatformGroup();
         int buyer = topUpBuyerGroup();
+        int valuerPerms = topUpValuerGroup();
         int owners = topUpOrganisationOwnerGroups();
         int enabled = enableCoreModulesEverywhere();
         boolean bootstrapped = seedBootstrapAdmin();
 
         log.info("Seeder: {} user types, {} modules, {} permissions, {} configs, {} templates "
-                        + "(+{} platform, +{} buyer, +{} owner perms, +{} tenant modules){}",
-                types, modules, perms, configs, templates, platform, buyer, owners, enabled,
+                        + "(+{} platform, +{} buyer, +{} valuer, +{} owner perms, +{} tenant modules){}",
+                types, modules, perms, configs, templates, platform, buyer, valuerPerms, owners, enabled,
                 bootstrapped ? ", bootstrap admin created" : "");
     }
 
@@ -445,6 +447,9 @@ public class SeederService {
                 "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE"));
         // Reading the catalogue, not writing it. An officer quoting a rate to a buyer needs to see the
         // products; changing one is the administrator's, and publishing one is separate again.
+        // A valuer's whole world: their own panel row, and the jobs assigned to them.
+        byType.put("VALUER", List.of(
+                "VALUER_PANEL_VIEW", "VALUATIONS_VIEW", "VALUATIONS_WORK"));
         byType.put("MORTGAGE_OFFICER", List.of(
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW"));
@@ -463,7 +468,8 @@ public class SeederService {
                 "KYC_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW"));
+                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW", "VALUATIONS_VIEW",
+                "VALUER_PANEL_VIEW"));
 
         int touched = 0;
         for (var entry : byType.entrySet()) {
@@ -651,6 +657,53 @@ public class SeederService {
             userGroups.save(UserGroup.builder()
                     .name(BUYER_GROUP)
                     .description("What every buyer holds: access to their own account, and nothing else.")
+                    .userTypeId(type.getId())
+                    .userTypeCode(type.getCode())
+                    .userTypeName(type.getName())
+                    .template(false)
+                    .system(true)
+                    .permissions(expected)
+                    .status(AppConstant.STATUS_ACTIVE)
+                    .statusFlag(AppConstant.FLAG_ACTIVE)
+                    .createdBy(ACTOR)
+                    .build());
+            return expected.size();
+        }
+        int added = 0;
+        for (Permission p : expected) {
+            if (group.getPermissions().stream()
+                    .noneMatch(x -> x.getActionCode().equals(p.getActionCode()))) {
+                group.getPermissions().add(p);
+                added++;
+            }
+        }
+        if (added > 0) {
+            group.setUpdatedBy(ACTOR);
+            userGroups.save(group);
+        }
+        return added;
+    }
+
+    /**
+     * The valuer group: their own panel row, and the jobs assigned to them.
+     *
+     * <p>Its own group rather than a template, for the same reason the buyer's is: there is exactly one
+     * right answer for what a valuer holds, and an organisation cloning and narrowing it is not a case that
+     * exists — a valuer belongs to no organisation.
+     */
+    private int topUpValuerGroup() {
+        UserType type = userTypes.findByCode("VALUER").orElse(null);
+        if (type == null) return 0;
+        Set<Permission> expected = resolve(List.of(
+                "VALUER_PANEL_VIEW", "VALUATIONS_VIEW", "VALUATIONS_WORK"));
+        // Three permissions across three modules, all of which admit VALUER. If one ever does not, the
+        // resolver drops the authority at login and the group reads as granted while behaving as empty.
+
+        UserGroup group = userGroups.findGlobalByName(VALUER_GROUP).orElse(null);
+        if (group == null) {
+            userGroups.save(UserGroup.builder()
+                    .name(VALUER_GROUP)
+                    .description("What every panel valuer holds: their own record, and their own jobs.")
                     .userTypeId(type.getId())
                     .userTypeCode(type.getCode())
                     .userTypeName(type.getName())

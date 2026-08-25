@@ -72,7 +72,23 @@ public enum UserTypeEnum {
      */
     BUYER("Buyer",
             "Signs in to see their own saved properties, enquiries and finance applications",
-            AppConstant.ACTOR_BUYER, 100);
+            AppConstant.ACTOR_BUYER, 100),
+
+    /**
+     * A valuer on the platform's panel (M5, plan §3.5).
+     *
+     * <p>The third visibility rule on this platform, and the reason §3.5 called it a new mechanism. A seller
+     * sees their organisation's rows; a lender sees the organisations they are partnered with; a valuer sees
+     * <strong>the jobs assigned to them</strong> — not their firm's, not the requesting seller's portfolio,
+     * and not the property they were sent to value beyond what the job says about it.
+     *
+     * <p>Like a buyer they carry no organisation, so like a buyer their scope cannot come from
+     * {@code TenantScope}. It comes from the assignment column on each valuation row, and the module
+     * enforces it in one place — see {@code ValuationScope}.
+     */
+    VALUER("Valuer",
+            "An independent valuer on the platform's panel, working the jobs assigned to them",
+            AppConstant.ACTOR_VALUER, 110);
 
     private final String displayName;
     private final String description;

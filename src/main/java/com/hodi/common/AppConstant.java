@@ -36,6 +36,14 @@ public final class AppConstant {
     public static final String ACTOR_SELLER   = "SELLER";
     public static final String ACTOR_LENDER   = "LENDER";
     public static final String ACTOR_BUYER    = "BUYER";
+    /**
+     * A valuer on the platform's panel (M5, plan §3.5).
+     *
+     * <p>The first actor class whose visibility is neither "my organisation" nor "everything": they see the
+     * jobs assigned to them and nothing else. Like a buyer they carry no organisation, and like a buyer the
+     * difference from a platform administrator is this column rather than an inference from two nulls.
+     */
+    public static final String ACTOR_VALUER   = "VALUER";
 
     // ── KYC state (user_profiles.kyc_status — plan §3.3) ─────────────────────
     // NOT_REQUIRED is not the same as APPROVED even though both clear the gate: a platform
@@ -209,6 +217,26 @@ public final class AppConstant {
     public static final String ENCRYPTION_SSE_S3  = "SSE-S3";
     public static final String ENCRYPTION_SSE_KMS = "SSE-KMS";
 
+    // ── Valuation (M5, plan §3.5) ────────────────────────────────────────────
+    public static final String VALUATION_REQUESTED   = "REQUESTED";
+    public static final String VALUATION_ASSIGNED    = "ASSIGNED";
+    /** The valuer said no. The job returns to the queue for somebody else. */
+    public static final String VALUATION_DECLINED    = "DECLINED";
+    public static final String VALUATION_IN_PROGRESS = "IN_PROGRESS";
+    public static final String VALUATION_SUBMITTED   = "SUBMITTED";
+    public static final String VALUATION_COMPLETED   = "COMPLETED";
+    public static final String VALUATION_CANCELLED   = "CANCELLED";
+
+    public static final String VALUATION_FOR_SALE      = "SALE";
+    public static final String VALUATION_FOR_MORTGAGE  = "MORTGAGE";
+    public static final String VALUATION_FOR_INSURANCE = "INSURANCE";
+    public static final String VALUATION_FOR_PROBATE   = "PROBATE";
+    public static final String VALUATION_FOR_AUCTION   = "AUCTION";
+
+    /** How a valuer was picked. A manual override of the panel is the thing somebody asks about later. */
+    public static final String ASSIGN_ROUND_ROBIN = "ROUND_ROBIN";
+    public static final String ASSIGN_MANUAL      = "MANUAL";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -262,6 +290,8 @@ public final class AppConstant {
     public static final String AUDIT_DOCUMENT_UPLOAD  = "DOCUMENT_UPLOAD";
     public static final String AUDIT_KYC_SUBMITTED    = "KYC_SUBMITTED";
     public static final String AUDIT_KYC_DECIDED      = "KYC_DECIDED";
+    public static final String AUDIT_VALUATION_ASSIGN = "VALUATION_ASSIGNED";
+    public static final String AUDIT_VALUATION_REPORT = "VALUATION_REPORTED";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────

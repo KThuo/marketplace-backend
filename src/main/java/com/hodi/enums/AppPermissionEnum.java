@@ -216,6 +216,32 @@ public enum AppPermissionEnum {
      */
     KYC_REVIEW("Review and decide KYC packs", AppModuleEnum.KYC, true),
 
+    // ── VALUATIONS ────────────────────────────────────────────────────────────
+    VALUATIONS_VIEW("See valuations", AppModuleEnum.VALUATIONS),
+    /** Commissioning one. Held by the seller or the lender who needs the figure, never by the platform. */
+    VALUATIONS_REQUEST("Request a valuation", AppModuleEnum.VALUATIONS),
+    /**
+     * Putting a valuer on a job.
+     *
+     * <p>Platform-only, and the reason the panel is independent: a seller who could choose their own valuer
+     * would be choosing the figure, which is the thing a lender is relying on not being true.
+     */
+    VALUATIONS_ASSIGN("Assign a valuer to a job", AppModuleEnum.VALUATIONS, true),
+    VALUATIONS_CANCEL("Cancel a valuation", AppModuleEnum.VALUATIONS),
+    /**
+     * The valuer's own verbs: take it, hand it back, answer it.
+     *
+     * <p>In {@code VALUATION_WORK} rather than {@code VALUATIONS}, because that module admits only valuers
+     * and the platform. Left in {@code VALUATIONS} it reached every seller owner through the owner-group
+     * top-up — see the module's own note.
+     */
+    VALUATIONS_WORK("Accept, decline and report on assigned jobs", AppModuleEnum.VALUATION_WORK),
+
+    // ── VALUATION PANEL ───────────────────────────────────────────────────────
+    VALUER_PANEL_VIEW("See the valuation panel", AppModuleEnum.VALUER_PANEL),
+    VALUER_PANEL_MANAGE("Onboard valuers and manage panel membership",
+            AppModuleEnum.VALUER_PANEL, true),
+
     // ── AUDIT ─────────────────────────────────────────────────────────────────
     AUDIT_VIEW("See the audit trail", AppModuleEnum.AUDIT),
 

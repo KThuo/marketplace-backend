@@ -165,6 +165,11 @@ public class UserPrincipal implements UserDetails {
         return AppConstant.ACTOR_PLATFORM.equals(actorClass);
     }
 
+    /** A valuer on the panel. Sees the jobs assigned to them and nothing else — plan §3.5. */
+    public boolean isValuer() {
+        return AppConstant.ACTOR_VALUER.equals(actorClass);
+    }
+
     public boolean isSellerStaff() {
         return AppConstant.ACTOR_SELLER.equals(actorClass);
     }

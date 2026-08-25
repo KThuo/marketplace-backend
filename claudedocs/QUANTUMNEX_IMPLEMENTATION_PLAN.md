@@ -5,9 +5,9 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phases 0, 1 and 2 are built and verified** (§7–§14). M8 finished with the KYC policy, seller
-types and listing progress updates (§14). Sections 3.4–3.6 — Agent, Valuer, Vendor — remain planning, and
-**Phase 3 (M5 valuation, M6 auction) is next**.
+**Status:** **Phases 0, 1 and 2 are built and verified** (§7–§14). **Phase 3 has started**: M5 valuation
+landed with §3.5's assignment-scoped visibility and a fifth actor class (§15). Sections 3.4 and 3.6 — Agent
+and Vendor — remain planning; **M6 (auction) is next**.
 
 ---
 
@@ -157,7 +157,7 @@ evidence rather than decoration); `listing_agreement` generated on approval.
 Agent visibility is a third `TenantScope` mode: their own listings, plus client-owned listings where they are the
 acting agent.
 
-### 3.5 Valuer *(with M5)*
+### 3.5 Valuer *(with M5)* — **BUILT** (§15)
 
 New actor class `VALUER`; `valuer_profile` (panel membership, PI cover sum assured and expiry, active flag).
 
@@ -281,7 +281,7 @@ turn lands backend **and** frontend together.
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
 | **1** | **done** — M2 (listings, marketplace, shortlist, saved searches), M1 consent, M3 (products, affordability), M4 (enquiries, viewings, offers) | 6–8 |
 | **2** | **done** — M8: KYC + §3.9 vault (§13), seller types with a mandatory-KYC policy, and listing progress updates (§14). Listing CRUD, media and the approval queue had arrived early with M2 | 6–8 |
-| **3** | M5, M6 | 4–5 |
+| **3** | M5 **done** (§15) → M6 next | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
 | **5** | M12, M13, M15 | 5–6 |
 | **6** | M11 | 2–3 |
@@ -828,3 +828,62 @@ next login; `COMPNAY` was refused with *"Choose one of: INDIVIDUAL, COMPANY, SAC
 GOVERNMENT."*; two progress updates were created and only one published — the seller sees both with the draft
 marked, the public endpoint returns only the published one, and the listing page renders it as a timeline
 with the milestone and the percentage.
+
+
+---
+
+## 15. Phase 3 / M5 — valuation, and a fifth kind of actor
+
+The first actor whose visibility is neither "my organisation" nor "everything".
+
+### The divergence from §3.5, and why
+
+The plan sketched this as "{@code TenantScope.visibleIds()} gains an assignment source". It is
+`ValuationScope` instead, living beside the rows it governs.
+
+`TenantScope` answers exactly one question — *which organisations may this caller see* — and every module
+composes that against its own `tenant_id`. A valuer's rule is not about organisations at all: it is about a
+column that exists only on `valuation_requests`. Teaching the platform's central visibility primitive the
+name of one module's column would invite the next row-level actor to add a second, and the primitive would
+stop meaning one thing.
+
+What §3.5 was protecting is preserved and then some. A valuer holds **no organisation**, so
+`TenantScope.visibleIds()` is empty for them and every other module's lists are closed by construction —
+verified: a valuer gets 403 on listings and on enquiries, and sees exactly the one job assigned to them.
+
+### The PI rule (FR041)
+
+Enforced at assignment, on **both** paths. The panel skips a valuer whose cover is below the property's
+value; naming that valuer explicitly is refused with *"Kevin Mutiso's indemnity cover is below this
+property's value, so they cannot be assigned to it."* The manual path is where somebody would otherwise
+route around it, and "the administrator picked them" is not a defence when a claim exceeds the cover.
+
+Cover lapses on a date, so availability is computed rather than stored — and `unavailableReason` says which
+of the four rules failed, because a panel screen that showed "unavailable" without saying why generates a
+support call every time.
+
+### Other decisions
+
+- A **report is written once**. A second submission is refused: a corrected figure is a new valuation, not
+  an edit of one a lender has relied on.
+- **A viewing keeps two times; a valuation keeps two figures.** Market value and the forced-sale value a
+  lender actually lends against, with a CHECK keeping the second at or below the first.
+- **The platform cannot commission a valuation.** It runs the panel; a seller or a lender needs the figure.
+  Refused with a sentence rather than silently filed under nobody.
+- **Suspending a valuer leaves their open jobs with them.** Taking them away would leave a requester waiting
+  on somebody who has stopped looking.
+
+### Two defects found by building it
+
+1. **The actor-class CHECKs still enumerated four classes.** The seeder refused to insert the new user type
+   on boot — which is the constraint doing its job: introducing a fifth kind of actor should not be possible
+   by editing an enum alone. Both `user_types` and `user_profiles` were widened in one migration.
+
+2. **Every seller owner held the valuer's verbs.** The owner-group top-up grants every non-platform-only
+   permission whose module admits the user type, and `VALUATIONS` admits sellers so they can see what they
+   commissioned — so `VALUATIONS_WORK` reached them too. The service refused them and the screen offered
+   them, which is a permission model and a service disagreeing. Fixed in the matrix, where the codebase says
+   this rule belongs: a new `VALUATION_WORK` module admitting only valuers and the platform.
+
+3. **A valuer could read the whole panel** — every competitor's insurer, policy number, sum assured and
+   workload. `VALUER_PANEL_VIEW` is the door; the list is now scoped so a valuer sees one row, their own.

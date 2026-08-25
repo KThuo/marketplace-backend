@@ -121,6 +121,11 @@ public class UserProfile {
         return AppConstant.ACTOR_BUYER.equals(profileType);
     }
 
+    /** A valuer on the platform's panel. Carries no organisation; scoped by assignment (plan §3.5). */
+    public boolean isValuerActor() {
+        return AppConstant.ACTOR_VALUER.equals(profileType);
+    }
+
     /** True when Compliance has cleared this profile, or never needed to. */
     public boolean isKycCleared() {
         return AppConstant.KYC_NOT_REQUIRED.equals(kycStatus)
@@ -131,7 +136,9 @@ public class UserProfile {
     public String organisationLabel() {
         if (tenantName != null) return tenantName;
         if (institutionName != null) return institutionName;
-        return isBuyerActor() ? "Buyer" : "Platform";
+        if (isBuyerActor()) return "Buyer";
+        if (isValuerActor()) return "Valuer";
+        return "Platform";
     }
 
     /** Which idle window governs a session on this profile (plan section 5). */

@@ -220,6 +220,49 @@ public enum AppModuleEnum {
             true, 55,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER"),
 
+    /**
+     * Valuation jobs (M5).
+     *
+     * <p>Admits four populations that see four different things through one module — the platform runs the
+     * panel, a seller sees what they commissioned, a lender sees what they commissioned, and a valuer sees
+     * what was assigned to them. {@code ValuationScope} is what keeps those apart; the module matrix only
+     * decides who reaches the screen.
+     */
+    VALUATIONS("VALUATIONS", "Valuations",
+            "Valuation jobs, from request to signed report",
+            true, 60,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VALUER"),
+
+    /**
+     * The valuer's own workspace (M5).
+     *
+     * <p>Its own module, admitting only valuers and the platform, and the reason is a bug this caught: the
+     * owner-group top-up grants every non-platform-only permission whose module admits the user type — so
+     * putting {@code VALUATIONS_WORK} in the {@code VALUATIONS} module gave every seller owner the valuer's
+     * verbs. The service refused them, but the screen offered them, which is a permission model saying one
+     * thing and a service saying another.
+     *
+     * <p>The matrix is the right place to fix that, because it is the codebase's stated rule: a user type
+     * absent from a module's CSV cannot reach it however the permissions are granted.
+     */
+    VALUATION_WORK("VALUATION_WORK", "Valuer Workspace",
+            "Accepting, declining and reporting on assigned valuation jobs",
+            true, 62,
+            "SUPER_ADMIN,SUPPORT_ADMIN,VALUER"),
+
+    /**
+     * The panel itself (M5).
+     *
+     * <p>Platform-only, plus the valuer's own row. Who is on the panel, what their indemnity cover is worth
+     * and when it lapses is the platform's business — a seller choosing their own valuer would defeat the
+     * independence the whole module exists to provide.
+     */
+    VALUER_PANEL("VALUER_PANEL", "Valuation Panel",
+            "The valuers the platform will assign work to",
+            true, 61,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,VALUER"),
+
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,
