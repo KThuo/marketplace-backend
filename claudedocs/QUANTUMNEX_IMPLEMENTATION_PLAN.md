@@ -5,9 +5,9 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phase 0 and Phase 1 are built and verified** (§7–§12). **Phase 2 has started**: §3.3's KYC
-and §3.9's document vault landed together as M8's first slice (§13), which is also what made the KYC
-permission gate live for the first time. Sections 3.4–3.6 remain planning.
+**Status:** **Phases 0, 1 and 2 are built and verified** (§7–§14). M8 finished with the KYC policy, seller
+types and listing progress updates (§14). Sections 3.4–3.6 — Agent, Valuer, Vendor — remain planning, and
+**Phase 3 (M5 valuation, M6 auction) is next**.
 
 ---
 
@@ -280,7 +280,7 @@ turn lands backend **and** frontend together.
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
 | **1** | **done** — M2 (listings, marketplace, shortlist, saved searches), M1 consent, M3 (products, affordability), M4 (enquiries, viewings, offers) | 6–8 |
-| **2** | M8 — **slice 1 done** (KYC + §3.9 vault, §13). Listing CRUD, media and the approval queue arrived early with M2. Remaining: registration by seller type (including *when* KYC becomes mandatory), and listing progress updates | 6–8 |
+| **2** | **done** — M8: KYC + §3.9 vault (§13), seller types with a mandatory-KYC policy, and listing progress updates (§14). Listing CRUD, media and the approval queue had arrived early with M2 | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
 | **5** | M12, M13, M15 | 5–6 |
@@ -777,3 +777,54 @@ seller's effective set; a fresh pack allowed after rejection; approval restoring
    list. Deciding when clearance becomes a precondition — at onboarding, per seller type, above a listing
    count — is a policy question for the registration slice. The machinery to enforce whatever it answers is
    already in place and now demonstrably works.
+
+
+---
+
+## 14. Phase 2 / M8, second slice — the policy, and progress updates
+
+The two things §13 left open.
+
+### KYC becomes mandatory, as a configuration row
+
+The gate worked; what was missing was a statement of *when* it applies. `kyc.required.seller.types` names
+the seller types covered, and `KycPolicy` applies it **at the moment a seller type is set** rather than
+re-deriving it on every permission resolution — the resolver runs on every login and refresh, and making it
+read a configuration string and a tenant row would put two more queries on the hottest path in the
+application to answer a question that changes when somebody edits an organisation.
+
+The write is one-directional: a profile moves from `NOT_REQUIRED` into `PENDING`, never the other way. An
+already-approved organisation is left alone when its type is edited, and a type that stops being covered does
+not silently clear anybody — withdrawing a requirement is not the same as passing it, and that reversal
+should be a Compliance decision with a name on it.
+
+`NOT_REQUIRED` and `PENDING` are deliberately distinct: the first means nobody asked, which is honest for a
+platform administrator and for a seller onboarded before the policy existed; the second means the platform
+asked and is waiting. Collapsing them would make "we changed the rules" indistinguishable from "you have not
+answered".
+
+**Seller types are now the six**, with a CHECK on the column and a sentence from the service — and they are
+the same six the KYC requirement catalogue is keyed by, because a type with no checklist is a seller who can
+never be cleared.
+
+### Progress updates
+
+`listing_progress_updates` (BRD FR087–FR089), for off-plan property where the gap between listing and
+completion is measured in years. Drafted then published, like a mortgage product going on offer. The date is
+**when the work happened**, not when the post was written, so a developer catching up on three months of
+photographs produces a timeline in the order of the work.
+
+The photograph goes through the *ordinary* media store, not the vault — this is marketing, and being able to
+say which store a thing belongs in is the point of having two.
+
+The public timeline is a separate query from the seller's, not the same one filtered: there is no path that
+can return a draft by forgetting a condition. It is also fetched separately from the listing payload, since
+most listings have none and a detail page should not carry an empty array for every finished apartment.
+
+### Behaviour verified
+
+Setting Baobab Homes to `DEVELOPER` removed `PROPERTIES_CREATE` from its owner's effective permissions on the
+next login; `COMPNAY` was refused with *"Choose one of: INDIVIDUAL, COMPANY, SACCO, DEVELOPER, AGENCY,
+GOVERNMENT."*; two progress updates were created and only one published — the seller sees both with the draft
+marked, the public endpoint returns only the published one, and the listing page renders it as a timeline
+with the milestone and the percentage.

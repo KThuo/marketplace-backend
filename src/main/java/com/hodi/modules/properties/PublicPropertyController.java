@@ -26,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 public class PublicPropertyController {
 
     private final PublicPropertyService service;
+    private final ProgressUpdateService progressUpdates;
 
     @GetMapping("/search")
     public ApiResponse<PagedResponse<PublicPropertyResponse>> search(
@@ -47,5 +48,17 @@ public class PublicPropertyController {
     @GetMapping("/{reference}")
     public ApiResponse<PublicPropertyResponse> detail(@PathVariable String reference) {
         return ApiResponse.success(service.findByReference(reference));
+    }
+
+    /**
+     * The build's published timeline.
+     *
+     * <p>Separate from the listing's own payload rather than embedded in it: most listings have none, and a
+     * detail page should not carry an empty array for every completed apartment on the marketplace.
+     */
+    @GetMapping("/{reference}/progress")
+    public ApiResponse<java.util.List<ProgressUpdateService.PublicUpdate>> progress(
+            @PathVariable String reference) {
+        return ApiResponse.success(progressUpdates.published(reference));
     }
 }

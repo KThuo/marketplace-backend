@@ -265,6 +265,25 @@ public enum ConfigKey {
             "ocp.api.key", "STRING", "AFFORDABILITY", "",
             "OCP API key", "Credential for the credit microservice.", true, false),
 
+    /**
+     * The seller types for which clearance is a precondition to listing.
+     *
+     * <p>The policy statement §13 left open. The machinery was already there — {@code
+     * EffectivePermissionResolver} drops the listing permissions for any profile whose {@code kyc_status}
+     * does not clear — and what was missing was a statement of *when* that applies.
+     *
+     * <p>Applied at the moment a seller type is set, not re-derived on every permission resolution: a
+     * tenant given a listed type has its people moved from {@code NOT_REQUIRED} (never asked) to {@code
+     * PENDING} (asked, not yet cleared), and PENDING is what fails the gate. Empty means nothing is
+     * mandatory, which is the setting to reach for while onboarding a market rather than a code change.
+     */
+    KYC_REQUIRED_SELLER_TYPES(
+            "kyc.required.seller.types", "STRING", "GENERAL",
+            "INDIVIDUAL,COMPANY,SACCO,DEVELOPER,AGENCY,GOVERNMENT",
+            "Seller types needing KYC",
+            "Comma-separated seller types that must be cleared by Compliance before they can list. "
+                    + "Empty means nobody is blocked.", false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

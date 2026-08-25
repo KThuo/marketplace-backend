@@ -34,6 +34,7 @@ import java.util.List;
 public class PropertyController {
 
     private final PropertyService service;
+    private final ProgressUpdateService progressUpdates;
     private final PropertyMediaService mediaService;
 
     @GetMapping("/list")
@@ -127,5 +128,73 @@ public class PropertyController {
     public ApiResponse<Void> removeMedia(@PathVariable String hashId, @PathVariable String mediaId) {
         mediaService.remove(hashId, mediaId);
         return ApiResponse.success("Photograph removed", null);
+    }
+
+    // ── progress updates (M8, BRD FR087–FR089) ────────────────────────────────
+
+    /**
+     * The build's timeline, as its seller sees it — drafts included.
+     *
+     * <p>Gated on the listing permissions rather than a set of its own: a progress update is part of the
+     * listing, and somebody who may edit the listing may say how the work is going.
+     */
+    @GetMapping("/{hashId}/progress")
+    @PreAuthorize("hasAuthority('PROPERTIES_VIEW')")
+    public ApiResponse<java.util.List<ProgressUpdateService.UpdateResponse>> progress(
+            @PathVariable String hashId) {
+        return ApiResponse.success(progressUpdates.forSeller(hashId));
+    }
+
+    @PostMapping("/{hashId}/progress")
+    @PreAuthorize("hasAuthority('PROPERTIES_UPDATE')")
+    @RequestAction("ADD PROGRESS UPDATE")
+    public ApiResponse<ProgressUpdateService.UpdateResponse> addProgress(
+            @PathVariable String hashId,
+            @jakarta.validation.Valid @RequestBody ProgressUpdateService.SaveUpdateRequest request) {
+        return ApiResponse.success("Added", progressUpdates.create(hashId, request));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}")
+    @PreAuthorize("hasAuthority('PROPERTIES_UPDATE')")
+    @RequestAction("EDIT PROGRESS UPDATE")
+    public ApiResponse<ProgressUpdateService.UpdateResponse> editProgress(
+            @PathVariable String hashId, @PathVariable String updateId,
+            @jakarta.validation.Valid @RequestBody ProgressUpdateService.SaveUpdateRequest request) {
+        return ApiResponse.success("Saved", progressUpdates.update(hashId, updateId, request));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}/photo")
+    @PreAuthorize("hasAuthority('PROPERTIES_MEDIA')")
+    @RequestAction("ADD PROGRESS PHOTO")
+    public ApiResponse<ProgressUpdateService.UpdateResponse> progressPhoto(
+            @PathVariable String hashId, @PathVariable String updateId,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ApiResponse.success("Photograph added",
+                progressUpdates.attachPhoto(hashId, updateId, file));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}/publish")
+    @PreAuthorize("hasAuthority('PROPERTIES_UPDATE')")
+    @RequestAction("PUBLISH PROGRESS UPDATE")
+    public ApiResponse<ProgressUpdateService.UpdateResponse> publishProgress(
+            @PathVariable String hashId, @PathVariable String updateId) {
+        return ApiResponse.success("Buyers can see it", progressUpdates.setPublished(hashId, updateId, true));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}/unpublish")
+    @PreAuthorize("hasAuthority('PROPERTIES_UPDATE')")
+    @RequestAction("UNPUBLISH PROGRESS UPDATE")
+    public ApiResponse<ProgressUpdateService.UpdateResponse> unpublishProgress(
+            @PathVariable String hashId, @PathVariable String updateId) {
+        return ApiResponse.success("Hidden again",
+                progressUpdates.setPublished(hashId, updateId, false));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}/delete")
+    @PreAuthorize("hasAuthority('PROPERTIES_UPDATE')")
+    @RequestAction("ARCHIVE PROGRESS UPDATE")
+    public ApiResponse<Void> archiveProgress(@PathVariable String hashId, @PathVariable String updateId) {
+        progressUpdates.archive(hashId, updateId);
+        return ApiResponse.success("Removed", null);
     }
 }

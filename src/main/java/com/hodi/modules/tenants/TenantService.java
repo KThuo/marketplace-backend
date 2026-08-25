@@ -21,6 +21,7 @@ import com.hodi.modules.usertypes.UserType;
 import com.hodi.modules.usertypes.UserTypeRepository;
 import com.hodi.modules.appmodules.AppModule;
 import com.hodi.modules.appmodules.AppModuleRepository;
+import com.hodi.modules.kyc.KycPolicy;
 import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.permissions.Permission;
 import com.hodi.modules.permissions.PermissionRepository;
@@ -84,6 +85,7 @@ public class TenantService {
     private final AppModuleRepository appModules;
     private final PartnershipRepository partnerships;
     private final TenantModuleService tenantModules;
+    private final KycPolicy kycPolicy;
     private final PasswordService passwords;
     private final RefreshTokenService refreshTokens;
     private final AuditService audit;
@@ -190,7 +192,7 @@ public class TenantService {
                 .name(request.name().trim())
                 .slug(slug)
                 .tenantRef(uniqueRef())
-                .sellerType(blankToNull(request.sellerType()))
+                .sellerType(kycPolicy.normalise(request.sellerType()))
                 .contactName(request.ownerFirstName().trim() + " " + request.ownerLastName().trim())
                 .contactEmail(ownerEmail)
                 .contactPhone(blankToNull(request.ownerPhone()))
@@ -212,6 +214,15 @@ public class TenantService {
         UserGroup ownerGroup = createOwnerGroup(tenant);
         String temporary = temporaryPassword();
         User owner = createOwner(tenant, ownerGroup, request, ownerEmail, temporary);
+
+        /*
+         * The KYC policy, applied after the owner's profile exists — there is nothing to move before that.
+         *
+         * A seller of a covered type starts at PENDING rather than NOT_REQUIRED, which means they cannot
+         * list until Compliance clears them. That is the point: the alternative is an organisation that can
+         * publish property to the public before anybody has checked who they are.
+         */
+        kycPolicy.applyTo(tenant.getId(), tenant.getSellerType());
 
         audit.record(AppConstant.ACTION_CREATE, "Tenant", tenant.getId(), null, snapshot(tenant));
         log.info("Onboarded seller {} ({}) with {} core modules and owner {}",
@@ -314,7 +325,7 @@ public class TenantService {
 
         boolean renamed = !tenant.getName().equals(request.name().trim());
         tenant.setName(request.name().trim());
-        tenant.setSellerType(blankToNull(request.sellerType()));
+        tenant.setSellerType(kycPolicy.normalise(request.sellerType()));
         tenant.setContactName(blankToNull(request.contactName()));
         tenant.setContactEmail(request.contactEmail() == null || request.contactEmail().isBlank()
                 ? null : request.contactEmail().trim().toLowerCase());
@@ -341,6 +352,9 @@ public class TenantService {
             // One writer for the label cache, in the owning service — the denormalisation rule.
             profiles.renameTenantLabel(saved.getId(), saved.getName());
         }
+        // A type set or changed here is the other moment the policy applies. It only ever moves people from
+        // "never asked" into "asked" — an already-cleared organisation is left alone.
+        kycPolicy.applyTo(saved.getId(), saved.getSellerType());
         audit.record(AppConstant.ACTION_UPDATE, "Tenant", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
