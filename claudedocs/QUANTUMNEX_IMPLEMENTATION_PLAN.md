@@ -887,3 +887,90 @@ support call every time.
 
 3. **A valuer could read the whole panel** — every competitor's insurer, policy number, sum assured and
    workload. `VALUER_PANEL_VIEW` is the door; the list is now scoped so a valuer sees one row, their own.
+
+---
+
+## 16. Phase 3 / M6 — auction, and what isolation costs
+
+**BRD:** UC006. **Plan:** §4.
+
+Auction stock must never appear in buyer search. §4 said that exclusion "is a different query path, not a
+flag", and this module is where that sentence had to be paid for.
+
+### A lot is not a listing
+
+`auction_lots` is its own table with **no foreign key to `properties`**. That is the whole isolation
+mechanism: the marketplace cannot return a lot because a lot is not in the table the marketplace reads. A
+flag on `properties` would have meant every public query remembering to exclude it, forever, including the
+ones nobody has written yet.
+
+It is also honestly a different thing. A listing has an asking price and an owner who wants to sell. A lot
+has a guide price, a reserve nobody outside the room may see, a date, a venue, an auctioneer with a licence,
+and usually a lender exercising a statutory power of sale — the borrower is not the one bringing it. Sharing
+a table would have meant a dozen columns null for every listing and mandatory for every lot.
+
+The cost is duplication: county, town, title number, bedrooms, an image, a `search_text` and a GIN index all
+exist twice. That is the price of the guarantee, and it is worth it — the alternative is a filter somebody
+eventually forgets.
+
+Verified: the lot 404s on the marketplace by reference, a "Ruaka" search returns 0, no `AU`-prefixed
+reference appears among the 14 listings, and the whole flow (edit → save → publish → catalogue) puts a lot
+in the public catalogue without putting it in buyer search.
+
+### The reserve is the reason there are two records
+
+`LotResponse` carries `reservePrice`; `PublicLot` **does not have the field**. A reserve reaching bidders
+tells them exactly where to stop, which is the one number an auction depends on nobody knowing. Two records
+rather than one blanked field, for the same reason the listing address split exists: a response that
+sometimes carries a reserve is one somebody will eventually forget to blank. Verified — `reservePrice` is
+absent from the public JSON entirely, not null.
+
+Two CHECKs guard the pair: the reserve must be at or above the guide, and a `SCHEDULED` lot must have a
+date, an auctioneer and a `published_at`.
+
+The lot management screen marks the reserve in warning colour beside a padlock. Somebody will have that
+screen open in a room with bidders in it.
+
+### The platform does not conduct the auction
+
+`auction_registrations` records that somebody asked to be allowed to bid and whether the auctioneer
+approved them. There is no bidding. The bidding happens in a room, and a platform that implied otherwise
+would be making a promise about a legal process it does not run. The deposit is likewise a *claim* —
+`deposit_confirmed` stays false until somebody with a licence says otherwise, because the platform never
+takes the money.
+
+One live registration per person per lot, by partial unique index. Registering twice is a duplicate, not a
+second bidder.
+
+### The public catalogue explains itself
+
+A first-time bidder does not know that a guide price is not an asking price, that there is a reserve they
+will never see, or that they must lodge a deposit before the day. The catalogue leads with a panel saying
+all three. Withholding that would make the page technically accurate and practically misleading.
+
+### The defect building it surfaced
+
+**The auctioneer register was platform-only, and that made publishing impossible.** `AUCTIONEERS` admitted
+only platform staff, reasoning that whoever benefits from a sale should not be the one confirming the
+auctioneer's licence. Correct about *maintaining* the register, wrong about *reading* it: a lot cannot be
+published without naming an auctioneer, so every lender got an empty picker and no way to publish anything
+at all — a dead end no error message would have explained.
+
+The invariant that mattered is carried by the permission, not the module. `AUCTIONEERS_MANAGE` is
+`platformOnly`, so widening the module lets a principal see who is licensed while adding, editing and
+deactivating stay with the platform. `AUCTIONEERS_VIEW` is not platform-only, so the owner-group top-up
+handed it to existing organisations on the next boot — verified in the log, three owner groups gained
+exactly one permission each.
+
+`allowed_user_types` is deliberately not re-seeded once the row exists (it is the super admin's to edit at
+runtime), so this needed a migration as well as the enum default, and the migration only touches rows nobody
+has since edited themselves.
+
+### Saying no before the click
+
+Publishing checks four things the server also checks — a future date, a venue, a named auctioneer, and a
+current licence. The button is disabled with the reason beside it. This is not duplicated validation so much
+as the difference between "fix the date" and "something went wrong"; a lapsed licence in particular is not
+something a reader would guess from a name. The auctioneer picker carries the same fact in each option's
+hint, and the register warns about licences expiring within ninety days rather than only reporting them
+after they lapse.

@@ -469,7 +469,7 @@ public class SeederService {
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW", "VALUATIONS_VIEW",
-                "VALUER_PANEL_VIEW"));
+                "VALUER_PANEL_VIEW", "AUCTIONS_VIEW", "AUCTIONEERS_VIEW"));
 
         int touched = 0;
         for (var entry : byType.entrySet()) {

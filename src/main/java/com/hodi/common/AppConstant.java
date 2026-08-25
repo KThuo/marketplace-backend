@@ -237,6 +237,22 @@ public final class AppConstant {
     public static final String ASSIGN_ROUND_ROBIN = "ROUND_ROBIN";
     public static final String ASSIGN_MANUAL      = "MANUAL";
 
+    // ── Auction (M6, BRD UC006) ──────────────────────────────────────────────
+    // A lot's life. SCHEDULED is the only state a member of the public ever sees — and it is a state on a
+    // table the marketplace does not read, which is what UC006's isolation actually means here.
+    public static final String LOT_DRAFT      = "DRAFT";
+    public static final String LOT_SCHEDULED  = "SCHEDULED";
+    public static final String LOT_SOLD       = "SOLD";
+    /** Went to auction and did not meet its reserve. */
+    public static final String LOT_UNSOLD     = "UNSOLD";
+    public static final String LOT_WITHDRAWN  = "WITHDRAWN";
+    public static final String LOT_POSTPONED  = "POSTPONED";
+
+    public static final String BIDDER_REGISTERED = "REGISTERED";
+    public static final String BIDDER_APPROVED   = "APPROVED";
+    public static final String BIDDER_REJECTED   = "REJECTED";
+    public static final String BIDDER_WITHDRAWN  = "WITHDRAWN";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -292,6 +308,9 @@ public final class AppConstant {
     public static final String AUDIT_KYC_DECIDED      = "KYC_DECIDED";
     public static final String AUDIT_VALUATION_ASSIGN = "VALUATION_ASSIGNED";
     public static final String AUDIT_VALUATION_REPORT = "VALUATION_REPORTED";
+    public static final String AUDIT_LOT_PUBLISHED    = "LOT_PUBLISHED";
+    public static final String AUDIT_LOT_RESULT       = "LOT_RESULT";
+    public static final String AUDIT_BIDDER_DECIDED   = "BIDDER_DECIDED";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────

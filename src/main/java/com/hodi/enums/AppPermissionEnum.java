@@ -242,6 +242,26 @@ public enum AppPermissionEnum {
     VALUER_PANEL_MANAGE("Onboard valuers and manage panel membership",
             AppModuleEnum.VALUER_PANEL, true),
 
+    // ── AUCTIONS ──────────────────────────────────────────────────────────────
+    AUCTIONS_VIEW("See auction lots", AppModuleEnum.AUCTIONS),
+    AUCTIONS_CREATE("Create an auction lot", AppModuleEnum.AUCTIONS),
+    AUCTIONS_UPDATE("Change an auction lot", AppModuleEnum.AUCTIONS),
+    /**
+     * Putting a lot in the public catalogue.
+     *
+     * <p>Its own code, like publishing a mortgage product: a published lot is a public notice of a sale, and
+     * drafting one is not the same act as announcing it.
+     */
+    AUCTIONS_PUBLISH("Publish or withdraw an auction lot", AppModuleEnum.AUCTIONS),
+    /** Recording what the lot fetched, or that it did not sell. */
+    AUCTIONS_RESULT("Record an auction result", AppModuleEnum.AUCTIONS),
+    /** Approving or refusing somebody who has asked to bid. */
+    AUCTIONS_BIDDERS("Decide bidder registrations", AppModuleEnum.AUCTIONS),
+
+    // ── AUCTIONEERS ───────────────────────────────────────────────────────────
+    AUCTIONEERS_VIEW("See the auctioneers", AppModuleEnum.AUCTIONEERS),
+    AUCTIONEERS_MANAGE("Add and maintain auctioneers", AppModuleEnum.AUCTIONEERS, true),
+
     // ── AUDIT ─────────────────────────────────────────────────────────────────
     AUDIT_VIEW("See the audit trail", AppModuleEnum.AUDIT),
 

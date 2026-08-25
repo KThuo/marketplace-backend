@@ -263,6 +263,35 @@ public enum AppModuleEnum {
             true, 61,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,VALUER"),
 
+    /**
+     * Auction (M6, BRD UC006).
+     *
+     * <p>Lenders realising security, sellers consigning stock, and the platform that publishes the
+     * catalogue. Buyers are absent for the usual reason: registering to bid is identity-scoped under
+     * {@code /me} and needs no permission, and browsing the catalogue needs no account at all.
+     */
+    AUCTIONS("AUCTIONS", "Auctions",
+            "Lots going to auction, the catalogue, and who has registered to bid",
+            true, 65,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+
+    /**
+     * The auctioneers the platform will list a sale under.
+     *
+     * <p>Readable by anyone who brings a lot, maintained only by the platform. A lot cannot be published
+     * without naming an auctioneer, so a principal has to be able to see who is on the register and whose
+     * licence is current — but a licence that has lapsed makes a sale voidable, and whoever benefits from the
+     * sale should not be the one confirming it. That line is held by {@code AUCTIONEERS_MANAGE} being
+     * platform-only rather than by the module refusing the type: reading the register and writing it are
+     * different things, and the first version conflated them into a picker no lender could fill.
+     */
+    AUCTIONEERS("AUCTIONEERS", "Auctioneers",
+            "Licensed auctioneers the platform will publish a sale under",
+            true, 66,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,
