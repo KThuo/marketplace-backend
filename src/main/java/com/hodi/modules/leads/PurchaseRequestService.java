@@ -1,0 +1,259 @@
+package com.hodi.modules.leads;
+
+import com.hodi.common.AppConstant;
+import com.hodi.common.PagedResponse;
+import com.hodi.common.RefGenerator;
+import com.hodi.common.exception.HodiException;
+import com.hodi.common.exception.ResourceNotFoundException;
+import com.hodi.common.util.SearchSpecs;
+import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.leads.LeadDtos.*;
+import com.hodi.modules.properties.Property;
+import com.hodi.modules.properties.PropertyRepository;
+import com.hodi.modules.users.User;
+import com.hodi.modules.users.UserRepository;
+import com.hodi.security.TenantScope;
+import com.hodi.security.principal.AuthContext;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.text.NumberFormat;
+import java.time.OffsetDateTime;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Offers (M4, BRD FR045–FR048).
+ *
+ * <h2>The end of the funnel, and not a contract</h2>
+ *
+ * <p>Accepting an offer here tells a buyer a seller is willing to proceed. It transfers nothing, binds
+ * nobody and does not take the listing off the marketplace — conveyancing is not on this platform, and a
+ * screen that implied otherwise would be making a promise the software cannot keep. The listing's own
+ * {@code SOLD} state is a separate act by the seller, when it is actually sold.
+ *
+ * <h2>One live offer at a time</h2>
+ *
+ * <p>A buyer with an outstanding offer who wants to change it is changing that one. A second row would give
+ * the seller two figures from the same person with nothing saying which is current. The partial unique index
+ * enforces it; the check here is what turns the refusal into a sentence.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class PurchaseRequestService {
+
+    private static final String REFERENCE_PREFIX = "OF";
+
+    private static final Set<String> FINANCING = Set.of(
+            AppConstant.FINANCING_CASH, AppConstant.FINANCING_MORTGAGE,
+            AppConstant.FINANCING_PART_EXCHANGE);
+
+    private final PurchaseRequestRepository repository;
+    private final PropertyRepository properties;
+    private final UserRepository users;
+    private final AuditService audit;
+    private final LeadNotifier notifier;
+
+    // ── the buyer's side ──────────────────────────────────────────────────────
+
+    @Transactional
+    public OfferResponse submit(SubmitOfferRequest request) {
+        Long userId = AuthContext.requireUserId();
+        User buyer = users.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        Property property = properties.findLiveByReference(EnquiryService.trim(request.propertyReference()))
+                .orElseThrow(() -> new ResourceNotFoundException("Listing", request.propertyReference()));
+
+        repository.findLiveFor(userId, property.getId()).ifPresent(existing -> {
+            throw new HodiException(
+                    "You already have an offer of " + money(existing.getOfferAmount(),
+                            existing.getCurrency()) + " outstanding on this property. Change or withdraw "
+                            + "that one first.", HttpStatus.CONFLICT);
+        });
+
+        PurchaseRequest offer = repository.save(PurchaseRequest.builder()
+                .reference(nextReference())
+                .tenantId(property.getTenantId())
+                .tenantName(property.getTenantName())
+                .propertyId(property.getId())
+                .propertyReference(property.getReference())
+                .propertyTitle(property.getTitle())
+                .askingPrice(property.getPrice())
+                .userId(userId)
+                .buyerName(buyer.fullName())
+                .buyerEmail(buyer.getEmail())
+                .buyerPhone(EnquiryService.blankTo(request.contactPhone(), buyer.getPhone()))
+                .offerAmount(request.offerAmount())
+                .currency(property.getCurrency())
+                .financing(financing(request.financing()))
+                .affordabilityReference(EnquiryService.blankToNull(request.affordabilityReference()))
+                .productReference(EnquiryService.blankToNull(request.productReference()))
+                .depositAvailable(request.depositAvailable())
+                .buyerMessage(EnquiryService.blankToNull(request.message()))
+                .createdBy(buyer.getUsername())
+                .updatedBy(buyer.getUsername())
+                .build());
+
+        audit.record(AppConstant.AUDIT_OFFER_SUBMITTED, "PurchaseRequest", offer.getId(), null,
+                offer.getReference() + " on " + property.getReference());
+        notifier.toSeller(property.getTenantId(),
+                "Offer on " + property.getTitle(),
+                buyer.fullName() + " has offered " + money(request.offerAmount(), property.getCurrency())
+                        + " for " + property.getTitle() + " (asking "
+                        + money(property.getPrice(), property.getCurrency()) + ").",
+                "/app/offers?ref=" + offer.getReference());
+
+        return toResponse(offer);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<OfferResponse> mine(OfferListRequest request) {
+        var page = repository.findMine(AuthContext.requireUserId(),
+                request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
+        return PagedResponse.from(page, this::toResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public long myCount() {
+        return repository.countByUserId(AuthContext.requireUserId());
+    }
+
+    @Transactional
+    public OfferResponse withdraw(String reference) {
+        PurchaseRequest offer = repository
+                .findMineByReference(EnquiryService.trim(reference), AuthContext.requireUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Offer", reference));
+        if (!offer.isLive()) {
+            throw new HodiException("That offer has already been settled.", HttpStatus.CONFLICT);
+        }
+
+        offer.setState(AppConstant.PURCHASE_WITHDRAWN);
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+
+        notifier.toSeller(offer.getTenantId(),
+                "Offer withdrawn: " + offer.getPropertyTitle(),
+                offer.getBuyerName() + " has withdrawn their offer on " + offer.getPropertyTitle() + ".",
+                "/app/offers?ref=" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    // ── the seller's side ─────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public PagedResponse<OfferResponse> list(OfferListRequest request) {
+        Specification<PurchaseRequest> spec = SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                SearchSpecs.fuzzy("searchText", request.getSearch()),
+                SearchSpecs.eq("state", EnquiryService.blankToNull(request.getState())),
+                SearchSpecs.eq("propertyReference",
+                        EnquiryService.blankToNull(request.getPropertyReference())),
+                TenantScope.restrict("tenantId"));
+
+        return PagedResponse.from(
+                repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"))),
+                this::toResponse);
+    }
+
+    /**
+     * Accept, decline, or mark as being looked at.
+     *
+     * <p>{@code REVIEW} exists because a seller who has seen an offer and not yet answered it is in a state
+     * the buyer deserves to be told about — "submitted" for a week reads as ignored, and the commonest
+     * complaint about offer funnels is silence rather than refusal.
+     */
+    @Transactional
+    public OfferResponse decide(String reference, DecideOfferRequest request) {
+        PurchaseRequest offer = loadForSeller(reference);
+        if (!offer.isLive()) {
+            throw new HodiException("That offer has already been settled.", HttpStatus.CONFLICT);
+        }
+
+        String decision = EnquiryService.trim(request.decision()).toUpperCase();
+        String line;
+        switch (decision) {
+            case "REVIEW" -> {
+                offer.setState(AppConstant.PURCHASE_UNDER_REVIEW);
+                line = offer.getTenantName() + " is considering your offer on " + offer.getPropertyTitle()
+                        + ".";
+            }
+            case "ACCEPT" -> {
+                offer.setState(AppConstant.PURCHASE_ACCEPTED);
+                offer.setDecidedAt(OffsetDateTime.now());
+                line = offer.getTenantName() + " has accepted your offer of "
+                        + money(offer.getOfferAmount(), offer.getCurrency()) + " for "
+                        + offer.getPropertyTitle() + ". They will be in touch about what happens next.";
+            }
+            case "DECLINE" -> {
+                offer.setState(AppConstant.PURCHASE_DECLINED);
+                offer.setDecidedAt(OffsetDateTime.now());
+                line = offer.getTenantName() + " has declined your offer on " + offer.getPropertyTitle()
+                        + ".";
+            }
+            default -> throw new HodiException("Say whether you are accepting, declining or reviewing.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        offer.setDecisionNote(EnquiryService.blankToNull(request.note()));
+        if (offer.getDecidedAt() != null) offer.setDecidedByUserId(AuthContext.userId());
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+
+        audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
+                offer.getReference() + " " + offer.getState());
+        notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(), line,
+                "/account/offers?ref=" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    @Transactional(readOnly = true)
+    public long liveForCaller() {
+        Long tenantId = TenantScope.ownTenantId();
+        return tenantId == null ? 0 : repository.countLive(tenantId);
+    }
+
+    // ── internals ─────────────────────────────────────────────────────────────
+
+    private PurchaseRequest loadForSeller(String reference) {
+        PurchaseRequest offer = repository.findByReference(EnquiryService.trim(reference))
+                .orElseThrow(() -> new ResourceNotFoundException("Offer", reference));
+        TenantScope.assertAllowed(offer.getTenantId());
+        return offer;
+    }
+
+    private static String financing(String requested) {
+        String value = requested == null ? "" : requested.trim().toUpperCase();
+        return FINANCING.contains(value) ? value : AppConstant.FINANCING_MORTGAGE;
+    }
+
+    private static String money(BigDecimal amount, String currency) {
+        if (amount == null) return "";
+        return (currency == null ? "KES" : currency) + " "
+                + NumberFormat.getIntegerInstance(Locale.UK).format(amount);
+    }
+
+    private OfferResponse toResponse(PurchaseRequest p) {
+        return new OfferResponse(
+                p.getReference(), p.getPropertyReference(), p.getPropertyTitle(), p.getTenantName(),
+                p.getAskingPrice(), p.getBuyerName(), p.getBuyerEmail(), p.getBuyerPhone(),
+                p.getOfferAmount(), p.getCurrency(), p.getFinancing(), p.getAffordabilityReference(),
+                p.getProductReference(), p.getDepositAvailable(), p.getBuyerMessage(), p.getState(),
+                p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt());
+    }
+
+    private String nextReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String reference = RefGenerator.getInstance().generate(REFERENCE_PREFIX);
+            if (!repository.existsByReference(reference)) return reference;
+        }
+        throw new HodiException("Could not allocate a reference. Try again.",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+}

@@ -431,8 +431,18 @@ public class SeederService {
          * The first version gave the seller agents TENANT_SELF_VIEW, whose module did not admit them, and the
          * clone endpoint was where it surfaced.
          */
-        byType.put("LISTING_MANAGER", List.of("DASHBOARD_VIEW"));
-        byType.put("SALES_AGENT", List.of("DASHBOARD_VIEW"));
+        // The leads a listing manager works day to day (M4). Deciding an offer is not here: it is the
+        // most consequential thing a seller organisation grants, and a default template should not hand it
+        // to everybody who can edit a listing.
+        byType.put("LISTING_MANAGER", List.of(
+                "DASHBOARD_VIEW", "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_ASSIGN",
+                "ENQUIRIES_CLOSE", "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
+                "PURCHASE_REQUESTS_VIEW"));
+        // An agent answers questions and shows people round. The offers module does not admit them at all,
+        // so PURCHASE_REQUESTS_VIEW here would be a permission their user type could never hold.
+        byType.put("SALES_AGENT", List.of(
+                "DASHBOARD_VIEW", "ENQUIRIES_VIEW", "ENQUIRIES_REPLY",
+                "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE"));
         // Reading the catalogue, not writing it. An officer quoting a rate to a buyer needs to see the
         // products; changing one is the administrator's, and publishing one is separate again.
         byType.put("MORTGAGE_OFFICER", List.of(
@@ -447,7 +457,7 @@ public class SeederService {
         // kind of user" the first time anybody tried to clone it.
         byType.put("SUPPORT_ADMIN", List.of(
                 "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
-                "PARTNERSHIPS_VIEW"));
+                "PARTNERSHIPS_VIEW", "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW"));

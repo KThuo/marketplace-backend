@@ -181,6 +181,27 @@ public enum AppPermissionEnum {
      */
     AFFORDABILITY_VIEW("See affordability checks", AppModuleEnum.AFFORDABILITY, true),
 
+    // ── ENQUIRIES ─────────────────────────────────────────────────────────────
+    ENQUIRIES_VIEW("See enquiries", AppModuleEnum.ENQUIRIES),
+    ENQUIRIES_REPLY("Reply to an enquiry", AppModuleEnum.ENQUIRIES),
+    /** Handing a conversation to a colleague. Separate because it changes whose work it is. */
+    ENQUIRIES_ASSIGN("Assign an enquiry to somebody", AppModuleEnum.ENQUIRIES),
+    ENQUIRIES_CLOSE("Close an enquiry", AppModuleEnum.ENQUIRIES),
+
+    // ── VIEWINGS ──────────────────────────────────────────────────────────────
+    SITE_VISITS_VIEW("See viewing requests", AppModuleEnum.SITE_VISITS),
+    /** Confirming a time, offering another, or declining. All one act from the buyer's side. */
+    SITE_VISITS_DECIDE("Confirm, move or decline a viewing", AppModuleEnum.SITE_VISITS),
+    SITE_VISITS_COMPLETE("Record what happened at a viewing", AppModuleEnum.SITE_VISITS),
+
+    // ── OFFERS ────────────────────────────────────────────────────────────────
+    PURCHASE_REQUESTS_VIEW("See offers", AppModuleEnum.PURCHASE_REQUESTS),
+    /**
+     * Accepting or declining an offer. The most consequential permission a seller organisation grants:
+     * whoever holds it can tell a buyer their offer on a house has been accepted.
+     */
+    PURCHASE_REQUESTS_DECIDE("Accept or decline an offer", AppModuleEnum.PURCHASE_REQUESTS),
+
     // ── AUDIT ─────────────────────────────────────────────────────────────────
     AUDIT_VIEW("See the audit trail", AppModuleEnum.AUDIT),
 

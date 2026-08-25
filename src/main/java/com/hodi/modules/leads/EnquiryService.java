@@ -1,0 +1,318 @@
+package com.hodi.modules.leads;
+
+import com.hodi.common.AppConstant;
+import com.hodi.common.PagedResponse;
+import com.hodi.common.RefGenerator;
+import com.hodi.common.exception.HodiException;
+import com.hodi.common.exception.ResourceNotFoundException;
+import com.hodi.common.util.SearchSpecs;
+import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.leads.LeadDtos.*;
+import com.hodi.modules.properties.Property;
+import com.hodi.modules.properties.PropertyRepository;
+import com.hodi.modules.users.User;
+import com.hodi.modules.users.UserRepository;
+import com.hodi.security.TenantScope;
+import com.hodi.security.hashid.HashIdUtil;
+import com.hodi.security.principal.AuthContext;
+import com.hodi.security.principal.UserPrincipal;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+
+/**
+ * Enquiries: a buyer asks, a seller answers (M4, BRD FR035–FR040).
+ *
+ * <h2>Two doors into one table</h2>
+ *
+ * <p>{@link #raise} and {@link #mine} are the buyer's, scoped by {@link AuthContext#requireUserId()}.
+ * {@link #list} and {@link #reply} are the seller's, scoped by {@link TenantScope}. Neither reaches across:
+ * a buyer's methods never take a tenant and a seller's never take a user id, so the two rules cannot be
+ * confused for each other in a later refactor.
+ *
+ * <h2>The aggregates are maintained here, in the same transaction</h2>
+ *
+ * <p>{@code messageCount}, {@code lastMessageAt} and {@code awaitingSeller} are written every time a message
+ * is added, by the one method that adds them. An inbox that sorted by a subquery over the message table
+ * would be a join per row on the screen a seller keeps open all day.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class EnquiryService {
+
+    private static final String REFERENCE_PREFIX = "EQ";
+
+    private final EnquiryTicketRepository repository;
+    private final EnquiryMessageRepository messages;
+    private final PropertyRepository properties;
+    private final UserRepository users;
+    private final AuditService audit;
+    private final LeadNotifier notifier;
+
+    // ── the buyer's side ──────────────────────────────────────────────────────
+
+    /**
+     * Opens a conversation about a live listing.
+     *
+     * <p>Live only: a buyer can only ask about something the marketplace is currently showing them, which is
+     * the same rule the shortlist applies and for the same reason.
+     */
+    @Transactional
+    public EnquiryResponse raise(RaiseEnquiryRequest request) {
+        Long userId = AuthContext.requireUserId();
+        User buyer = users.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+        Property property = liveProperty(request.propertyReference());
+
+        EnquiryTicket ticket = repository.save(EnquiryTicket.builder()
+                .reference(nextReference())
+                .tenantId(property.getTenantId())
+                .tenantName(property.getTenantName())
+                .propertyId(property.getId())
+                .propertyReference(property.getReference())
+                .propertyTitle(property.getTitle())
+                .userId(userId)
+                .buyerName(buyer.fullName())
+                .buyerEmail(blankTo(request.contactEmail(), buyer.getEmail()))
+                .buyerPhone(blankTo(request.contactPhone(), buyer.getPhone()))
+                .subject(blankToNull(request.subject()))
+                .createdBy(buyer.getUsername())
+                .updatedBy(buyer.getUsername())
+                .build());
+
+        addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), request.message());
+
+        audit.record(AppConstant.AUDIT_ENQUIRY_RAISED, "EnquiryTicket", ticket.getId(), null,
+                ticket.getReference() + " on " + property.getReference());
+        notifier.toSeller(property.getTenantId(),
+                "New enquiry about " + property.getTitle(),
+                buyer.fullName() + " has asked a question about " + property.getTitle() + ".",
+                "/app/enquiries?ref=" + ticket.getReference());
+
+        return toResponse(ticket, true);
+    }
+
+    @Transactional(readOnly = true)
+    public PagedResponse<EnquiryResponse> mine(EnquiryListRequest request) {
+        var page = repository.findMine(AuthContext.requireUserId(),
+                request.toPageable(Sort.by(Sort.Direction.DESC, "lastMessageAt")));
+        return PagedResponse.from(page, t -> toResponse(t, false));
+    }
+
+    @Transactional(readOnly = true)
+    public EnquiryResponse mineByReference(String reference) {
+        EnquiryTicket ticket = repository
+                .findMineByReference(trim(reference), AuthContext.requireUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Enquiry", reference));
+        return toResponse(ticket, true);
+    }
+
+    @Transactional(readOnly = true)
+    public long myCount() {
+        return repository.countByUserId(AuthContext.requireUserId());
+    }
+
+    /** The buyer's own follow-up on their own conversation. */
+    @Transactional
+    public EnquiryResponse addBuyerMessage(String reference, ReplyRequest request) {
+        Long userId = AuthContext.requireUserId();
+        EnquiryTicket ticket = repository.findMineByReference(trim(reference), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Enquiry", reference));
+        if (ticket.isClosed()) {
+            throw new HodiException("That conversation has been closed. Start a new enquiry.",
+                    HttpStatus.CONFLICT);
+        }
+
+        User buyer = users.findById(userId).orElseThrow();
+        addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), request.message());
+
+        notifier.toSeller(ticket.getTenantId(),
+                "New message about " + ticket.getPropertyTitle(),
+                buyer.fullName() + " has added a message to enquiry " + ticket.getReference() + ".",
+                "/app/enquiries?ref=" + ticket.getReference());
+        return toResponse(ticket, true);
+    }
+
+    // ── the seller's side ─────────────────────────────────────────────────────
+
+    @Transactional(readOnly = true)
+    public PagedResponse<EnquiryResponse> list(EnquiryListRequest request) {
+        Specification<EnquiryTicket> spec = SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                SearchSpecs.fuzzy("searchText", request.getSearch()),
+                SearchSpecs.eq("state", blankToNull(request.getState())),
+                SearchSpecs.eq("propertyReference", blankToNull(request.getPropertyReference())),
+                awaitingIs(request.getAwaiting()),
+                TenantScope.restrict("tenantId"));
+
+        var page = repository.findAll(spec,
+                request.toPageable(Sort.by(Sort.Direction.DESC, "lastMessageAt")));
+        return PagedResponse.from(page, t -> toResponse(t, false));
+    }
+
+    @Transactional(readOnly = true)
+    public EnquiryResponse find(String reference) {
+        return toResponse(loadForSeller(reference), true);
+    }
+
+    @Transactional
+    public EnquiryResponse reply(String reference, ReplyRequest request) {
+        EnquiryTicket ticket = loadForSeller(reference);
+        if (ticket.isClosed()) {
+            throw new HodiException("That conversation is closed. Reopening is not available.",
+                    HttpStatus.CONFLICT);
+        }
+
+        UserPrincipal caller = AuthContext.require();
+        addMessage(ticket, AppConstant.SIDE_SELLER, caller.getUserId(), caller.getFullName(),
+                request.message());
+        ticket.setState(AppConstant.ENQUIRY_ANSWERED);
+        // Answering claims it: the commonest reason two people reply to the same enquiry is that neither
+        // could tell the other had started.
+        if (ticket.getAssignedToUserId() == null) {
+            ticket.setAssignedToUserId(caller.getUserId());
+            ticket.setAssignedToName(caller.getFullName());
+        }
+        repository.save(ticket);
+
+        notifier.toBuyer(ticket.getUserId(),
+                "A reply about " + ticket.getPropertyTitle(),
+                ticket.getTenantName() + " has replied to your enquiry about " + ticket.getPropertyTitle()
+                        + ".",
+                "/account/enquiries?ref=" + ticket.getReference());
+        return toResponse(ticket, true);
+    }
+
+    @Transactional
+    public EnquiryResponse assign(String reference, AssignRequest request) {
+        EnquiryTicket ticket = loadForSeller(reference);
+        if (request.userHashId() == null || request.userHashId().isBlank()) {
+            ticket.setAssignedToUserId(null);
+            ticket.setAssignedToName(null);
+        } else {
+            Long assigneeId = HashIdUtil.decodeId(request.userHashId());
+            User assignee = users.findById(assigneeId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User", request.userHashId()));
+            ticket.setAssignedToUserId(assignee.getId());
+            ticket.setAssignedToName(assignee.fullName());
+        }
+        ticket.setUpdatedBy(AuthContext.username());
+        return toResponse(repository.save(ticket), false);
+    }
+
+    @Transactional
+    public EnquiryResponse close(String reference, CloseRequest request) {
+        EnquiryTicket ticket = loadForSeller(reference);
+        ticket.setState(AppConstant.ENQUIRY_CLOSED);
+        ticket.setClosedAt(OffsetDateTime.now());
+        ticket.setClosedByUserId(AuthContext.userId());
+        ticket.setCloseReason(blankToNull(request == null ? null : request.reason()));
+        ticket.setAwaitingSeller(false);
+        ticket.setUpdatedBy(AuthContext.username());
+        return toResponse(repository.save(ticket), false);
+    }
+
+    @Transactional(readOnly = true)
+    public long awaitingForCaller() {
+        Long tenantId = TenantScope.ownTenantId();
+        return tenantId == null ? 0 : repository.countAwaiting(tenantId);
+    }
+
+    // ── internals ─────────────────────────────────────────────────────────────
+
+    /**
+     * Adds a message and moves every aggregate that depends on it.
+     *
+     * <p>One method, so the count, the timestamp and "who owes a reply" cannot drift apart — three separate
+     * writers is how an inbox ends up claiming a conversation is waiting on somebody who answered it.
+     */
+    private void addMessage(EnquiryTicket ticket, String side, Long authorId, String authorName,
+                            String body) {
+        OffsetDateTime now = OffsetDateTime.now();
+        messages.save(EnquiryMessage.builder()
+                .ticketId(ticket.getId())
+                .authorSide(side)
+                .authorUserId(authorId)
+                .authorName(authorName)
+                .body(body.trim())
+                .createdAt(now)
+                .build());
+
+        ticket.setMessageCount(ticket.getMessageCount() + 1);
+        ticket.setLastMessageAt(now);
+        ticket.setLastMessageSide(side);
+        ticket.setAwaitingSeller(AppConstant.SIDE_BUYER.equals(side));
+        if (AppConstant.SIDE_BUYER.equals(side) && !ticket.isClosed()) {
+            ticket.setState(AppConstant.ENQUIRY_OPEN);
+        }
+        repository.save(ticket);
+    }
+
+    /**
+     * The seller's own, or the platform's.
+     *
+     * <p>{@code TenantScope.assertAllowed} rather than a query filter, because this is a single-row read by
+     * a handle the caller already holds — and the assertion refuses with the reason rather than pretending
+     * the row does not exist, which is the right answer for staff looking at their own organisation's data.
+     */
+    private EnquiryTicket loadForSeller(String reference) {
+        EnquiryTicket ticket = repository.findByReference(trim(reference))
+                .orElseThrow(() -> new ResourceNotFoundException("Enquiry", reference));
+        TenantScope.assertAllowed(ticket.getTenantId());
+        return ticket;
+    }
+
+    private Property liveProperty(String reference) {
+        return properties.findLiveByReference(trim(reference))
+                .orElseThrow(() -> new ResourceNotFoundException("Listing", reference));
+    }
+
+    private Specification<EnquiryTicket> awaitingIs(Boolean awaiting) {
+        if (awaiting == null) return null;
+        return (root, query, cb) -> cb.equal(root.get("awaitingSeller"), awaiting);
+    }
+
+    private EnquiryResponse toResponse(EnquiryTicket t, boolean withMessages) {
+        List<MessageResponse> thread = withMessages
+                ? messages.findByTicketIdOrderByCreatedAtAsc(t.getId()).stream()
+                        .map(m -> new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(),
+                                m.getCreatedAt()))
+                        .toList()
+                : null;
+
+        return new EnquiryResponse(
+                t.getReference(), t.getPropertyReference(), t.getPropertyTitle(), t.getTenantName(),
+                t.getBuyerName(), t.getBuyerEmail(), t.getBuyerPhone(), t.getSubject(), t.getState(),
+                t.getAssignedToName(), t.getMessageCount(), t.getLastMessageAt(), t.getLastMessageSide(),
+                t.isAwaitingSeller(), t.getCloseReason(), t.getCreatedAt(), thread);
+    }
+
+    private String nextReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String reference = RefGenerator.getInstance().generate(REFERENCE_PREFIX);
+            if (!repository.existsByReference(reference)) return reference;
+        }
+        throw new HodiException("Could not allocate a reference. Try again.",
+                HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    static String trim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    static String blankTo(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value.trim();
+    }
+}

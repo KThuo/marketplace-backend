@@ -149,6 +149,34 @@ public final class AppConstant {
     public static final String PROVIDER_MOCK = "MOCK";
     public static final String PROVIDER_OCP  = "OCP";
 
+    // ── Leads (M4, BRD FR035–FR048) ──────────────────────────────────────────
+    /** An enquiry's life: open, answered, done. Not a workflow — a conversation with a lid. */
+    public static final String ENQUIRY_OPEN     = "OPEN";
+    public static final String ENQUIRY_ANSWERED = "ANSWERED";
+    public static final String ENQUIRY_CLOSED   = "CLOSED";
+
+    /** Which side of the conversation said something. Stored, never inferred from the author's profile. */
+    public static final String SIDE_BUYER    = "BUYER";
+    public static final String SIDE_SELLER   = "SELLER";
+    public static final String SIDE_PLATFORM = "PLATFORM";
+
+    public static final String VISIT_REQUESTED = "REQUESTED";
+    public static final String VISIT_CONFIRMED = "CONFIRMED";
+    public static final String VISIT_DECLINED  = "DECLINED";
+    public static final String VISIT_COMPLETED = "COMPLETED";
+    /** Called off by the buyer. Distinct from DECLINED, which is the seller's answer. */
+    public static final String VISIT_CANCELLED = "CANCELLED";
+
+    public static final String PURCHASE_SUBMITTED    = "SUBMITTED";
+    public static final String PURCHASE_UNDER_REVIEW = "UNDER_REVIEW";
+    public static final String PURCHASE_ACCEPTED     = "ACCEPTED";
+    public static final String PURCHASE_DECLINED     = "DECLINED";
+    public static final String PURCHASE_WITHDRAWN    = "WITHDRAWN";
+
+    public static final String FINANCING_CASH          = "CASH";
+    public static final String FINANCING_MORTGAGE      = "MORTGAGE";
+    public static final String FINANCING_PART_EXCHANGE = "PART_EXCHANGE";
+
     // ── Session client classes (plan section 5 — one idle window per class) ───
     public static final String SESSION_CLASS_ADMIN = "ADMIN";
     public static final String SESSION_CLASS_BUYER = "BUYER";
@@ -191,6 +219,12 @@ public final class AppConstant {
     /** A product went in front of the public, or came back off it. */
     public static final String AUDIT_PRODUCT_PUBLISH  = "PRODUCT_PUBLISH";
     public static final String AUDIT_PRODUCT_WITHDRAW = "PRODUCT_WITHDRAW";
+    /** A buyer opened a conversation with a seller. */
+    public static final String AUDIT_ENQUIRY_RAISED   = "ENQUIRY_RAISED";
+    public static final String AUDIT_VISIT_REQUESTED  = "VISIT_REQUESTED";
+    public static final String AUDIT_VISIT_DECIDED    = "VISIT_DECIDED";
+    public static final String AUDIT_OFFER_SUBMITTED  = "OFFER_SUBMITTED";
+    public static final String AUDIT_OFFER_DECIDED    = "OFFER_DECIDED";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────

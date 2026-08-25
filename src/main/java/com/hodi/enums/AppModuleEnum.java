@@ -172,6 +172,38 @@ public enum AppModuleEnum {
             false, 36,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR"),
 
+    /**
+     * The seller's inbox (M4).
+     *
+     * <p>Seller staff and the platform. A lender is not here: an enquiry is a conversation between a buyer
+     * and the person selling the house, and a partnership does not make a bank a party to it.
+     */
+    ENQUIRIES("ENQUIRIES", "Enquiries",
+            "Questions buyers have asked about your listings, and the replies",
+            true, 40,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+
+    /**
+     * Viewings (M4). Admits the same people as enquiries, plus nobody: showing somebody round a house is
+     * the seller's own staff, and an agent is one of them until M9 gives agents their own standing.
+     */
+    SITE_VISITS("SITE_VISITS", "Viewings",
+            "Requests to see a property, and the diary of what was agreed",
+            true, 45,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+
+    /**
+     * Offers (M4).
+     *
+     * <p>Narrower than the other two: a sales agent may answer a question and show somebody round, but an
+     * offer is a commercial decision. The module admits the roles that could hold the decision, and the
+     * permission decides which of them actually do.
+     */
+    PURCHASE_REQUESTS("PURCHASE_REQUESTS", "Offers",
+            "Offers buyers have made on your listings",
+            true, 50,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER"),
+
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             false, 100,

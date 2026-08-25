@@ -9,6 +9,9 @@ import com.hodi.modules.buyerportal.SavedListingService.SavedListingResponse;
 import com.hodi.modules.buyerportal.SearchAlertService.AlertResponse;
 import com.hodi.modules.buyerportal.SearchAlertService.SaveAlertRequest;
 import com.hodi.modules.finance.AffordabilityService;
+import com.hodi.modules.leads.EnquiryService;
+import com.hodi.modules.leads.PurchaseRequestService;
+import com.hodi.modules.leads.SiteVisitService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +21,9 @@ import java.util.Map;
 
 /**
  * A person's own things: their shortlist, their saved searches and their affordability checks.
+ *
+ * <p>Their enquiries, viewings and offers live in {@code MyLeadController} — same {@code /me} prefix, same
+ * identity-scoped rule, but a different module owns them.
  *
  * <h2>No {@code @PreAuthorize}, deliberately</h2>
  *
@@ -45,6 +51,9 @@ public class BuyerPortalController {
     private final SavedListingService saved;
     private final SearchAlertService alerts;
     private final AffordabilityService affordability;
+    private final EnquiryService enquiries;
+    private final SiteVisitService visits;
+    private final PurchaseRequestService offers;
 
     // ── shortlist ─────────────────────────────────────────────────────────────
 
@@ -121,6 +130,9 @@ public class BuyerPortalController {
         return ApiResponse.success(Map.of(
                 "savedListings", saved.myCount(),
                 "searchAlerts", alerts.myRunningCount(),
-                "affordabilityChecks", affordability.myCount()));
+                "affordabilityChecks", affordability.myCount(),
+                "enquiries", enquiries.myCount(),
+                "viewings", visits.myCount(),
+                "offers", offers.myCount()));
     }
 }

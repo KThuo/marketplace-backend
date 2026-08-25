@@ -5,9 +5,9 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phases 0a and 0b are built and verified** (§7, §8). **Phase 1 is under way**: M2's listings and
-marketplace (§9), M2's buyer-side rows plus §3.8's consent store (§10), and M3 — mortgage products and
-affordability behind a provider interface (§11). Sections 3.3–3.6 and 3.9 remain planning; M4 is next.
+**Status:** **Phase 0 and Phase 1 are built and verified.** M2's listings and marketplace (§9), M2's
+buyer-side rows plus §3.8's consent store (§10), M3's mortgage products and affordability (§11), and M4's
+leads (§12). Sections 3.3–3.6 and 3.9 remain planning; **Phase 2 (M8) is next**.
 
 ---
 
@@ -257,7 +257,7 @@ endpoint paged and indexed; a matching frontend page in the same turn as the end
 | **M1** Buyer onboarding & profile | extends existing `BUYERS` | `consent_preference`, `consent_preference_history` | §3.1 profiles, §3.8 consent |
 | **M2** Discovery & search | `PROPERTIES` (public read), `SAVED_LISTINGS`, `SEARCH_ALERTS` | `property`, `property_media`, `property_document`, `saved_listing`, `search_alert` | Redis cache regions (`hodimp:` prefixed) designed in, not retrofitted |
 | **M3** Affordability | `AFFORDABILITY`, `MORTGAGE_PRODUCTS` | `affordability_check`, `mortgage_product` | Built against a mock behind `AffordabilityProvider`; only *authoritative numbers* wait on OCP |
-| **M4** Leads & buyer dashboard | `ENQUIRIES`, `SITE_VISITS`, `PURCHASE_REQUESTS` | `enquiry_ticket`, `site_visit`, `purchase_request` | CRM connector (M14) for the mortgage path |
+| **M4** Leads & buyer dashboard | `ENQUIRIES`, `SITE_VISITS`, `PURCHASE_REQUESTS` | `enquiry_tickets`, `enquiry_messages`, `site_visits`, `purchase_requests` | Built (§12). CRM connector (M14) still to come for the mortgage hand-off |
 | **M5** Valuation | `VALUERS`, `VALUATIONS` | `valuer_profile`, `valuation_request`, `valuation_report` | §3.5 assignment-scoped visibility |
 | **M6** Auction | `AUCTIONS` | `auction_listing`, `auctioneer` | §3.2 approvals; isolation from M2 search results is a hard rule (UC006) |
 | **M7** Post-transaction & feedback | `RATINGS`, `MODERATION` | `property_rating`, `service_rating`, `moderation_queue` | — |
@@ -279,7 +279,7 @@ turn lands backend **and** frontend together.
 |---|---|---|
 | **0a** | §3.1 profiles + switcher; §3.7 auth audit; §3.10 phone recovery | **done** |
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
-| **1** | M2 and M3 **done — listings, marketplace, shortlist, saved searches, consent store, mortgage products, affordability** → M4 next | 6–8 |
+| **1** | **done** — M2 (listings, marketplace, shortlist, saved searches), M1 consent, M3 (products, affordability), M4 (enquiries, viewings, offers) | 6–8 |
 | **2** | M8 in five slices: KYC schema/§3.3 → registration by seller type → listing CRUD + media → approval queue → progress updates. §3.9 vault lands with the first slice | 6–8 |
 | **3** | M5, M6 | 4–5 |
 | **4** | M9, M10, M7 | 4–5 |
@@ -669,3 +669,53 @@ and a platform administrator reading all three products but refused 403 on both 
    overflow — the check that had passed a turn earlier. The nav no longer shrinks below its content, so the
    sidebar becomes honestly too tall and the page scrolls; the correct measurement is the last link's bottom
    against the footer's top.
+
+
+---
+
+## 12. Phase 1 / M4 — leads
+
+Ask a question, arrange to see it, offer to buy it. The three things a buyer does about a listing.
+
+### Three tables, not one
+
+An enquiry is a conversation, a viewing is an appointment two parties agree a time for, and an offer is a
+figure with a decision on it. One polymorphic `interaction` table would carry two thirds nulls per row and a
+CHECK nobody could read.
+
+Every row carries **both** `user_id` (the buyer) and `tenant_id` (the seller). It is the only place in the
+schema where the two visibility rules meet, and deliberately so — a lead *is* the meeting. The buyer's
+methods never take a tenant and the seller's never take a user id, and the two live in separate controllers
+(`MyLeadController`, `LeadController`) precisely so nobody later adds `@PreAuthorize` to the wrong half.
+
+### Decisions worth recording
+
+- **Contact details are snapshots, not label caches.** A seller ringing back a March lead should find the
+  number that was on it in March.
+- **A viewing keeps two times.** `requested_at` never changes; `slot_at` is what was agreed. Both are shown
+  to both sides, which is what settles "but I asked for Saturday". Offering another time is a confirmation at
+  a time the seller chose, not a fourth state nobody could act on differently.
+- **Accepting an offer is not a contract**, and the dialog says so before the button is pressed. It does not
+  take the listing off the marketplace; marking a property sold stays a separate act.
+- **One live offer per buyer per property**, by partial unique index — a second while the first is
+  outstanding is a changed mind, not a second figure for a seller to reconcile. A buyer declined in March may
+  offer again in June, which is why it is partial rather than a table constraint.
+- **Notifications go through the consent store**, under `TRANSACTIONAL`. The store always says yes for that
+  purpose because its own CHECK requires it — but asking anyway is what keeps the day somebody adds a purpose
+  from silently sending under it. Delivery is best-effort and never blocks the row.
+- **The inbox's aggregates are maintained by the one method that adds a message**, so "waiting on us" cannot
+  drift from the thread it describes.
+
+### Behaviour verified
+
+A buyer raised an enquiry, requested a viewing and made an offer on a live listing; the seller's counts read
+1/1/1; the seller replied in the thread and the conversation left the "waiting on us" filter; the seller
+moved the viewing from 11:00 to 14:00 and the buyer's screen showed *"Friday 28 August at 14:00 — you asked
+for Friday 28 August at 11:00"* with the seller's note; the seller accepted an offer 4.8% under asking and
+the buyer's screen showed it accepted with the seller's message.
+
+### One defect found by building it
+
+**Spring Data scans top-level types only.** The four repositories were briefly nested inside a single
+`LeadRepositories` holder — tidy on paper, and the application refused to start with "no qualifying bean".
+Split into four files, which is the convention everywhere else here anyway.
