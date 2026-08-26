@@ -129,9 +129,6 @@ CREATE TABLE agent_profiles (
     signature_id       BIGINT       REFERENCES signature_artifacts (id),
     agreement_id       BIGINT,
 
-    -- Maintained aggregate, so the register can be read without touching `properties`.
-    listings_count     INTEGER      NOT NULL DEFAULT 0,
-
     status             INTEGER      NOT NULL DEFAULT 1,
     status_flag        VARCHAR(32)  NOT NULL DEFAULT 'Active',
 

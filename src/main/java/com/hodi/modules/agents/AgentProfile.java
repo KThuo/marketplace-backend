@@ -56,8 +56,6 @@ public class AgentProfile {
     @Column(name = "signature_id") private Long signatureId;
     @Column(name = "agreement_id") private Long agreementId;
 
-    @Column(name = "listings_count", nullable = false) @Builder.Default private Integer listingsCount = 0;
-
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
     @Builder.Default private String statusFlag = AppConstant.FLAG_ACTIVE;

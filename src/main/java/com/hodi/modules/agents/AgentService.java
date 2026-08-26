@@ -11,6 +11,7 @@ import com.hodi.enums.ConfigKey;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.profiles.UserProfile;
+import com.hodi.modules.properties.PropertyRepository;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.tenants.Tenant;
 import com.hodi.modules.tenants.TenantService;
@@ -67,6 +68,7 @@ public class AgentService {
     private final SignatureArtifactRepository signatures;
     private final SignatureService signatureService;
     private final UserProfileRepository profiles;
+    private final PropertyRepository properties;
     private final TenantService tenants;
     private final ConfigurationService configs;
     private final AuditService audit;
@@ -489,7 +491,11 @@ public class AgentService {
                 agent.getIdNumber(), agent.getLicenceNumber(), agent.getLicenceExpiresOn(),
                 agent.hasCurrentLicence(), agent.getCounties(), agent.getBio(),
                 agent.getState(), organisation, agent.getDecidedAt(), agent.getDecisionNote(),
-                agreementReference, signatureReference, agent.getListingsCount(),
+                agreementReference, signatureReference,
+                // Counted rather than carried on the row. A stored counter would have to be maintained by
+                // every path that creates, archives or reassigns a listing, and a counter that is only
+                // mostly maintained reads as a fact while being wrong.
+                (int) properties.countByAgentProfileId(agent.getId()),
                 agent.getStatus(), agent.getStatusFlag(), agent.getCreatedAt());
     }
 

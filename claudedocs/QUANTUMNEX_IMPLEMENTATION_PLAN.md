@@ -974,3 +974,86 @@ as the difference between "fix the date" and "something went wrong"; a lapsed li
 something a reader would guess from a name. The auctioneer picker carries the same fact in each option's
 hint, and the register warns about licences expiring within ninety days rather than only reporting them
 after they lapse.
+
+---
+
+## 17. Phase 4 / M9 — agents, and a signature that is evidence
+
+**BRD:** FR160–FR161. **Plan:** §3.4.
+
+### The third TenantScope mode was not needed
+
+§3.4 predicted "a third `TenantScope` mode: their own listings, plus client-owned listings where they are
+the acting agent". Building it showed the platform already expresses that, and more cheaply.
+
+`PrincipalFactory.resolveVisibleTenants` keys off `profile.tenant_id`. So an approved agent bound to their
+own one-person organisation resolves to exactly their own rows **with no new code at all** — no branch added
+to the one class standing between two organisations' data. An independent agent *is* a small selling
+organisation; their listings, own and client-owned alike, are their organisation's rows, and which of the
+two a listing is, is a column on it.
+
+The limit, stated plainly: this models an agent acting for private clients, which is what FR160–161
+describe. It does not model a seller organisation engaging an outside agent to sell rows the seller owns —
+that is cross-organisation visibility and would need the partnership mechanism.
+
+### Registering grants nothing, three times over
+
+The application endpoint is public, and it creates somebody who will eventually publish property — a
+materially different thing from a buyer signing up. It is safe because three independent conditions hold:
+
+1. the application lands `PENDING` and only the platform moves it;
+2. the profile's `kyc_status` is `PENDING`, which the existing gate in `EffectivePermissionResolver` reads
+   as "may not write a listing"; and
+3. **there is no organisation to list into** until approval creates one.
+
+Three rather than one, because a single gate is a single thing to get wrong. Verified: a freshly registered
+agent signs in, holds `PROPERTIES_VIEW` and not `PROPERTIES_CREATE`, and has no tenant.
+
+Approval then does all three at once — creates the organisation, generates the agreement, sets the profile
+to `APPROVED` — so the platform screen says so before the button is pressed rather than after.
+
+**An agent's approval is their KYC.** The platform has just examined a licence, an identity number and a
+signed acceptance of the terms; routing the same person through the seller document pack afterwards would
+ask for the same assurances twice, in a queue built for a different question.
+
+### The signature
+
+`signature_artifacts` records the version, a SHA-256 **of the terms text as served**, the image, its own
+checksum, and the address and user agent it arrived from. Both it and `agent_agreements` are append-only by
+trigger, like `audit_logs`: a signature that can be edited proves nothing about the day it was made.
+
+Two decisions worth keeping:
+
+- **The hash is computed on the server, never accepted.** A hash supplied by the party being bound is an
+  assertion about what they agreed to. The client sends only the *version*, which is then checked — a stale
+  version is refused with "the terms have changed since this page was opened", which is what happens on the
+  day somebody edits the terms. Verified by sending `2025.9`.
+- **The image goes in the vault, not the media store.** It is a specimen of somebody's hand. `VaultStorage`
+  gained a bytes overload so the signature and the application it evidences are written in one transaction;
+  a two-call flow would leave half-applications waiting for evidence that never arrives.
+
+The platform's evidence screen shows the drawn signature, both checksums, where it came from, and whether
+what was signed is still what the platform serves today.
+
+### Every listing says whose it is
+
+`listing_ownership` (`SELF`/`CLIENT`) plus the client's name and number on `properties`, asked of an agent
+and of nobody else — a seller organisation listing its own stock is not answering this question, and
+defaulting them to `SELF` would put a claim on the row nobody made. The agent is taken from the caller,
+never from the request.
+
+The client's details are on the private listing record only. They belong to somebody who never signed up to
+this platform, and `PublicProperty` has no field for them at all — verified: the public JSON for an agent's
+client-owned listing has no `clientOwnerName` key, and shows the agency as the seller.
+
+### Two things building it corrected
+
+1. **`AUCTIONEERS_MANAGE`-style thinking applied again.** Agent-only verbs went into their own `AGENT_SELF`
+   module admitting `AGENT` and nobody else, so the owner-group top-up cannot hand them to every seller
+   owner — the trap M5 fell into. Confirmed in the seeder log: `+0 owner perms`.
+
+2. **A maintained counter that nothing maintained.** `agent_profiles.listings_count` was declared as a
+   denormalised aggregate and then written by nothing, so the register showed 0 beside an agent with a live
+   listing. Counted on read instead: a stored counter would have to be maintained by every path that
+   creates, archives or reassigns a listing, and one that is only mostly maintained reads as a fact while
+   being wrong.
