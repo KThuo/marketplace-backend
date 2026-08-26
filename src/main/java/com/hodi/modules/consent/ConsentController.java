@@ -5,6 +5,7 @@ import com.hodi.logging.RequestAction;
 import com.hodi.modules.consent.ConsentService.ConsentHistoryRow;
 import com.hodi.modules.consent.ConsentService.ConsentRow;
 import com.hodi.modules.consent.ConsentService.UpdateConsentRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -33,7 +34,7 @@ public class ConsentController {
 
     @PutMapping
     @RequestAction("UPDATE CONSENT")
-    public ApiResponse<List<ConsentRow>> update(@RequestBody UpdateConsentRequest request) {
+    public ApiResponse<List<ConsentRow>> update(@Valid @RequestBody UpdateConsentRequest request) {
         return ApiResponse.success("Preferences saved", service.update(request));
     }
 

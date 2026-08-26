@@ -10,6 +10,8 @@ import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import com.hodi.tenant.TenantContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -84,7 +86,17 @@ public class ConfigurationAdminService {
             String overrideValue,
             boolean overridden) {}
 
-    public record UpdateConfigRequest(String value, String reason) {}
+    /**
+     * Validated here rather than in the service, which is where it used to be (Phase 7).
+     *
+     * <p>{@code @NotNull} and deliberately not {@code @NotBlank}: an empty value is meaningful for several
+     * of these keys — "empty means nobody is blocked" is the documented behaviour of the mandatory-KYC list,
+     * and a blank secret is how a deployment says it has no S3 bucket. What must not happen is a null
+     * reaching a column the resolver reads, which is what an absent field used to produce.
+     */
+    public record UpdateConfigRequest(
+            @NotNull(message = "A value is required — send an empty string to clear it") String value,
+            @Size(max = 500, message = "That reason is too long") String reason) {}
 
     public record ConfigurationLogResponse(
             String id, String configKey, String scope, String tenantName,

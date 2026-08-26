@@ -55,7 +55,7 @@ public class LeadController {
     @PreAuthorize("hasAuthority('ENQUIRIES_ASSIGN')")
     @RequestAction("ASSIGN ENQUIRY")
     public ApiResponse<EnquiryResponse> assign(@PathVariable String reference,
-                                               @RequestBody AssignRequest request) {
+                                               @Valid @RequestBody AssignRequest request) {
         return ApiResponse.success("Assigned", enquiries.assign(reference, request));
     }
 

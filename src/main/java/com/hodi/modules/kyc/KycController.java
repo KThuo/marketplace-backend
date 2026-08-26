@@ -7,6 +7,7 @@ import com.hodi.modules.kyc.KycService.DecisionRequest;
 import com.hodi.modules.kyc.KycService.SubmissionListRequest;
 import com.hodi.modules.kyc.KycService.SubmissionResponse;
 import com.hodi.modules.kyc.KycService.VerdictRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ContentDisposition;
@@ -96,7 +97,7 @@ public class KycController {
     @PreAuthorize("hasAuthority('KYC_REVIEW')")
     @RequestAction("RECORD KYC VERDICT")
     public ApiResponse<SubmissionResponse> verdict(@PathVariable String reference,
-                                                   @RequestBody VerdictRequest request) {
+                                                   @Valid @RequestBody VerdictRequest request) {
         return ApiResponse.success("Recorded", service.setVerdict(reference, request));
     }
 
@@ -104,7 +105,7 @@ public class KycController {
     @PreAuthorize("hasAuthority('KYC_REVIEW')")
     @RequestAction("DECIDE KYC PACK")
     public ApiResponse<SubmissionResponse> decide(@PathVariable String reference,
-                                                  @RequestBody DecisionRequest request) {
+                                                  @Valid @RequestBody DecisionRequest request) {
         return ApiResponse.success("Decision recorded", service.decide(reference, request));
     }
 

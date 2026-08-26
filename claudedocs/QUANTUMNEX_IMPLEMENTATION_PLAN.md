@@ -299,16 +299,16 @@ numbers*, not the funnel around them.
 | Search/affordability < 2s | Not yet measurable. The pattern is in place (paged endpoints, pg_trgm GIN, Redis regions) |
 | 50k concurrent external / 1k staff | Untested. Stateless auth and per-request tenant binding scale horizontally; the buyer-facing read path needs the cache designed in at M2 |
 | Horizontal scaling | Sessions are DB-backed refresh tokens with stateless access tokens, so no sticky sessions |
-| TLS + encryption at rest | TLS is deployment. Config secrets are encrypted at rest today (`EncryptionUtil`); documents are not — §3.9 |
+| TLS + encryption at rest | TLS is deployment. Config secrets encrypted (`EncryptionUtil`); vault documents declare SSE-KMS or SSE-S3 on write and the row records which (§13) |
 | Least privilege on both portals | **Done and verified** — three-axis model, verified end to end from an empty database |
-| Input validation / OWASP | Parameterised queries throughout, no string-concatenated SQL. Bean Validation on nine of the write controllers — the configuration-admin endpoints validate in the service instead, which should be made consistent |
+| Input validation / OWASP | **Done** for what this codebase controls. Parameterised queries throughout; the one place SQL is assembled (M15 reports) takes every fragment from a declared catalogue and nothing from a request. Bean Validation now on every `@RequestBody` write endpoint — the configuration-admin ones were the last holdout (§24) |
 | VAPT | Not started. Phase 7 |
-| Full immutable audit trail | Partial — see §3.7 |
-| Logs exclude PII/credentials | Secrets are masked in list, log and at-rest with an audited reveal path. Needs a sweep once buyer PII exists |
+| Full immutable audit trail | Append-only by trigger on `audit_logs`, and again on signatures and executed agreements (§17). Auth events recorded |
+| Logs exclude PII/credentials | **Done** — credentials replaced outright; personal data partially masked so two log lines about the same buyer still match without the file being worth stealing (§24) |
 | APM + alerting | Not started |
 | DR, RPO < 15 min / RTO < 4 h | Infrastructure, outside this codebase; flag to whoever owns the Postgres |
 | WCAG 2.1 | Partial by construction — semantic markup, labelled fields, focus-visible rings, reduced-motion honoured. Needs a real audit |
-| English / KES / DD-MM-YYYY | Currency and timezone are per-organisation columns with KES/Africa-Nairobi defaults; date formatting needs one shared formatter rather than per-page `toLocaleDateString` |
+| English / KES / DD-MM-YYYY | Shared formatter added and adopted by the fifteen screens built in phases 3–6 (§24). The earlier screens still carry their own `toLocaleDateString` calls — a mechanical sweep, listed as outstanding rather than claimed |
 
 ---
 
@@ -1442,3 +1442,65 @@ one enquiry and sees the lot.
 
 Also corrected on the way: "three bedroom in Kilimani" matched no bedroom filter at all, because the pattern
 read digits only — and then cheerfully offered a one-bedroom flat. Written numbers are understood now.
+
+---
+
+## 24. Phase 7 — NFR hardening, first pass
+
+Three items from §5 that live in this codebase rather than in the infrastructure around it.
+
+### 1. Logs exclude PII
+
+The sanitiser masked credentials from the beginning. It did not touch personal data, and by the end of M13
+personal data was everywhere: a login response logged a buyer's email, phone and full name in the clear, and
+so did every enquiry, viewing and vendor application.
+
+**Masked, not removed** — and the distinction is the whole decision. There is no version of a password that
+is useful in a log, so those stay `***`. But a support engineer reading a request trace needs to know *which*
+buyer, and a log where every email has become `***` answers no question anybody actually asks. So each kind
+keeps just enough to correlate two lines with each other and not enough to be worth anything to somebody who
+has stolen the file:
+
+| Kind | Becomes |
+|---|---|
+| Email | `w***u@example.com` |
+| Phone | `•••••222` |
+| Name | `Wanjiru K.` |
+| ID number, KRA PIN, licence number | `***` |
+| Exact address line | `***` |
+| Signature's originating IP | `***` |
+
+The last three are removed outright. An identity document is what an impersonation is built from and there is
+no partial form that is both safe and useful; the exact address is the one thing the public marketplace
+deliberately withholds, and writing it into a log would be the platform leaking through the back what it
+protects at the front.
+
+Verified against a real login: `w***u@example.invalid`, `•••••222`, `Wanjiru K.`
+
+### 2. Bean Validation everywhere a body is accepted
+
+The configuration-admin endpoints validated in the service, and four others took a request body with no
+`@Valid` at all. All now validate at the edge.
+
+The configuration request is `@NotNull` and deliberately **not** `@NotBlank`: an empty value is meaningful
+for several keys — "empty means nobody is blocked" is the documented behaviour of the mandatory-KYC list, and
+a blank secret is how a deployment says it has no bucket. What must not reach the column is a null, which is
+exactly what an absent field used to produce.
+
+### 3. One formatter, not forty-five
+
+Forty-five files each called `toLocaleDateString` with their own options, so one date appeared three ways
+across one workflow. `src/utils/format.ts` now owns the house style: `en-GB` for day-before-month (a platform
+where 03/04 might be March or April is a platform where somebody arrives at a viewing on the wrong day),
+currency passed in rather than assumed because an organisation carries its own, and whole shillings because
+two trailing zeros on every figure in a table is noise.
+
+Adopted by the fifteen screens built in phases 3–6. **The earlier screens still have their own copies** —
+mechanical to finish and listed as outstanding rather than quietly claimed.
+
+### What remains, and where it lives
+
+VAPT, APM and alerting, load testing against the 50k/1k target, the read replica for M15, DR/RPO/RTO, and a
+real WCAG audit. Every one of those is either an exercise against a deployed environment or a decision for
+whoever owns the infrastructure — none of them is a code change waiting to be written here, and listing them
+as "not started" is more useful than a partial gesture at each.

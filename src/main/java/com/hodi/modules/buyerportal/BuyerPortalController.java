@@ -71,7 +71,7 @@ public class BuyerPortalController {
 
     @PostMapping("/saved-listings")
     @RequestAction("SAVE LISTING")
-    public ApiResponse<SavedListingResponse> save(@RequestBody SaveListingRequest request) {
+    public ApiResponse<SavedListingResponse> save(@Valid @RequestBody SaveListingRequest request) {
         return ApiResponse.success("Saved", saved.save(request));
     }
 

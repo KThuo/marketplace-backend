@@ -7,6 +7,7 @@ import com.hodi.modules.configurations.ConfigurationAdminService.ConfigurationLo
 import com.hodi.modules.configurations.ConfigurationAdminService.ConfigurationResponse;
 import com.hodi.modules.configurations.ConfigurationAdminService.OverrideResponse;
 import com.hodi.modules.configurations.ConfigurationAdminService.UpdateConfigRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import com.hodi.infra.storage.StorageService;
 import com.hodi.logging.RequestAction;
@@ -84,7 +85,7 @@ public class ConfigurationController {
     @PostMapping("/update/{hashId}")
     @PreAuthorize("hasAuthority('APP_SETTINGS_UPDATE')")
     public ApiResponse<ConfigurationResponse> update(@PathVariable String hashId,
-                                                     @RequestBody UpdateConfigRequest request) {
+                                                     @Valid @RequestBody UpdateConfigRequest request) {
         return ApiResponse.success("Setting updated", service.updateGlobal(hashId, request));
     }
 
@@ -114,7 +115,7 @@ public class ConfigurationController {
     @PostMapping("/overrides/{configKey}")
     @PreAuthorize("hasAuthority('APP_SETTINGS_OVERRIDE')")
     public ApiResponse<Void> setOverride(@PathVariable String configKey,
-                                         @RequestBody UpdateConfigRequest request) {
+                                         @Valid @RequestBody UpdateConfigRequest request) {
         service.setOverride(configKey, request);
         return ApiResponse.success("Setting overridden for this organisation", null);
     }
