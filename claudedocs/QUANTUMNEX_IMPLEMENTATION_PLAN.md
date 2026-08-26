@@ -5,9 +5,11 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status — 26 August 2026:** **all fifteen modules are built and verified**, phases 0 through 6 complete,
-phase 7 (NFR) in its first pass. Everything below §7 is an "as built" record written after each module
-landed. See **§0** for how to restart the machine and pick up.
+**Status — 26 August 2026:** **fourteen of the fifteen modules are built and verified**, phases 0 through 6
+complete, phase 7 (NFR) deferred after its first pass. **M14, the integration layer, is half built and is the
+only BRD scope still genuinely outstanding** — the SMS/email gateway works, the OCP client and the CRM
+connector were never written, and no phase in the table below ever owned them. See **§27**. Everything below
+§7 is an "as built" record written after each module landed. See **§0** for how to restart the machine.
 
 | Phase | Contents | State |
 |---|---|---|
@@ -18,7 +20,13 @@ landed. See **§0** for how to restart the machine and pick up.
 | 4 | M9 agents, M10 vendors, M7 ratings | done — §17–§19 |
 | 5 | M12 routing + diary, M13 seller operations, M15 reports | done — §20–§22 |
 | 6 | M11 assistant | done — §23 |
-| 7 | NFR hardening | first pass done — §24; accessibility audited and fixed — §25; the rest is deployment work |
+| 7 | NFR hardening | first pass done — §24; accessibility audited and fixed — §25; **remainder deferred 26 Aug 2026** — VAPT, APM, load testing, DR |
+| — | M14 integration layer | **unassigned to any phase — see §27.** SMS/email built; OCP client and CRM connector not written |
+
+**The last row is the bug in this table.** Every other module was scheduled into a phase and therefore got
+built. M14's SMS/email half was pulled forward into phase 0b because phone recovery could not ship without
+it, and that partial delivery is why the module read as done for the rest of the build. The OCP client and
+the CRM connector were never given a phase, so nothing ever came due. §27 states the remaining scope.
 
 ---
 
@@ -351,7 +359,7 @@ endpoint paged and indexed; a matching frontend page in the same turn as the end
 | **M11** AI assistant | `ASSISTANT` | `assistant_conversation`, `assistant_message` | Thin orchestration over M2/M3/M4; hand-off writes an M4 ticket with the transcript attached |
 | **M12** Internal management (buyer side) | `TICKETS`, `CALENDAR` | `ticket_assignment_rule`, `event_calendar_entry` | Property Operations user type |
 | **M13** Internal management (seller side) | `PROPERTY_CONFIG`, `PROMOTIONS`, `COMMISSIONS` | `property_type_config`, `promotion_package`, `commission_record` | §3.2 for the KYC and listing queues |
-| **M14** Integration layer | not a UI module | `integration_log`, `outbound_message` | OCP client, CRM connector, SMS/email gateway. The SMS half is needed early by §3.10 |
+| **M14** Integration layer | not a UI module | `integration_log`, `outbound_message` — **neither table exists** | **Part built — §27.** SMS/email gateway built (§3.10, needed early by phone recovery); OCP client and CRM connector not written |
 | **M15** MIS & reporting | `REPORTS` | reporting views only | Read replica or warehouse, not the transactional DB |
 
 ### Sequencing for this repository
@@ -1761,3 +1769,128 @@ edge, which was one signal too many next to the tint, the border and the icon.
    the slot on unmount, and Vue mounts a replacement before unmounting the original — so any re-render
    that recreated the host nulled the api the new instance had just registered, and toasts stopped
    appearing with nothing in the console. It now releases the slot only if it still holds it.
+
+---
+
+## 27. M14 — the integration layer, and what is actually left
+
+M14 is the one module the phase table never scheduled. Half of it exists anyway: phone recovery in phase 0b
+could not ship without SMS, so `NotifyClient` was written then and has been carrying OTPs, password resets,
+lead alerts and search alerts ever since. That partial delivery is why the module has read as "built" in this
+document since August — the half that was needed early was the half that got written, and nothing ever came
+due for the rest.
+
+This section is the remaining scope, written after reading the notify service's published contract at
+`https://notify.qnex.io/documentation` against our client, and after reading the equivalent layer in
+`../axis/axis-b` and `../axis/axis-f`, which solves the same problem one product further along.
+
+### 27.1 What is built — the notify gateway
+
+`infra/notify/` — `NotifyClient`, `EmailSender`, `NotifyResult`. It is line-for-line the same class as
+axis's, which is deliberate: it is a solved problem and a shared provider.
+
+| | SMS | Email |
+|---|---|---|
+| Path | `POST /api/v1/messages/sendsms` | `POST /api/v1/email/send` |
+| Auth | `X-Authorization: <key>` **and** `apikey` in the body — they must match, or 401 | same |
+| Body we send | `apikey`, `phoneNo`, `text`, `recipientName`, `senderId` | `apikey`, `to`, `from`, `fromName`, `subject`, `content`, `recipient`, `attachments` |
+| Envelope | `{ status, message, data }` — `status: "00"` is the only success | same, plus `data.id` |
+
+Everything comes from `ConfigurationService` (`NOTIFY_BASE_URL`, `NOTIFY_API_KEY`, `NOTIFY_SMS_SENDER_ID`,
+`NOTIFY_EMAIL_DOMAIN`, `NOTIFY_SMS_ENABLED`, `NOTIFY_EMAIL_ENABLED`), all six overridable per tenant, so a
+seller can send under their own identity and the client is rebuilt per call rather than cached — a client
+captured at startup would send one seller's messages through another's account.
+
+Two behaviours in that class are load-bearing and should survive any rework. The `sendSensitive*` variants
+mask the message body in logs but deliver it intact, because an OTP in an application log is a way past
+authentication for anyone who can read logs. And they ignore the channel switches: `notify.sms.enabled` is a
+recipient's preference about being *notified*, and a confirmation code is not a notification you can decline
+and still complete the action it gates.
+
+Five callers: `OtpChallengeService`, `PasswordResetService`, `LeadNotifier`, `SearchAlertRunner`,
+`StorageService`. **Four of the five discard the `NotifyResult`.** Only `SearchAlertRunner` reads it, for its
+own run log.
+
+### 27.2 Four defects the published contract reveals
+
+Read against the documentation, the client has four faults. None of them has been reproduced against the live
+service — we hold no API key, and both channels are switched off by default — so each is stated as what the
+documentation says, not as an observed failure.
+
+1. **The response envelope is never checked, so failed sends are recorded as successes.** The docs are
+   explicit: *"Always check the `status` field — `00` means success; any other value is an error code."* Our
+   client checks the HTTP status only, and any 2xx becomes `NotifyResult.ok(...)`. The documented
+   insufficient-balance response (`status: "01"`) and the documented email failure
+   (`status: "EMAIL_SEND_FAILED"`, `data.sent: false`) both read as body-level errors rather than HTTP errors.
+   If they arrive with a 2xx, we log a success and drop the message. **This is the one item here worth fixing
+   before anything else is built on top of it**, because a queue that retries on failure is worthless while
+   failure is indistinguishable from success.
+2. **The correlation id is fabricated locally.** `NotifyResult.ok(UUID.randomUUID().toString())` invents an
+   id at our end. The email response carries the provider's own (`data.id`, e.g. `"Qb7K2x"`), which is the
+   only id support can trace. The id we log and would store cannot be quoted to anyone.
+3. **`senderId` is not a documented request field.** The docs list `apikey`, `phoneNo`, `text` and `name` for
+   SMS, and say the sender ID is configured in *Dashboard → Sender IDs / API key management* — resolved from
+   the key, not the payload. If that is right, `notify.sms.sender.id` (default `HODI`) has no effect and the
+   real sender ID is whatever the account is provisioned with. Worth one live call to confirm before anyone
+   relies on that config key.
+4. **Attachment limits are not enforced on our side.** The service caps files at 10 MB each, 25 MB total, 10
+   files, and allows only PDF, PNG, JPEG, GIF, DOC/DOCX, XLS/XLSX, TXT and CSV. This stopped being
+   theoretical when §22's reports started producing `.xlsx` and `.pdf`: emailing a large report gets
+   `ATTACHMENT_TOO_LARGE` back, which — per defect 1 — we would currently record as sent.
+
+One configuration note in the same family: `notify.email.domain` defaults to `hodi.local`, and the docs say a
+`from` whose domain is not an allowed sender domain is silently replaced by the provider's default sender.
+Until a real domain is registered with the provider, our `from` address is decoration.
+
+### 27.3 What is not built
+
+**The OCP client.** M3 computes affordability behind `AffordabilityProvider`, and the implementation wired in
+is `MockAffordabilityProvider` — real arithmetic, invented rates. The seam is the right shape and swapping it
+is a contained change, but *the figures on screen today are not a lender's figures*, and this is the highest
+consequence item in the document: a mortgage marketplace quoting its own numbers as a lender's is a
+commercial problem long before it is a technical one. Blocked on the OCP contract and credentials, which are
+external to this repository. Until then the mock should say so anywhere a buyer sees a figure.
+
+**The CRM connector.** §12's note has said "still to come for the mortgage hand-off" since phase 1. An M4
+lead that reaches the point of a mortgage application has nowhere to go. Also externally blocked, on which
+CRM and its API.
+
+**`integration_log` and `outbound_message`.** Neither table was ever created. Combined with §27.1's five
+fire-and-forget call sites, the position is: no record of what was sent, no retry when a send fails, no
+operator view of a delivery question, and nothing to reconcile against the provider's own logs. Every
+outbound message the platform has ever sent exists only as a log line.
+
+### 27.4 The reference model in axis
+
+Axis has the layer this one lacks, and it is worth copying rather than re-deriving. Backend:
+`notification_templates` (`event` × `channel` × `audience` × `locale`, `{{variable}}` bodies),
+`notifications` (the outbound row, with `dispatch_status NEW|SENT|FAILED|SKIPPED` kept **separate** from the
+soft-delete `status`, plus `attempts`, `last_error`, `notify_message_id`, `scheduled_at`, `sent_at`,
+`read_at`), `notification_preferences`, and `integrations` / `tenant_integrations` for per-provider
+credentials with a `test_status`. `NotificationDispatcher` is a scheduled poll over `dispatch_status = 'NEW'`
+— which is why `NotifyClient` carries an explicit 15-second timeout, since a single unresponsive gateway
+would otherwise stall every pending message behind it. Frontend: `NotificationBell.vue`, `InboxView.vue`,
+`NotificationLogTab.vue`, `NotificationTemplatesTab.vue`, `NotificationPreferencesSection.vue`.
+
+Two of its design decisions are the ones worth taking on faith. Dispatch state is a separate column from the
+soft lifecycle, so a row can be active-but-unsent or archived-but-sent without the two meanings colliding.
+And in-app rows are born `SKIPPED`, because the row *is* the delivery and there is nothing to dispatch.
+
+Not all of it belongs here. Hodi has no in-app inbox and no push channel, and adding both would be inventing
+scope the BRD does not ask for. What transfers is the outbound row, the dispatcher, and the delivery log.
+
+### 27.5 If this is picked up as a phase
+
+Ordered by what unblocks what, not by size:
+
+1. **Check the envelope** (§27.2, defects 1 and 2). Small, self-contained, and everything else assumes it.
+2. **`outbound_message` + a dispatcher**, modelled on axis's `notifications`. Move the five call sites from a
+   synchronous send to an enqueue. This is what turns a failed send into a retry instead of a lost message.
+3. **`integration_log`** and a platform-staff view over it, so a delivery question is answerable from our own
+   records. Reuses §22's report and filter machinery.
+4. **The OCP client**, when the contract exists. Replace `MockAffordabilityProvider`; keep the mock as the
+   local-development implementation.
+5. **The CRM connector**, when the target system is chosen.
+
+Steps 1–3 are ours and could start now. Steps 4 and 5 cannot start without information from outside this
+repository, and no amount of sequencing changes that.
