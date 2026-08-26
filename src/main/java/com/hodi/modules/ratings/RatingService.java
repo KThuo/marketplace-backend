@@ -10,6 +10,7 @@ import com.hodi.common.util.SearchSpecs;
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.security.TenantScope;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
 import jakarta.validation.constraints.Max;
@@ -271,14 +272,22 @@ public class RatingService {
      */
     @Transactional(readOnly = true)
     public PagedResponse<RatingResponse> aboutUs(RatingListRequest request) {
-        Long tenantId = AuthContext.tenantId();
-        if (tenantId == null) {
+        /*
+         * Platform staff see everything here, rather than an error.
+         *
+         * The first version demanded an organisation and returned 400 to anybody without one — which is
+         * every platform administrator, and the Reviews screen is in their navigation. "Reviews about us"
+         * has no meaning for the platform, but "everything people are saying" does, and it is the useful
+         * companion to the moderation queue: one screen for what was said, one for what was objected to.
+         */
+        Long tenantId = TenantScope.unrestricted() ? null : AuthContext.tenantId();
+        if (tenantId == null && !TenantScope.unrestricted()) {
             throw new HodiException("Your account is not attached to an organisation.",
                     HttpStatus.BAD_REQUEST);
         }
         Specification<Rating> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
-                SearchSpecs.eq("subjectTenantId", tenantId),
+                tenantId == null ? null : SearchSpecs.eq("subjectTenantId", tenantId),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("subjectType", blankToNull(request.getSubjectType())));
         var page = ratings.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
@@ -298,6 +307,10 @@ public class RatingService {
      */
     @Transactional(readOnly = true)
     public SummaryResponse ourSummary() {
+        if (TenantScope.unrestricted()) {
+            // The platform's own headline is the whole platform's, for the same reason as above.
+            return summarise(RatingSubject.SELLER, null, ratings.findAllCounted());
+        }
         Long tenantId = AuthContext.tenantId();
         if (tenantId == null) return summarise(RatingSubject.SELLER, null, List.of());
         return summarise(RatingSubject.SELLER, null, ratings.findCountedForTenant(tenantId));

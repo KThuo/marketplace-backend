@@ -1504,6 +1504,20 @@ The sweep was done by matching each local helper's body before removing it: a `c
 formats nor touches component state, and never one that reads `.value` or calls an API. Two of them turned
 out not to be formatters at all and were left alone.
 
+### A defect the final sweep found
+
+Walking every screen in the navigation as each kind of user — 22 as a seller, 33 as the platform — turned up
+one 400. **Platform staff clicking "Reviews" got an error**, because the endpoint demanded an organisation
+and a platform administrator has none.
+
+"Reviews about us" has no meaning for the platform. But *"everything people are saying"* does, and it is the
+useful companion to the moderation queue — one screen for what was said, one for what was objected to. So
+the unrestricted caller now sees everything rather than an error, and the headline figure is the whole
+platform's.
+
+Worth recording that this was only found by walking the navigation. Every endpoint behind it had been
+tested; what had not been tested was somebody clicking the thing the navigation offered them.
+
 ### What remains, and where it lives
 
 VAPT, APM and alerting, load testing against the 50k/1k target, the read replica for M15, DR/RPO/RTO, and a

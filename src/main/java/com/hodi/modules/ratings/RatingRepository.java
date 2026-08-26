@@ -33,6 +33,10 @@ public interface RatingRepository extends JpaRepository<Rating, Long>, JpaSpecif
             + "and r.state = 'PUBLISHED' and r.status <> 5")
     List<Rating> findCountedForTenant(@Param("tenantId") Long tenantId);
 
+    /** Everything published, anywhere. The platform's own headline figure. */
+    @Query("select r from Rating r where r.state = 'PUBLISHED' and r.status <> 5")
+    List<Rating> findAllCounted();
+
     @Query("select count(r) from Rating r where (r.state = 'HELD' or r.reportCount > 0) and r.status <> 5")
     long countNeedingModeration();
 }
