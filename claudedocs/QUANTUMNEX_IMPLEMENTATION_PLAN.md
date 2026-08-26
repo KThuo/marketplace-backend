@@ -1695,12 +1695,23 @@ middle of the form and skipped the empty box at the top.
 
 ### One toast, from one place
 
-Any 400 raises a toast at the top: *"The information submitted is not correct, fill the form
-correctly."* Fixed wording rather than the server's message, because the server's message is already on
-screen under the offending input; what the toast adds is that something happened at all, which is what a
-form long enough to push the rejected field below the fold needs. 403, 409, 5xx and an unreachable
-server report the same way — one place, because a screen that forgets to surface an error is a screen
-where a save silently did nothing, and that is not fixed by remembering harder in each new form.
+A 400 raises a toast at the top, and **which sentence depends on the kind of 400**, because there are
+two and they cannot share one.
+
+A body that failed *validation* comes with per-field messages, and those are already on screen under the
+offending inputs. There the toast says only that something happened at all — which is what a form long
+enough to push the rejected field below the fold needs — so the wording is fixed: *"The information
+submitted is not correct, fill the form correctly."* Repeating the field messages would say the same
+thing twice in two places.
+
+A 400 with **no** field messages is a different animal: a business rule ("Auction has already closed"),
+or a body the server could not parse. Telling somebody to fill the form in correctly when the form was
+fine and the auction was not is worse than saying nothing — it sends them looking for a mistake that is
+not there. So that message is passed through as the server wrote it.
+
+403, 409, 5xx and an unreachable server report the same way — one place, because a screen that forgets
+to surface an error is a screen where a save silently did nothing, and that is not fixed by remembering
+harder in each new form.
 
 Restyled to the house language rather than left as Naive's white pill: the translucent, blurred surface
 the sticky bars use, a semantic tint and border, and Naive's own per-kind icon kept so the meaning is
