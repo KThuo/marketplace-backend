@@ -358,6 +358,18 @@ public enum ConfigKey {
             "Rendered once when an agent is approved and stored with the agent. Placeholders in double "
                     + "braces are filled at generation.", false, false),
 
+    // ── VENDORS (M10, BRD FR170) ─────────────────────────────────────────────
+    /**
+     * Whether a business can apply to be listed without being invited.
+     *
+     * <p>Safe on by default for the reason the agent switch is: applying grants nothing. A vendor who is
+     * never approved has no organisation, fails the publication gate, and can read the directory.
+     */
+    VENDOR_SELF_REGISTRATION_ENABLED(
+            "vendor.self.registration.enabled", "BOOLEAN", "VENDOR", "true",
+            "Vendors may apply themselves",
+            "When false, vendor applications can only be started by platform staff.", false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

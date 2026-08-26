@@ -131,6 +131,11 @@ public class UserProfile {
         return AppConstant.ACTOR_AGENT.equals(profileType);
     }
 
+    /** A vendor: a business selling services around a purchase (M10). Carries its own organisation. */
+    public boolean isVendorActor() {
+        return AppConstant.ACTOR_VENDOR.equals(profileType);
+    }
+
     /** True when Compliance has cleared this profile, or never needed to. */
     public boolean isKycCleared() {
         return AppConstant.KYC_NOT_REQUIRED.equals(kycStatus)
@@ -144,6 +149,7 @@ public class UserProfile {
         if (isBuyerActor()) return "Buyer";
         if (isValuerActor()) return "Valuer";
         if (isAgentActor()) return "Agent";
+        if (isVendorActor()) return "Vendor";
         return "Platform";
     }
 

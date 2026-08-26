@@ -57,6 +57,13 @@ public final class AppConstant {
      * business.
      */
     public static final String ACTOR_AGENT    = "AGENT";
+    /**
+     * A vendor: a business selling services around a house purchase (M10, BRD FR170).
+     *
+     * <p>Like an agent, they carry their own organisation and so need no new visibility rule. Unlike an
+     * agent, what they publish is a catalogue rather than property, and they never touch a listing.
+     */
+    public static final String ACTOR_VENDOR   = "VENDOR";
 
     // ── KYC state (user_profiles.kyc_status — plan §3.3) ─────────────────────
     // NOT_REQUIRED is not the same as APPROVED even though both clear the gate: a platform
@@ -336,6 +343,8 @@ public final class AppConstant {
     public static final String AUDIT_AGENT_DECIDED    = "AGENT_DECIDED";
     /** Opening the signature or the agreement behind an application. Read events, recorded like vault ones. */
     public static final String AUDIT_SIGNATURE_READ   = "SIGNATURE_READ";
+    public static final String AUDIT_VENDOR_REGISTER  = "VENDOR_REGISTERED";
+    public static final String AUDIT_VENDOR_DECIDED   = "VENDOR_DECIDED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────
     public static final String OUTCOME_SUCCESS      = "SUCCESS";

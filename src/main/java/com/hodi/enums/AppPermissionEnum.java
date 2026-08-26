@@ -284,7 +284,25 @@ public enum AppPermissionEnum {
 
     // ── AGENT_SELF ────────────────────────────────────────────────────────────
     AGENT_SELF_VIEW("See my own agent profile and agreement", AppModuleEnum.AGENT_SELF),
-    AGENT_SELF_UPDATE("Update my own agent details", AppModuleEnum.AGENT_SELF);
+    AGENT_SELF_UPDATE("Update my own agent details", AppModuleEnum.AGENT_SELF),
+
+    // ── VENDORS ───────────────────────────────────────────────────────────────
+    VENDORS_VIEW("See the vendor register", AppModuleEnum.VENDORS),
+    /** Deciding an application: approve, reject, suspend, reinstate. Never the vendor's own. */
+    VENDORS_DECIDE("Decide vendor applications", AppModuleEnum.VENDORS, true),
+    /** The taxonomy every vendor and every catalogue item is filed under. */
+    VENDOR_CATEGORIES_MANAGE("Add and maintain vendor categories", AppModuleEnum.VENDORS, true),
+    /** Approving a catalogue item for publication — the Maker/Checker verb for M10. */
+    CATALOGUE_APPROVE("Approve a catalogue item for publication", AppModuleEnum.VENDORS, true),
+
+    // ── VENDOR_SELF ───────────────────────────────────────────────────────────
+    VENDOR_SELF_VIEW("See my own business and catalogue", AppModuleEnum.VENDOR_SELF),
+    VENDOR_SELF_UPDATE("Update my own business details", AppModuleEnum.VENDOR_SELF),
+    CATALOGUE_CREATE("Add something to my catalogue", AppModuleEnum.VENDOR_SELF),
+    CATALOGUE_UPDATE("Change something in my catalogue", AppModuleEnum.VENDOR_SELF),
+    CATALOGUE_SUBMIT("Send a catalogue item for approval", AppModuleEnum.VENDOR_SELF),
+    CATALOGUE_WITHDRAW("Take a published catalogue item down", AppModuleEnum.VENDOR_SELF),
+    CATALOGUE_DELETE("Archive a catalogue item", AppModuleEnum.VENDOR_SELF);
 
     private final String actionName;
     private final AppModuleEnum module;

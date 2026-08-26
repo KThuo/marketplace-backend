@@ -267,13 +267,18 @@ public class TenantService {
      */
     @Transactional
     public Tenant createForAgent(String name, String contactName, String email, String phone) {
+        return createOrganisationFor(name, contactName, email, phone, AppConstant.ORG_KIND_AGENT, "AGENCY");
+    }
+
+    private Tenant createOrganisationFor(String name, String contactName, String email, String phone,
+                                         String kind, String sellerType) {
         String base = normaliseSlug(null, name);
         String slug = base;
         for (int suffix = 2; repository.existsBySlugIgnoreCase(slug) && suffix < 1000; suffix++) {
             slug = base + "-" + suffix;
         }
         if (repository.existsBySlugIgnoreCase(slug)) {
-            throw new HodiException("Could not allocate a handle for this agent — try a different name.",
+            throw new HodiException("Could not allocate a handle for that name — try a different one.",
                     HttpStatus.CONFLICT);
         }
 
@@ -282,9 +287,10 @@ public class TenantService {
                 .slug(slug)
                 .tenantRef(uniqueRef())
                 // An independent agent is an agency in the seller-type taxonomy, which is what makes the
-                // register and the reporting read honestly rather than showing a null.
-                .sellerType("AGENCY")
-                .organisationKind(AppConstant.ORG_KIND_AGENT)
+                // register and the reporting read honestly rather than showing a null. A vendor sells no
+                // property at all, so for them the seller type is genuinely absent.
+                .sellerType(sellerType)
+                .organisationKind(kind)
                 .contactName(contactName)
                 .contactEmail(email)
                 .contactPhone(phone)
@@ -300,8 +306,20 @@ public class TenantService {
 
         tenantModules.enableCoreModules(tenant.getId());
         audit.record(AppConstant.ACTION_CREATE, "Tenant", tenant.getId(), null, snapshot(tenant));
-        log.info("Created agent organisation {} ({})", tenant.getName(), tenant.getSlug());
+        log.info("Created {} organisation {} ({})", kind.toLowerCase(), tenant.getName(), tenant.getSlug());
         return tenant;
+    }
+
+    /**
+     * The organisation an approved vendor publishes into (M10).
+     *
+     * <p>The agent's method with one word different, and kept separate rather than parameterised because
+     * the kind is the whole of the difference and a boolean argument at every call site reads worse than two
+     * names. If a fourth kind arrives, this becomes one method taking the kind.
+     */
+    @Transactional
+    public Tenant createForVendor(String name, String contactName, String email, String phone) {
+        return createOrganisationFor(name, contactName, email, phone, AppConstant.ORG_KIND_VENDOR, null);
     }
 
     /**

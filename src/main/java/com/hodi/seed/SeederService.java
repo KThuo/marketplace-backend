@@ -65,6 +65,7 @@ public class SeederService {
     private static final String BUYER_GROUP = "Buyer";
     private static final String VALUER_GROUP = "Valuer";
     private static final String AGENT_GROUP = "Property Agent";
+    private static final String VENDOR_GROUP = "Vendor";
 
     private final UserTypeRepository userTypes;
     private final AppModuleRepository appModules;
@@ -157,15 +158,16 @@ public class SeederService {
         int buyer = topUpBuyerGroup();
         int valuerPerms = topUpValuerGroup();
         int agentPerms = topUpAgentGroup();
+        int vendorPerms = topUpVendorGroup();
         int owners = topUpOrganisationOwnerGroups();
         int enabled = enableCoreModulesEverywhere();
         boolean bootstrapped = seedBootstrapAdmin();
 
         log.info("Seeder: {} user types, {} modules, {} permissions, {} configs, {} templates "
-                        + "(+{} platform, +{} buyer, +{} valuer, +{} agent, +{} owner perms, "
-                        + "+{} tenant modules){}",
+                        + "(+{} platform, +{} buyer, +{} valuer, +{} agent, +{} vendor, "
+                        + "+{} owner perms, +{} tenant modules){}",
                 types, modules, perms, configs, templates, platform, buyer, valuerPerms, agentPerms,
-                owners, enabled,
+                vendorPerms, owners, enabled,
                 bootstrapped ? ", bootstrap admin created" : "");
     }
 
@@ -766,6 +768,55 @@ public class SeederService {
                     .name(AGENT_GROUP)
                     .description("What every independent agent holds: their own registration, their "
                             + "listings, and the leads those listings produce.")
+                    .userTypeId(type.getId())
+                    .userTypeCode(type.getCode())
+                    .userTypeName(type.getName())
+                    .template(false)
+                    .system(true)
+                    .permissions(expected)
+                    .status(AppConstant.STATUS_ACTIVE)
+                    .statusFlag(AppConstant.FLAG_ACTIVE)
+                    .createdBy(ACTOR)
+                    .build());
+            return expected.size();
+        }
+        int added = 0;
+        for (Permission p : expected) {
+            if (group.getPermissions().stream()
+                    .noneMatch(x -> x.getActionCode().equals(p.getActionCode()))) {
+                group.getPermissions().add(p);
+                added++;
+            }
+        }
+        if (added > 0) {
+            group.setUpdatedBy(ACTOR);
+            userGroups.save(group);
+        }
+        return added;
+    }
+
+    /**
+     * The group every vendor belongs to (M10).
+     *
+     * <p>Global and {@code system}, like the agent's and the valuer's. A vendor's catalogue verbs are here
+     * from the moment they register and are gated the same way an agent's listing verbs are: the resolver
+     * drops them until the profile's KYC standing clears, which approval is what does. Granting and gating
+     * beats editing the group at approval — rights that live in a rule cannot be hand-edited into existence.
+     */
+    private int topUpVendorGroup() {
+        UserType type = userTypes.findByCode("VENDOR").orElse(null);
+        if (type == null) return 0;
+        Set<Permission> expected = resolve(List.of(
+                "DASHBOARD_VIEW", "VENDOR_SELF_VIEW", "VENDOR_SELF_UPDATE", "VENDORS_VIEW",
+                "CATALOGUE_CREATE", "CATALOGUE_UPDATE", "CATALOGUE_SUBMIT", "CATALOGUE_WITHDRAW",
+                "CATALOGUE_DELETE"));
+
+        UserGroup group = userGroups.findGlobalByName(VENDOR_GROUP).orElse(null);
+        if (group == null) {
+            userGroups.save(UserGroup.builder()
+                    .name(VENDOR_GROUP)
+                    .description("What every vendor holds: their own business, and the catalogue they "
+                            + "publish.")
                     .userTypeId(type.getId())
                     .userTypeCode(type.getCode())
                     .userTypeName(type.getName())

@@ -338,7 +338,32 @@ public enum AppModuleEnum {
     AGENT_SELF("AGENT_SELF", "My Agent Profile",
             "An agent's own registration, agreement and details",
             true, 71,
-            "AGENT");
+            "AGENT"),
+
+    /**
+     * The vendor register and the taxonomy behind it (M10).
+     *
+     * <p>Admits vendors so they can see the directory they are part of, and the platform staff who decide
+     * applications and maintain the categories. Both of those verbs are {@code platformOnly} on the
+     * permission — a vendor can read the register without deciding anybody's application, including their
+     * own, and without editing the taxonomy their competitors are filed under.
+     */
+    VENDORS("VENDORS", "Vendors",
+            "Businesses offering services to buyers and sellers, and the categories they are listed under",
+            true, 75,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,VENDOR"),
+
+    /**
+     * A vendor's own business and catalogue.
+     *
+     * <p>Its own module for the reason {@code AGENT_SELF} and {@code VALUATION_WORK} are: the owner-group
+     * top-up hands every non-platform-only permission whose module admits a user type to every organisation
+     * owner of that type, so a vendor-only verb in a shared module would reach people who are not vendors.
+     */
+    VENDOR_SELF("VENDOR_SELF", "My Business",
+            "A vendor's own registration and the catalogue they publish",
+            true, 76,
+            "VENDOR");
 
     private final String code;
     private final String displayName;

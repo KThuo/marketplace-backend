@@ -100,7 +100,17 @@ public enum UserTypeEnum {
      */
     AGENT("Property Agent",
             "An independent agent listing their own property and their clients'",
-            AppConstant.ACTOR_AGENT, 120);
+            AppConstant.ACTOR_AGENT, 120),
+
+    /**
+     * A vendor: conveyancers, movers, surveyors, security firms (M10, BRD FR170).
+     *
+     * <p>The population the platform serves that never touches a listing. They publish a catalogue, and the
+     * catalogue is what a buyer sees after an offer is accepted.
+     */
+    VENDOR("Vendor",
+            "A business offering services to buyers and sellers",
+            AppConstant.ACTOR_VENDOR, 130);
 
     private final String displayName;
     private final String description;

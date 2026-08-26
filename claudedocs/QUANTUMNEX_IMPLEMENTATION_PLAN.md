@@ -1057,3 +1057,78 @@ client-owned listing has no `clientOwnerName` key, and shows the agency as the s
    listing. Counted on read instead: a stored counter would have to be maintained by every path that
    creates, archives or reassigns a listing, and one that is only mostly maintained reads as a fact while
    being wrong.
+
+---
+
+## 18. Phase 4 / M10 — the vendor marketplace
+
+**BRD:** FR170. **Plan:** §3.6, §3.2.
+
+The other half of buying a house. Somebody whose offer has just been accepted needs a conveyancer, a
+surveyor, a mover and a security firm — and the platform is the one place that knows they are at that point.
+
+### The agent's shape, reused deliberately
+
+A vendor applies, the platform checks them, approval creates a one-person organisation. That is M9's flow
+with different fields, and reusing it was the point: `TenantService.createForAgent` became one private method
+with a kind argument, `PrincipalFactory` needed nothing, and the three-gate safety story is identical —
+PENDING state, a KYC standing that fails the gate, and no organisation to publish into.
+
+The differences are what is checked (a business registration and a KRA PIN rather than an estate agent's
+licence) and what they publish.
+
+### Publication goes through Maker/Checker
+
+§3.2 listed M10 as a queue consumer and it is the right call: a catalogue item is a **public price from a
+third party, shown to somebody in the middle of the largest transaction of their life**. A seller's listing
+is checked before it goes live; there is no argument for holding a conveyancer's quotation lower. Editing a
+live item takes it back through the queue, for the same reason editing a live listing does.
+
+`CatalogueApprovalHandler` is the shortest handler yet and adds no `assertMayDecide` — a vendor organisation
+is one person, so there is no colleague to be the second pair of eyes and the platform is the checker.
+`CATALOGUE_APPROVE` being platform-only says exactly that.
+
+### A price is three fields
+
+`price`, `price_from` and `price_note`, because a price is three different things depending on the trade: a
+flat fee, a starting figure, or a sentence a number cannot carry — *"1.5% of the purchase price, minimum KES
+35,000, plus disbursements."* Forcing all of that into one number is how a marketplace displays prices nobody
+will honour. A CHECK insists a published item says **something** about price; it does not insist that
+something is a number.
+
+### Suspension takes the catalogue down — unlike an agent's listings
+
+The difference is the point. An agent's listings are somebody's house with buyers mid-enquiry on it, and
+taking them down punishes the wrong people. A vendor's catalogue is that vendor's own prices, and leaving
+them on a public directory while the platform has suspended them is the platform continuing to recommend
+somebody it has just stopped trusting.
+
+Reinstatement does not put them back. Each item goes through approval again, so nothing months stale
+reappears without the vendor or the platform having looked at it.
+
+### The taxonomy is a table, and nothing deletes from it
+
+`vendor_categories` rather than a CHECK, because the list is expected to grow as the platform learns what
+buyers ask for and growing it should not be a deploy. There is no delete: a category can only be
+deactivated, which stops it being offered to new applicants and leaves everybody already filed under it
+exactly where they are.
+
+### Two defects it surfaced
+
+1. **An agent's organisation was listed as a seller.** M9 gave each approved agent a `tenants` row so they
+   could reuse `TenantScope` — and put them in the platform's "Seller organisations" screen beside
+   developers, offering staff management and partnerships to a one-person agency. Fixed before M10 repeated
+   it: `tenants.organisation_kind` (SELLER/AGENT/VENDOR), with the seller list defaulting to SELLER and able
+   to show the others. Filtered rather than hidden — a default that silently excludes rows a table holds is
+   how somebody later concludes an organisation was deleted.
+
+2. **The vendor register timed out at thirty seconds with two rows in it.** `category_name` was
+   denormalised onto vendors and items but the *code* was not, so the response mapper resolved it by
+   matching the name against the whole category list, once per row — and that list counts its vendors per
+   category. Twenty vendors meant twenty category loads and a hundred and sixty counts. The name was already
+   cached for exactly this reason; the code is now cached beside it, and the same request takes 0.35s.
+
+### What is not here
+
+`product_rating` from the §4 table. Ratings arrive with **M7** as one mechanism covering property, service
+and product, rather than a product-only table now that a general one would have to absorb a fortnight later.

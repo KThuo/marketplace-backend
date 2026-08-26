@@ -73,7 +73,19 @@ public class EffectivePermissionResolver {
      * the hottest path in the application afterwards.
      */
     private static final Set<String> KYC_GATED = Set.of(
-            "PROPERTIES_CREATE", "PROPERTIES_UPDATE", "PROPERTIES_SUBMIT", "PROPERTIES_MEDIA");
+            "PROPERTIES_CREATE", "PROPERTIES_UPDATE", "PROPERTIES_SUBMIT", "PROPERTIES_MEDIA",
+            /*
+             * A vendor's catalogue (M10), gated for the same reason and by the same rule.
+             *
+             * An approved vendor's KYC standing is APPROVED, an applicant's and a suspended vendor's is
+             * PENDING — so the one gate covers "not checked yet" and "no longer trusted" without a second
+             * mechanism knowing about either.
+             *
+             * WITHDRAW and DELETE are deliberately absent. They only ever reduce what is public, and gating
+             * them would leave a suspended vendor unable to take down their own prices — punishing somebody
+             * for trying to do the right thing.
+             */
+            "CATALOGUE_CREATE", "CATALOGUE_UPDATE", "CATALOGUE_SUBMIT");
 
     private final UserGroupRepository userGroups;
     private final AppModuleRepository appModules;

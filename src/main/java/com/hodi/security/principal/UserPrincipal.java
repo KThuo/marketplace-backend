@@ -175,6 +175,11 @@ public class UserPrincipal implements UserDetails {
         return AppConstant.ACTOR_AGENT.equals(actorClass);
     }
 
+    /** A vendor. Carries their own organisation, so scoped exactly like seller staff (M10). */
+    public boolean isVendor() {
+        return AppConstant.ACTOR_VENDOR.equals(actorClass);
+    }
+
     public boolean isSellerStaff() {
         return AppConstant.ACTOR_SELLER.equals(actorClass);
     }

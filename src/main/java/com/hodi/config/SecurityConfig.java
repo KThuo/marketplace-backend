@@ -109,6 +109,14 @@ public class SecurityConfig {
              * exactly what they are.
              */
             "/api/v1/public/agents/apply",
+            /*
+             * A business applying to be listed in the vendor directory (M10, FR170).
+             *
+             * The same three conditions make it safe as the agent one: the application lands PENDING, the
+             * profile's KYC standing fails the publication gate, and there is no organisation to publish a
+             * catalogue into until the platform approves it.
+             */
+            "/api/v1/public/vendors/apply",
     };
 
     private final PublicMarketplaceFilter publicMarketplaceFilter;
