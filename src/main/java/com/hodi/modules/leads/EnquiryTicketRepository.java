@@ -23,6 +23,12 @@ public interface EnquiryTicketRepository
 
     boolean existsByReference(String reference);
 
+    /** Evidence that this person and this listing have met on the platform (M7). */
+    boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
+
+    /** The same, one level up: this person has dealt with this organisation about something. */
+    boolean existsByUserIdAndTenantId(Long userId, Long tenantId);
+
     /** The seller's, or the platform's. Scope is applied by the caller's specification, not here. */
     Optional<EnquiryTicket> findByReference(String reference);
 

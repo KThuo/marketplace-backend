@@ -1132,3 +1132,76 @@ exactly where they are.
 
 `product_rating` from the §4 table. Ratings arrive with **M7** as one mechanism covering property, service
 and product, rather than a product-only table now that a general one would have to absorb a fortnight later.
+
+---
+
+## 19. Phase 4 / M7 — ratings and moderation
+
+**BRD:** post-transaction feedback. **Plan:** §4.
+
+### One table, not three
+
+§4 names `property_rating`, `service_rating` and `product_rating`. They are the same row with a different
+subject: a score, some words, who wrote them, and whether anybody has complained. Three tables would mean
+three moderation queues, three report paths and three sets of aggregates — and the moderator's screen would
+union them anyway.
+
+So `ratings` with a `subject_type` discriminator over five subjects (property, seller, agent, vendor,
+catalogue item) and **no foreign key** to any of them, the way `approval_workflows` does it. The alternative
+is five nullable FK columns of which exactly one is ever set.
+
+### Verified means the platform can see the transaction
+
+A rating of a property or a seller can be checked — the enquiry, the viewing and the offer are all rows
+here, and `RatingVerifier` reads them strongest-first so the row records *how* (`OFFER` beats `SITE_VISIT`
+beats `ENQUIRY`).
+
+A rating of a **vendor cannot be**. The platform introduces the two parties and takes no part in what they
+agree, so there is no record of the work. Rather than pretend otherwise, the row says unverified and the
+screens say so. An unverified review is worth less than a verified one and should look it.
+
+### Published, then moderated
+
+Ratings appear immediately. A review site that holds every review for a day is one nobody writes to, and the
+platform already puts listings and catalogue prices through Maker/Checker — applying it to opinions as well
+would make the feedback loop useless.
+
+The queue holds what somebody has **complained about**, plus anything whose text trips a configured word
+list on the way in. The list is deliberately short and deliberately editable: what it buys is that the
+obvious cases never appear publicly even for the minutes before somebody reports them, which is the window
+that matters for a name, a phone number or an accusation. Verified: a review containing "scam" and a phone
+number landed `HELD`, its author was told why, and it counted towards nothing until a moderator published it.
+
+**Reporting does not take a review down.** A platform where one complaint removes a review is one where the
+unhappiest party decides what everybody reads — so the report is recorded, the moderator decides, and the
+dialog says so before somebody clicks.
+
+### One reply, and nobody rates themselves
+
+The subject gets a right of reply — one, not a thread. A thread under a review turns a rating into an
+argument in public, and the person who wrote it has already said what they came to say.
+
+Nobody may rate their own organisation. Not hypothetical: the review panel appears on a vendor's own public
+page, and the first thing anybody does with a new page is try it on themselves.
+
+### The aggregate has one writer, and it recomputes
+
+`rating_summaries` is keyed by (subject_type, subject_id) and touched by exactly one method, which
+**recomputes** from the ratings rather than incrementing. An increment missed once is wrong for ever; a
+recompute over one subject's ratings is cheap. This is the correction for M10's defect — a counter declared
+as an aggregate and maintained by nothing — applied before it could happen again.
+
+The histogram is stored as five small integers because a subject page wants the distribution and five
+columns beat a GROUP BY per page view.
+
+### One defect it surfaced
+
+**Sellers, agents and vendors held `RATINGS_VIEW` with nothing to view.** The permission existed and no
+endpoint answered the question it exists for — *which of these are about me?* Every subject resolves to an
+organisation eventually, but resolving it at read time means five repositories and a switch per row. So
+`ratings.subject_tenant_id` is written when the rating is, and "reviews about us" is one indexed predicate.
+
+The headline figure needed the same fix twice over: reading only the `SELLER` summary showed a vendor with a
+published review a count of zero, because the review was filed against the vendor rather than the tenant. An
+organisation's figure is now every rating about them across every subject type — the only number that
+answers "how are we doing".

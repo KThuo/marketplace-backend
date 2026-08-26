@@ -302,7 +302,15 @@ public enum AppPermissionEnum {
     CATALOGUE_UPDATE("Change something in my catalogue", AppModuleEnum.VENDOR_SELF),
     CATALOGUE_SUBMIT("Send a catalogue item for approval", AppModuleEnum.VENDOR_SELF),
     CATALOGUE_WITHDRAW("Take a published catalogue item down", AppModuleEnum.VENDOR_SELF),
-    CATALOGUE_DELETE("Archive a catalogue item", AppModuleEnum.VENDOR_SELF);
+    CATALOGUE_DELETE("Archive a catalogue item", AppModuleEnum.VENDOR_SELF),
+
+    // ── RATINGS ───────────────────────────────────────────────────────────────
+    RATINGS_VIEW("See what people said about us", AppModuleEnum.RATINGS),
+    RATINGS_REPLY("Reply to a rating about us", AppModuleEnum.RATINGS),
+
+    // ── MODERATION ────────────────────────────────────────────────────────────
+    MODERATION_VIEW("See the moderation queue", AppModuleEnum.MODERATION, true),
+    MODERATION_DECIDE("Publish or hide a review", AppModuleEnum.MODERATION, true);
 
     private final String actionName;
     private final AppModuleEnum module;

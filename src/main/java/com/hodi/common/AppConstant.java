@@ -345,6 +345,7 @@ public final class AppConstant {
     public static final String AUDIT_SIGNATURE_READ   = "SIGNATURE_READ";
     public static final String AUDIT_VENDOR_REGISTER  = "VENDOR_REGISTERED";
     public static final String AUDIT_VENDOR_DECIDED   = "VENDOR_DECIDED";
+    public static final String AUDIT_RATING_MODERATED = "RATING_MODERATED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────
     public static final String OUTCOME_SUCCESS      = "SUCCESS";

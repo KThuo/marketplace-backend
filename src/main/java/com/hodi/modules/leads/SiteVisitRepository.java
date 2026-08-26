@@ -23,6 +23,12 @@ public interface SiteVisitRepository
 
     boolean existsByReference(String reference);
 
+    /** Evidence that this person and this listing have met on the platform (M7). */
+    boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
+
+    /** The same, one level up: this person has dealt with this organisation about something. */
+    boolean existsByUserIdAndTenantId(Long userId, Long tenantId);
+
     Optional<SiteVisit> findByReference(String reference);
 
     @Query("select v from SiteVisit v where v.reference = :reference and v.userId = :userId "

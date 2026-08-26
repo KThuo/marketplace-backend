@@ -370,6 +370,24 @@ public enum ConfigKey {
             "Vendors may apply themselves",
             "When false, vendor applications can only be started by platform staff.", false, false),
 
+    // ── RATINGS (M7) ─────────────────────────────────────────────────────────
+    /**
+     * Words that hold a rating for review rather than publishing it.
+     *
+     * <p>Not a judgement about the words — a rating held here is queued, not rejected. What the list buys is
+     * that the obvious cases never appear publicly even for the minutes before somebody reports them, which
+     * is the window that matters for a name, a phone number or an accusation.
+     *
+     * <p>Deliberately short and deliberately editable. A long automatic list catches ordinary complaints and
+     * teaches people to write around it.
+     */
+    RATING_HELD_WORDS(
+            "rating.held.words", "STRING", "GENERAL",
+            "fraud,fraudster,scam,thief,criminal,sue,lawyer up,my number is",
+            "Words that hold a review",
+            "Comma-separated. A review containing one of these waits for a moderator instead of appearing. "
+                    + "Empty means nothing is held automatically.", false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

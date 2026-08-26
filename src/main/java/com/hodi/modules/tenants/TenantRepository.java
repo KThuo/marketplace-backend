@@ -15,6 +15,9 @@ public interface TenantRepository extends JpaRepository<Tenant, Long>, JpaSpecif
 
     boolean existsByTenantRef(String tenantRef);
 
+    /** By the public reference, which is how a rating names its subject (M7). */
+    java.util.Optional<Tenant> findByTenantRef(String tenantRef);
+
     List<Tenant> findByStatusNotOrderByNameAsc(Integer status);
 
     long countByOnboardingStatus(String onboardingStatus);

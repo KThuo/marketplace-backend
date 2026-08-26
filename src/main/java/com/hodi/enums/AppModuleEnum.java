@@ -363,7 +363,31 @@ public enum AppModuleEnum {
     VENDOR_SELF("VENDOR_SELF", "My Business",
             "A vendor's own registration and the catalogue they publish",
             true, 76,
-            "VENDOR");
+            "VENDOR"),
+
+    /**
+     * What people said, and the right of reply (M7).
+     *
+     * <p>Buyers are not here: they write ratings through their own portal, which {@code BUYER_PORTAL}
+     * already admits them to. What this module admits is the people who are <em>rated</em> — a seller, an
+     * agent or a vendor reading and answering what was said about them.
+     */
+    RATINGS("RATINGS", "Ratings",
+            "What buyers said about a listing, an organisation or a service, and the replies",
+            true, 80,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,AGENT,VENDOR"),
+
+    /**
+     * The moderation queue (M7).
+     *
+     * <p>Platform-only as a module, not merely as a permission. Deciding what the public reads about
+     * somebody else is not a thing a party to the dispute should be admitted to at all — and unlike the
+     * approval queue there is no legitimate second side here.
+     */
+    MODERATION("MODERATION", "Moderation",
+            "Reviews somebody has objected to, or that were held on the way in",
+            true, 81,
+            "SUPER_ADMIN,SUPPORT_ADMIN");
 
     private final String code;
     private final String displayName;

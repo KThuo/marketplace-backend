@@ -23,6 +23,12 @@ public interface PurchaseRequestRepository
 
     boolean existsByReference(String reference);
 
+    /** Evidence that this person and this listing have met on the platform (M7). */
+    boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
+
+    /** The same, one level up: this person has dealt with this organisation about something. */
+    boolean existsByUserIdAndTenantId(Long userId, Long tenantId);
+
     Optional<PurchaseRequest> findByReference(String reference);
 
     @Query("select p from PurchaseRequest p where p.reference = :reference and p.userId = :userId "

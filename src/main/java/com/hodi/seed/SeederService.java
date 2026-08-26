@@ -760,7 +760,9 @@ public class SeederService {
                 "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_CLOSE",
                 "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
                 "PURCHASE_REQUESTS_VIEW", "PURCHASE_REQUESTS_DECIDE",
-                "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST"));
+                "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST",
+                // What people said about them, and the right of reply (M7).
+                "RATINGS_VIEW", "RATINGS_REPLY"));
 
         UserGroup group = userGroups.findGlobalByName(AGENT_GROUP).orElse(null);
         if (group == null) {
@@ -809,7 +811,9 @@ public class SeederService {
         Set<Permission> expected = resolve(List.of(
                 "DASHBOARD_VIEW", "VENDOR_SELF_VIEW", "VENDOR_SELF_UPDATE", "VENDORS_VIEW",
                 "CATALOGUE_CREATE", "CATALOGUE_UPDATE", "CATALOGUE_SUBMIT", "CATALOGUE_WITHDRAW",
-                "CATALOGUE_DELETE"));
+                "CATALOGUE_DELETE",
+                // What people said about them, and the right of reply (M7).
+                "RATINGS_VIEW", "RATINGS_REPLY"));
 
         UserGroup group = userGroups.findGlobalByName(VENDOR_GROUP).orElse(null);
         if (group == null) {
