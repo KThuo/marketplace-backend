@@ -171,10 +171,22 @@ public class PublicPropertyService {
      */
     private Sort sortOf(String sort) {
         String key = sort == null ? "" : sort.trim().toLowerCase();
+        /*
+         * Paid placement lifts a listing within whatever order was asked for (M13) — it never replaces it.
+         *
+         * Somebody who sorted by price ascending asked for the cheapest first and should get it; a promoted
+         * listing appearing above a cheaper one under that heading would make the sort a lie. So the boost
+         * is the first key only on the default ordering, where "relevance" is the platform's to define, and
+         * a secondary key elsewhere, where it breaks ties and nothing more.
+         *
+         * The boost is a column on `properties`, written by PromotionService — search is the hottest read
+         * path here and a join per result to find out whether somebody paid is a join per result.
+         */
+        Sort boost = Sort.by(Sort.Direction.DESC, "promotionBoost");
         return switch (key) {
-            case "price-asc" -> Sort.by(Sort.Direction.ASC, "price");
-            case "price-desc" -> Sort.by(Sort.Direction.DESC, "price");
-            default -> Sort.by(Sort.Direction.DESC, "publishedAt");
+            case "price-asc" -> Sort.by(Sort.Direction.ASC, "price").and(boost);
+            case "price-desc" -> Sort.by(Sort.Direction.DESC, "price").and(boost);
+            default -> boost.and(Sort.by(Sort.Direction.DESC, "publishedAt"));
         };
     }
 
@@ -248,6 +260,7 @@ public class PublicPropertyService {
                 p.getTenantName(),
                 storage.urlFor(p.getPrimaryImageKey()),
                 images,
+                p.getPromotionBoost() != null && p.getPromotionBoost() > 0,
                 p.getPublishedAt());
     }
 

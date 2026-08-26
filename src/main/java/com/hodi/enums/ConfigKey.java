@@ -388,6 +388,22 @@ public enum ConfigKey {
             "Comma-separated. A review containing one of these waits for a moderator instead of appearing. "
                     + "Empty means nothing is held automatically.", false, false),
 
+    // ── COMMISSION (M13) ─────────────────────────────────────────────────────
+    /**
+     * What the platform earns on a completed sale, as a percentage of the price.
+     *
+     * <p>Overridable per organisation, which is how a seller with an agreed rate carries it without a table
+     * of their own. The rate is copied onto every commission when it is raised, so changing this affects
+     * what is owed from here on and never restates what was owed before.
+     *
+     * <p>Zero is a valid setting and means nothing is raised at all.
+     */
+    COMMISSION_RATE_PERCENT(
+            "commission.rate.percent", "STRING", "GENERAL", "1.5",
+            "Commission rate (%)",
+            "Charged on the sale price when a listing is marked sold. Copied onto each commission, so "
+                    + "changing it never restates what was already owed. Zero raises nothing.", false, true),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

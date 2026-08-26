@@ -411,7 +411,38 @@ public enum AppModuleEnum {
             "Viewings, auctions and whatever else somebody put in the week",
             true, 86,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
-                    + "AGENT,VENDOR,LENDER_ADMIN");
+                    + "AGENT,VENDOR,LENDER_ADMIN"),
+
+    /**
+     * The kinds of property, and which questions each is asked (M13).
+     *
+     * <p>Platform-only. A taxonomy every seller's listings are filed under is not a thing one seller edits.
+     */
+    PROPERTY_CONFIG("PROPERTY_CONFIG", "Property Types",
+            "The kinds of property, and which fields each one needs",
+            true, 90,
+            "SUPER_ADMIN,SUPPORT_ADMIN"),
+
+    /**
+     * Paid placement (M13).
+     *
+     * <p>Both sides: the platform maintains the packages and starts a placement, a seller asks for one and
+     * watches it run. The permissions separate them.
+     */
+    PROMOTIONS("PROMOTIONS", "Promotions",
+            "Paid placement on the marketplace, and who is holding one",
+            true, 91,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,AGENT"),
+
+    /**
+     * What the platform earned (M13).
+     *
+     * <p>A seller reads what they owe; only the platform decides whether it has been paid.
+     */
+    COMMISSIONS("COMMISSIONS", "Commission",
+            "What the platform earned on completed sales, and where each figure stands",
+            true, 92,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,AGENT");
 
     private final String code;
     private final String displayName;

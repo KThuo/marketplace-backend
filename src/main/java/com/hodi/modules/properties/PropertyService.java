@@ -64,6 +64,7 @@ public class PropertyService {
 
     private final PropertyRepository repository;
     private final AgentProfileRepository agents;
+    private final com.hodi.modules.sellerops.CommissionService commissions;
     private final PropertyMediaRepository media;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
@@ -259,6 +260,9 @@ public class PropertyService {
         property.setUpdatedBy(AuthContext.username());
         Property saved = repository.save(property);
         audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
+        // What the platform earned (M13). Raised from the rate in force now and copied onto the row; it
+        // never throws back into here, because the sale is the fact and the invoice is a consequence.
+        commissions.raiseFor(saved);
         return toResponse(saved);
     }
 

@@ -1270,3 +1270,66 @@ Both test rules resolved to the wrong person — the same person, which is what 
 not defensive decoding but a better model: a rule now points at a **profile**, because a profile *is* "this
 person in this organisation", which is exactly what routing means. The organisation check became exact at
 the same time, where before it accepted any of the target's profiles.
+
+---
+
+## 21. Phase 5 / M13 — internal management, seller side
+
+**Plan:** §4 — `property_type_config`, `promotion_package`, `commission_record`.
+
+All three exist because something was hardcoded, unpriced or uncounted.
+
+### 1. The property types stop being a hardcoded list
+
+Six values lived in a Java enum, three Vue arrays and a form's validation — and the *fields a form asked
+for* came from nothing at all, so a plot of land was asked how many bathrooms it has.
+
+`property_type_configs` holds the type and the questions it implies (`has_bedrooms`, `has_plot_area`, …),
+and the listing form renders from it. Adding "godown" is now a row rather than a deploy in two repositories.
+
+Nothing deletes: a type with listings under it can only be withdrawn, which stops it being offered to new
+listings and leaves the existing ones where they are.
+
+**A defect it surfaced immediately.** The seeded types came from the Java enum's six; the frontend's
+hardcoded list had a seventh, `BUNGALOW`, with listings using it. A taxonomy that omits a type in use makes
+the marketplace's own facet offer a filter the listing form cannot — which is exactly the drift the table
+exists to end. Corrected in a follow-up migration.
+
+### 2. Promotion, without inventing a payment flow
+
+There is no payments integration, and a "Buy now" button that quietly did nothing would be the worst kind of
+half-feature. So a seller **asks for** a placement and the platform starts it once they have been paid,
+however they were paid. The page says so in a sentence rather than leaving somebody to discover it.
+
+Two copies of the boost, both deliberate and both with one writer:
+
+- **package → promotion**, so repricing a package next month does not restate what somebody bought last
+  month;
+- **promotion → `properties.promotion_boost`**, so marketplace search sorts on a column. Search is the
+  hottest read path on the platform and a join per result to find out whether somebody paid is a join per
+  result.
+
+**Placement lifts within the chosen order; it never replaces it.** Somebody who sorted by price ascending
+asked for the cheapest first and gets it — the boost is the primary key only on the default ordering, where
+"relevance" is the platform's to define. And the card carries a **Featured badge**: a marketplace that
+reorders itself silently is one nobody can trust.
+
+Expiry is **swept hourly, not computed at read time**. The cost is that a placement ending at 14:00 stops
+showing at 14:05; the alternative costs every buyer's search a comparison per row, to answer a question that
+changes a handful of times a day.
+
+### 3. Commission, raised when a sale completes
+
+Marking a listing sold now raises a commission from the rate in force at that moment — and **the rate is
+copied onto the row**. A rate change next quarter must not silently restate what was owed last quarter, and
+a report that reads a live setting to explain a historical figure is one nobody can reconcile. The
+commission table shows that rate as a column, so the property is visible rather than merely true.
+
+The rate comes from the configuration layer, which means a seller with an agreed rate carries it as a
+by-exception override without a table of their own. Zero is a valid setting and raises nothing at all.
+
+**Raising never fails the sale.** Marking a listing sold is the seller recording a fact about their
+business; the platform's invoice is a consequence of it. A commission that could not be written is
+recoverable; a sale that could not be recorded because of it is not.
+
+Writing money off requires a reason — in the service, and in the table's own CHECK.

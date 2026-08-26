@@ -119,6 +119,12 @@ public class Property {
     @Column(name = "client_owner_name", length = 160) private String clientOwnerName;
     @Column(name = "client_owner_phone", length = 32) private String clientOwnerPhone;
 
+    // ── paid placement (M13) ──────────────────────────────────────────────────
+    // Copied from the running promotion so marketplace search sorts on a column instead of joining. One
+    // writer: PromotionService. Zero means nobody has paid for placement on this listing.
+    @Column(name = "promotion_boost", nullable = false) @Builder.Default private Integer promotionBoost = 0;
+    @Column(name = "promoted_until") private OffsetDateTime promotedUntil;
+
     public boolean isDraft() {
         return AppConstant.LISTING_DRAFT.equals(listingState);
     }

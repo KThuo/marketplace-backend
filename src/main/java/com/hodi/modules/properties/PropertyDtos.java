@@ -197,6 +197,14 @@ public final class PropertyDtos {
             String sellerName,
             String primaryImageUrl,
             List<String> imageUrls,
+            /**
+             * Whether somebody is paying for placement on this one (M13).
+             *
+             * <p>A boolean, not the boost. How hard a listing is being lifted is the platform's commercial
+             * business; that it is being lifted at all is something a buyer is entitled to see, which is why
+             * the card carries a badge rather than quietly reordering itself.
+             */
+            boolean promoted,
             OffsetDateTime publishedAt) {}
 
     /**

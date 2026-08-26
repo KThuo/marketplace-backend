@@ -14,6 +14,10 @@ public interface PropertyRepository
 
     boolean existsByReference(String reference);
 
+    /** How many listings are filed under one property type (M13). Archived ones excluded. */
+    @Query("select count(p) from Property p where p.propertyType = :code and p.status <> 5")
+    long countByPropertyType(@Param("code") String code);
+
     /** How many listings an agent has, archived ones excluded. Counted on read — see AgentService. */
     @Query("select count(p) from Property p where p.agentProfileId = :agentProfileId and p.status <> 5")
     long countByAgentProfileId(@Param("agentProfileId") Long agentProfileId);

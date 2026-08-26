@@ -763,8 +763,9 @@ public class SeederService {
                 "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST",
                 // What people said about them, and the right of reply (M7).
                 "RATINGS_VIEW", "RATINGS_REPLY",
-                // Their own week (M12).
-                "CALENDAR_VIEW", "CALENDAR_MANAGE", "ASSIGNMENT_VIEW", "ASSIGNMENT_MANAGE"));
+                // Their own week (M12), and what they pay for and owe (M13).
+                "CALENDAR_VIEW", "CALENDAR_MANAGE", "ASSIGNMENT_VIEW", "ASSIGNMENT_MANAGE",
+                "PROMOTIONS_VIEW", "PROMOTIONS_REQUEST", "COMMISSIONS_VIEW"));
 
         UserGroup group = userGroups.findGlobalByName(AGENT_GROUP).orElse(null);
         if (group == null) {

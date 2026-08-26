@@ -318,7 +318,22 @@ public enum AppPermissionEnum {
 
     // ── CALENDAR ──────────────────────────────────────────────────────────────
     CALENDAR_VIEW("See the diary", AppModuleEnum.CALENDAR),
-    CALENDAR_MANAGE("Add and change diary entries", AppModuleEnum.CALENDAR);
+    CALENDAR_MANAGE("Add and change diary entries", AppModuleEnum.CALENDAR),
+
+    // ── PROPERTY_CONFIG ───────────────────────────────────────────────────────
+    PROPERTY_TYPES_VIEW("See the property types", AppModuleEnum.PROPERTY_CONFIG),
+    PROPERTY_TYPES_MANAGE("Add and maintain property types", AppModuleEnum.PROPERTY_CONFIG, true),
+
+    // ── PROMOTIONS ────────────────────────────────────────────────────────────
+    PROMOTIONS_VIEW("See placements", AppModuleEnum.PROMOTIONS),
+    /** A seller asking for one. */
+    PROMOTIONS_REQUEST("Ask for a placement on a listing", AppModuleEnum.PROMOTIONS),
+    /** Starting or stopping one, and maintaining what is on sale. Platform-only. */
+    PROMOTIONS_MANAGE("Start, stop and price placements", AppModuleEnum.PROMOTIONS, true),
+
+    // ── COMMISSIONS ───────────────────────────────────────────────────────────
+    COMMISSIONS_VIEW("See what is owed", AppModuleEnum.COMMISSIONS),
+    COMMISSIONS_SETTLE("Invoice, mark paid or write off", AppModuleEnum.COMMISSIONS, true);
 
     private final String actionName;
     private final AppModuleEnum module;
