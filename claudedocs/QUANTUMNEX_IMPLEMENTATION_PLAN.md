@@ -308,7 +308,7 @@ numbers*, not the funnel around them.
 | APM + alerting | Not started |
 | DR, RPO < 15 min / RTO < 4 h | Infrastructure, outside this codebase; flag to whoever owns the Postgres |
 | WCAG 2.1 | Partial by construction — semantic markup, labelled fields, focus-visible rings, reduced-motion honoured. Needs a real audit |
-| English / KES / DD-MM-YYYY | Shared formatter added and adopted by the fifteen screens built in phases 3–6 (§24). The earlier screens still carry their own `toLocaleDateString` calls — a mechanical sweep, listed as outstanding rather than claimed |
+| English / KES / DD-MM-YYYY | **Done** — `src/utils/format.ts` owns the house style and every screen uses it. The one surviving `toLocaleDateString` call asks for a weekday name, which is not a date format (§24) |
 
 ---
 
@@ -1495,8 +1495,14 @@ where 03/04 might be March or April is a platform where somebody arrives at a vi
 currency passed in rather than assumed because an organisation carries its own, and whole shillings because
 two trailing zeros on every figure in a table is noise.
 
-Adopted by the fifteen screens built in phases 3–6. **The earlier screens still have their own copies** —
-mechanical to finish and listed as outstanding rather than quietly claimed.
+Adopted everywhere. Forty-two files were migrated in two passes — the fifteen screens from phases 3–6 first,
+then the twenty-seven earlier ones — and the production build and type check pass after each. One
+`toLocaleDateString` call survives, in the diary, and it asks for a weekday name rather than formatting a
+date.
+
+The sweep was done by matching each local helper's body before removing it: a `const` whose body neither
+formats nor touches component state, and never one that reads `.value` or calls an API. Two of them turned
+out not to be formatters at all and were left alone.
 
 ### What remains, and where it lives
 
