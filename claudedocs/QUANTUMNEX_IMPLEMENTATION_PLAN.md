@@ -1638,10 +1638,16 @@ The audit and its findings are in **`WCAG_AUDIT_PLAN.md`**. The short version:
 themes, so this cannot quietly regress: it is one command, and it fails the build's own arithmetic rather
 than somebody's eye.
 
+The heading hierarchy is fixed too, and it is worth recording that I got its shape wrong first: I filed
+`h1` → `h3` with no `h2` as a per-screen judgement call not worth guessing at across 71 pages. It was not.
+The skip came from two shared components — `SectionCard` and `EmptyState`, 54 instances between them, both
+rendering a section that sits directly under the page's `h1` — plus 28 headings whose correct level is
+decided by their container, which the source states rather than implies. Every public route now reports one
+`h1`, levels `h1`–`h2`, and no skips, with the rendered type unchanged.
+
 **Still open, and it needs a person, not a script:** a screen-reader session on the workflows that matter,
-a keyboard-only run by somebody who does not know where the controls are, the authenticated screens at
-320px, and the heading hierarchy (`h1` → `h3` with no `h2`), which is a judgement call about what counts as
-a section on each screen rather than something to guess at across 71 pages.
+a keyboard-only run by somebody who does not know where the controls are, and the authenticated screens at
+320px.
 
 ---
 

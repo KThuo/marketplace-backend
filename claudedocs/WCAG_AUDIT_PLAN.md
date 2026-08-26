@@ -325,6 +325,38 @@ already wired on the custom select.
 - A keyboard-only run by somebody who does not already know where the controls are.
 - The authenticated screens at 320px. The public routes are verified; the workspace, which is where the
   data tables live, is the likeliest place for another reflow defect.
-- Heading hierarchy: pages go `h1` → `h3` with no `h2` (filter groups and card titles are both `h3`).
-  Level skipping is a structural smell rather than an AA failure, and fixing it is a judgement call about
-  what is genuinely a section on each screen — worth doing, not worth guessing at across 71 pages.
+- ~~Heading hierarchy~~ — **done, see §7.8.** I recorded this as a judgement call not worth guessing at
+  across 71 pages, and that was wrong: the skips came from two shared components, not from 71 bespoke
+  decisions.
+
+### 7.8 Heading hierarchy — where the skip actually came from
+
+Every page went `h1` → `h3` with no `h2`. I first recorded this as a per-screen judgement call and left
+it; re-examining it, the cause was almost entirely two shared components:
+
+| Component | Was | Now | Instances |
+|---|---|---|---|
+| `SectionCard` | `h3` | `h2` | 27, across 17 files |
+| `EmptyState` | `h3` | `h2` | 27 |
+
+Both render a section that sits directly under the page's `h1`, so `h2` is not a preference — it is what
+the level means. The rest was 28 headings whose container decided the answer, and the container is
+readable from the source rather than guessable: a heading at page level under the `h1` becomes `h2`; one
+inside a dialog, whose own title is an `h2`, becomes `h3`; one inside a section that just became `h2` also
+becomes `h3` (`ProfileView`'s name block). Five `h4`s inside modals were skipping a level for the same
+reason in reverse.
+
+**The level changed and the appearance did not**, which is the part that needed care: all 22 of these
+files style their headings by element selector — `.fgroup h3`, `.body h3`, a bare `h4 {` — so every tag
+change was paired with its selector. Verified by computing the rendered styles afterwards rather than by
+eye: the marketplace filter headings are still 10.5px/700/uppercase in Sora at `--text-subtle`, and the
+card titles still 14px/600 at `--text`.
+
+Result: every public route now reports **one `h1`, levels `h1`–`h2` only, and zero skips** — marketplace,
+affordability, auctions, services, sign-in, register. The authenticated pages are changed by the same two
+shared components but are not visually confirmed, for the same reason the rest of the authenticated walk
+is not.
+
+One thing found and deliberately not fixed: `TenantListView` carries a bare `h4 { … }` rule with no `h4`
+in its template. It is identical at `HEAD`, so it is pre-existing dead CSS rather than fallout from this
+change, and tidying it is not what this change is for.
