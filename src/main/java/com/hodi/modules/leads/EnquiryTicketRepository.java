@@ -23,6 +23,11 @@ public interface EnquiryTicketRepository
 
     boolean existsByReference(String reference);
 
+    /** The buyer's own unanswered questions. Read by the assistant (M11). */
+    @Query("select count(e) from EnquiryTicket e where e.userId = :userId "
+            + "and e.state <> 'CLOSED' and e.status <> 5")
+    long countOpenForUser(@Param("userId") Long userId);
+
     /** Evidence that this person and this listing have met on the platform (M7). */
     boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
 

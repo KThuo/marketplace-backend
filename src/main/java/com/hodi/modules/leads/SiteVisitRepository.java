@@ -23,6 +23,12 @@ public interface SiteVisitRepository
 
     boolean existsByReference(String reference);
 
+    /** The buyer's own confirmed viewings still ahead of them. Read by the assistant (M11). */
+    @Query("select count(v) from SiteVisit v where v.userId = :userId "
+            + "and v.state = 'CONFIRMED' and v.slotAt > :now and v.status <> 5")
+    long countUpcomingForUser(@Param("userId") Long userId,
+                              @Param("now") java.time.OffsetDateTime now);
+
     /** Evidence that this person and this listing have met on the platform (M7). */
     boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
 

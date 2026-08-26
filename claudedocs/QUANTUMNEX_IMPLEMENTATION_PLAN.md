@@ -283,9 +283,9 @@ turn lands backend **and** frontend together.
 | **2** | **done** — M8: KYC + §3.9 vault (§13), seller types with a mandatory-KYC policy, and listing progress updates (§14). Listing CRUD, media and the approval queue had arrived early with M2 | 6–8 |
 | **3** | **done** — M5 (§15), M6 (§16) | 4–5 |
 | **4** | **done** — M9 (§17), M10 (§18), M7 (§19) | 4–5 |
-| **5** | M12, M13, M15 — next | 5–6 |
-| **6** | M11 | 2–3 |
-| **7** | NFR hardening (§5 below) | 2–3 |
+| **5** | **done** — M12 (§20), M13 (§21), M15 (§22) | 5–6 |
+| **6** | **done** — M11 (§23) | 2–3 |
+| **7** | NFR hardening (§5 below) — next | 2–3 |
 
 M3 is deliberately built against a mocked OCP client behind the real interface, so the dependency blocks *correct
 numbers*, not the funnel around them.
@@ -1383,3 +1383,62 @@ marketplace filters on `listing_state`, so clearing it removed the listing from 
 only record of when it went live. The first report to ask *how long did it take to sell* got a dash in every
 row, because the subtraction had nothing to subtract from. Now kept; verified on a fresh sale, which reports
 one day.
+
+---
+
+## 23. Phase 6 / M11 — the assistant
+
+**Plan:** §4 — "thin orchestration over M2/M3/M4; hand-off writes an M4 ticket with the transcript
+attached."
+
+That is exactly what was built, and the plan's own wording is the whole of the design: something that reads
+a question, works out which of the platform's existing capabilities answers it, and answers from real data.
+
+### It says what it is
+
+There is no language model wired to this deployment. `AssistantProvider` is an interface with one rules-based
+implementation — the same seam M3 used for its mocked affordability provider, so putting a model behind it
+later is a second class rather than a rewrite of everything that calls it.
+
+What matters more than the seam is the honesty. **A convincing imitation of a model would be worse than
+none**: somebody about to spend everything they have on a house should not be guessing whether they are
+talking to staff. So the first message of every conversation says it is software and what it can do, every
+reply is attributed to "Assistant (software)", and the page says it above the composer.
+
+Its reasoning is shown, not hidden: each reply carries what it decided the question was about — *"It searched
+the listings"*, *"It ran the affordability arithmetic"*. When it gets that wrong, the reader can see why it
+answered as it did.
+
+### Five things, all of them the platform's own
+
+Search is `PublicPropertyService`. Affordability is the same arithmetic the public calculator runs. "Where do
+my enquiries stand" counts the caller's own rows. The glossary answers the ten questions a first-time buyer
+actually asks — guide price, reserve, LTV, DTI, leasehold, stamp duty, service charge. Nothing here is a
+second implementation of anything, and it has no opinions about property.
+
+Place names come from the **live facets** rather than a hardcoded list, so a town nobody has listed in is not
+a town the assistant claims to know.
+
+### The transcript is the point of the hand-off
+
+A buyer who gives up on a machine and asks for a person should not have to say it all again. The hand-off
+raises an **ordinary M4 enquiry** against a real listing with the whole conversation quoted in the first
+message — deliberately not a new kind of ticket, because the seller's team already has an inbox and a second
+one for "assistant hand-offs" would be a queue somebody has to remember to read. Verified: the seller opens
+one enquiry and sees the lot.
+
+### Two things the first test run corrected
+
+1. **"Do you sell cars" returned thirteen houses.** Anything unrecognised fell through to search, which is
+   the worst failure mode available — a confident wrong answer from something the reader cannot argue with.
+   Now a question is only treated as a search if something was actually extracted (a bedroom count, a
+   budget, a town it knows) or a property word appears; otherwise it says it did not follow, lists what it
+   can do, and offers a person.
+
+2. **It claimed a deposit had been added when none was given.** With no deposit, the most a lender would
+   advance *is* the most property it buys — and the sentence still said "once a deposit is added". Anything
+   said about somebody's money has to be exactly true or not said, so with no deposit it now says so and
+   notes that every shilling put down buys more.
+
+Also corrected on the way: "three bedroom in Kilimani" matched no bedroom filter at all, because the pattern
+read digits only — and then cheerfully offered a one-bedroom flat. Written numbers are understood now.
