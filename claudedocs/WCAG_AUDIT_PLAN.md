@@ -77,6 +77,9 @@ The static passes cannot see what the browser computes. This pass drives the run
 - checks the focus ring is actually painted at 3:1 against what sits behind it
 - resizes to 320px wide and 400% zoom to check reflow
 
+Runs happen at **full screen for this display — 1512×982 CSS pixels** — rather than a nominal 1280×900,
+plus the 320px pass. A layout tested only at a middling width is tested at the one width nobody has.
+
 Phase 7 found its one defect by walking the navigation rather than by testing endpoints. The same applies
 here: an audit that reads templates and never opens the app finds the missing `aria-label` and misses the
 button you cannot reach with a keyboard.
@@ -433,3 +436,41 @@ where the wide tables live.
 audited is the chrome, the filter row, the table head and the empty state — not tables carrying twenty
 rows of real data. A populated table could still reflow differently at 320px. That check needs a real
 session, and it is the one thing on this page that a stub cannot stand in for.
+
+### 7.11 Checkboxes
+
+The 24 checkboxes on the platform were the operating system's, leaning on `accent-color` — which paints
+the *checked* fill and nothing else, leaving the empty box as whatever hairline the OS picked. On a light
+card that hairline was near-invisible, and 1.4.11 asks 3:1 of a control whose only affordance is its
+outline.
+
+They are themed now, in the design system rather than in a component, because **there was no markup to
+change**: `appearance: none` takes the painting away from the OS and leaves everything else — the input is
+still an input, so it is focusable, space still toggles it, `:checked` still drives the label, and a screen
+reader still calls it a checkbox and reads its state. A control hand-built from divs and click handlers has
+to re-earn all of that, usually gets half, and there were 24 of them.
+
+Five states, in both themes: resting (surface fill, `--border-control` at 3:1), checked (`--brand` fill
+with the tick in white at 4.78:1), indeterminate (a dash, same fill), disabled, and disabled-but-checked —
+still legibly *on*, just not yours to change. The tick is a `clip-path` rather than a glyph or an SVG file,
+so it scales with the box, takes its colour from the fill, and costs no request. Six per-file rules setting
+`accent-color` and their own 15/16/17px sizes were removed; the platform had three checkbox sizes.
+
+Two things the browser corrected:
+
+1. **The dark theme's control border was too blue.** `--border-control` had been solved as the
+   minimum-lightness value that preserved the hue, which cleared 3:1 by lifting a fully saturated blue —
+   and put a distinctly blue outline around every control on a teal-branded platform. Desaturating at the
+   same lightness gives `#617e9c`, still 3.06:1 on the least forgiving dark surface, and lets the control's
+   fill be the thing with colour in it.
+2. **The global focus ring was reshaping the box.** `:focus-visible` sets `border-radius: var(--r-sm)` so
+   the outline it draws is rounded; on a 17px checkbox that rounded the box itself from 5px to 8px as you
+   tabbed onto it — the control changing shape under the cursor. Pinned.
+
+Verified by keyboard rather than by inspection: the box is reachable by Tab, `:focus-visible` resolves, the
+ring is 2px of `--brand-text` at 2px offset, and the radius holds at 5px.
+
+One correction worth recording, because it nearly became a bug report: the first measurement said the
+checked fill and the tick were not changing at all. They were — `getComputedStyle` was being read in the
+same tick as the click, and a property mid-transition reports its *starting* value. The styles were right
+and the measurement was wrong, which is its own lesson about verifying transitions.
