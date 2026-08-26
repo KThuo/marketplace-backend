@@ -1333,3 +1333,53 @@ business; the platform's invoice is a consequence of it. A commission that could
 recoverable; a sale that could not be recorded because of it is not.
 
 Writing money off requires a reason — in the service, and in the table's own CHECK.
+
+---
+
+## 22. Phase 5 / M15 — MIS and reporting
+
+**Plan:** §4 — "reporting views only".
+
+### Views, not tables
+
+A reporting table is a second copy of the truth that has to be kept in step with the first; a view is the
+first, shaped differently. Nothing here can drift, because there is nothing here to drift.
+
+Eight views — listings, leads (three tables unioned into one shape), commission, placements, valuations,
+auctions, compliance, reviews — and **every one carries `tenant_id`**, even where it took a subquery to get
+it. That is what `TenantScope.sqlPredicate` splices onto. A reporting view without a scoping column is a
+view somebody has to remember to scope, and reporting is precisely where "somebody forgot" turns into one
+organisation reading another's figures.
+
+This is the first use of `sqlPredicate`, which existed for exactly this and had never been called. Verified:
+the platform's listings report returns fourteen rows across every seller, the same report run by a seller
+returns eight and names one organisation, and the platform-only compliance report 403s and is not even
+offered in their catalogue.
+
+### Declared, not composed
+
+Every part of the SQL comes from `ReportCatalogue`: the view, the date column, the column list, the numeric
+columns. The request supplies a **report code matched against the catalogue**, two dates and a limit —
+nothing from a request reaches the SQL as text. A report engine that took a table name or an `ORDER BY` from
+a request would be an injection surface wearing a business-intelligence hat.
+
+### Two permissions, because they are two acts
+
+`REPORTS_VIEW` and `REPORTS_EXPORT` are separate. Reading a figure on a screen and walking out with the rows
+behind it are different things, and only one of them leaves the building. The export is audited and its CSV
+escapes leading `=`, `+`, `-` and `@` — a listing titled `=cmd|…` is how an export becomes an attack on
+whoever opens it in a spreadsheet.
+
+### Still the transactional database
+
+§4 says a read replica or warehouse, "not the transactional DB". That remains right and remains Phase 7's
+job. Naming these as views is what makes the move cheap: the reports read a shape, and pointing that shape
+at a replica later is a connection string rather than a rewrite.
+
+### One defect the first report found
+
+**`markSold` was clearing `published_at`.** It was belt-and-braces for "off the marketplace" — but the
+marketplace filters on `listing_state`, so clearing it removed the listing from nothing and destroyed the
+only record of when it went live. The first report to ask *how long did it take to sell* got a dash in every
+row, because the subtraction had nothing to subtract from. Now kept; verified on a fresh sale, which reports
+one day.

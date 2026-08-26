@@ -254,9 +254,16 @@ public class PropertyService {
         String before = snapshot(property);
         property.setListingState(AppConstant.LISTING_SOLD);
         property.setSoldAt(OffsetDateTime.now());
-        // Off the marketplace, but the row stays: what sold and for how much is the question every report in
-        // M15 is built on.
-        property.setPublishedAt(null);
+        /*
+         * `published_at` is kept, and that is a correction (M15).
+         *
+         * It used to be cleared here as belt-and-braces for "off the marketplace" — but the marketplace
+         * filters on `listing_state`, so clearing it removed the listing from nothing and destroyed the
+         * only record of when it went live. The first report to ask "how long did it take to sell" got a
+         * dash in every row, because the subtraction had nothing to subtract from.
+         *
+         * What sold, for how much, and how long it took is the question every report in M15 is built on.
+         */
         property.setUpdatedBy(AuthContext.username());
         Property saved = repository.save(property);
         audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));

@@ -442,7 +442,19 @@ public enum AppModuleEnum {
     COMMISSIONS("COMMISSIONS", "Commission",
             "What the platform earned on completed sales, and where each figure stands",
             true, 92,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,AGENT");
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,AGENT"),
+
+    /**
+     * Reports (M15).
+     *
+     * <p>Admits the organisations as well as the platform, because every report here is scoped the ordinary
+     * way — a seller running the listings report gets their own listings. The one report that is genuinely
+     * the platform's own view of its market says so on itself rather than needing a module of its own.
+     */
+    REPORTS("REPORTS", "Reports",
+            "The figures behind the platform, scoped to whoever is asking",
+            true, 95,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN,AGENT");
 
     private final String code;
     private final String displayName;

@@ -333,7 +333,15 @@ public enum AppPermissionEnum {
 
     // ── COMMISSIONS ───────────────────────────────────────────────────────────
     COMMISSIONS_VIEW("See what is owed", AppModuleEnum.COMMISSIONS),
-    COMMISSIONS_SETTLE("Invoice, mark paid or write off", AppModuleEnum.COMMISSIONS, true);
+    COMMISSIONS_SETTLE("Invoice, mark paid or write off", AppModuleEnum.COMMISSIONS, true),
+
+    // ── REPORTS ───────────────────────────────────────────────────────────────
+    REPORTS_VIEW("Run reports", AppModuleEnum.REPORTS),
+    /**
+     * Separate from viewing, deliberately. Reading a figure on a screen and walking out with the rows
+     * behind it are different acts, and only one of them leaves the building.
+     */
+    REPORTS_EXPORT("Export a report", AppModuleEnum.REPORTS);
 
     private final String actionName;
     private final AppModuleEnum module;
