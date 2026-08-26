@@ -3,6 +3,7 @@ package com.hodi.modules.auth;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.UnauthorizedException;
 import com.hodi.enums.ConfigKey;
+import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.users.User;
@@ -62,6 +63,7 @@ public class OtpChallengeService {
     private final ConfigurationService configs;
     private final TotpService totp;
     private final NotifyClient notify;
+    private final MailTemplate mail;
 
     /** What the caller needs to tell the client where to look for the code. */
     public record Challenge(String token, String channel, String sentToMasked) {}
@@ -113,8 +115,8 @@ public class OtpChallengeService {
                 .sentToMasked(masked)
                 .build());
         notify.sendSensitiveEmail(user.getEmail(), "Confirm your email address",
-                "Your Hodi confirmation code is <strong>" + code + "</strong>. It expires in "
-                        + ttlMinutes() + " minutes.",
+                mail.code(user.getFirstName(), "Use this code to confirm your email address.", code,
+                        "The code expires in " + ttlMinutes() + " minutes."),
                 user.fullName());
         return new Challenge(saved.getChallengeToken(), CHANNEL_EMAIL, masked);
     }

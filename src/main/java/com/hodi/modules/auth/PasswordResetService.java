@@ -3,6 +3,7 @@ package com.hodi.modules.auth;
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.enums.ConfigKey;
+import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
@@ -67,6 +68,7 @@ public class PasswordResetService {
     private final RefreshTokenService refreshTokens;
     private final ConfigurationService configs;
     private final NotifyClient notify;
+    private final MailTemplate mail;
     private final AuditService audit;
 
     @Transactional
@@ -118,10 +120,12 @@ public class PasswordResetService {
                         user.fullName());
             } else {
                 notify.sendSensitiveEmail(user.getEmail(), "Reset your Hodi password",
-                        "<p>Someone asked to reset the password for this account.</p>"
-                                + "<p><a href=\"" + link + "\">Choose a new password</a></p>"
-                                + "<p>The link works once and expires in " + expiry
-                                + ". If this was not you, nothing has changed and you can ignore this.</p>",
+                        mail.action(user.getFirstName(),
+                                "Someone asked to reset the password for this account.",
+                                "Choose a new password", link,
+                                "The link works once and expires in " + expiry
+                                        + ". If this was not you, nothing has changed and you can ignore "
+                                        + "this message."),
                         user.fullName());
             }
             return null;

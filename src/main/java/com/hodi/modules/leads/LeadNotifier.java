@@ -2,6 +2,7 @@ package com.hodi.modules.leads;
 
 import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
+import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.consent.ConsentService;
@@ -40,6 +41,7 @@ public class LeadNotifier {
     private final UserProfileRepository profiles;
     private final ConsentService consent;
     private final NotifyClient notify;
+    private final MailTemplate mail;
     private final ConfigurationService configs;
 
     /** The buyer, about something their seller did. */
@@ -71,7 +73,9 @@ public class LeadNotifier {
             String link = publicUrl() + path;
 
             if (channels.contains(AppConstant.CONSENT_CHANNEL_EMAIL)) {
-                notify.sendEmail(user.getEmail(), subject, body(user, line, link), user.fullName());
+                notify.sendEmail(user.getEmail(), subject,
+                        mail.notice(user.getFirstName(), line, "Open it on " + platformName(), link),
+                        user.fullName());
             }
             if (channels.contains(AppConstant.CONSENT_CHANNEL_SMS)) {
                 notify.sendSms(user.getPhone(), "Hodi: " + line + " " + link, user.fullName());
@@ -82,26 +86,14 @@ public class LeadNotifier {
         }
     }
 
-    private String body(User user, String line, String link) {
-        return "<div style=\"font-family:Helvetica,Arial,sans-serif;color:#12211c;max-width:560px\">"
-                + "<p>Hello " + escape(user.getFirstName()) + ",</p>"
-                + "<p>" + escape(line) + "</p>"
-                + "<p><a href=\"" + link + "\" style=\"color:#12211c\">Open it on Hodi Market Place</a></p>"
-                + "<hr style=\"border:none;border-top:1px solid #e2e8e5;margin:20px 0\">"
-                + "<p style=\"color:#5c6b66;font-size:12px\">You are receiving this because it concerns "
-                + "something you asked about. Messages of this kind cannot be switched off.</p></div>";
-    }
-
     private String publicUrl() {
         String url = configs.getString(ConfigKey.PUBLIC_URL);
         if (url == null || url.isBlank()) return "";
         return url.endsWith("/") ? url.substring(0, url.length() - 1) : url;
     }
 
-    /** A message body is somebody else's input and the recipient's client renders whatever arrives. */
-    private static String escape(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;").replace("<", "&lt;")
-                .replace(">", "&gt;").replace("\"", "&quot;");
+    /** The link label names the destination rather than saying "here", which reads as spam. */
+    private String platformName() {
+        return configs.getString(ConfigKey.COMPANY_NAME);
     }
 }

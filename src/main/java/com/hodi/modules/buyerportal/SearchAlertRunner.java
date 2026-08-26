@@ -2,6 +2,8 @@ package com.hodi.modules.buyerportal;
 
 import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
+import com.hodi.infra.notify.MailPalette;
+import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.infra.notify.NotifyResult;
 import com.hodi.modules.audit.AuditService;
@@ -56,6 +58,7 @@ public class SearchAlertRunner {
     private final ConsentService consent;
     private final UserRepository users;
     private final NotifyClient notify;
+    private final MailTemplate mail;
     private final ConfigurationService configs;
     private final AuditService audit;
 
@@ -175,43 +178,44 @@ public class SearchAlertRunner {
      * mail client blocks those by default, and a listing alert that renders as a column of broken frames is
      * worse than a plain one.
      */
+    /**
+     * The email.
+     *
+     * <p>The frame, the palette and the escaping belong to {@link MailTemplate}; what is left here is the one
+     * thing this class knows and it does not — which listings matched, and what to say about them.
+     */
     private String emailBody(SearchAlert alert, List<Property> matches, User owner) {
         String base = publicUrl();
-        StringBuilder html = new StringBuilder(1024);
-        html.append("<div style=\"font-family:Helvetica,Arial,sans-serif;color:#12211c;max-width:560px\">");
-        html.append("<p>Hello ").append(escape(owner.getFirstName())).append(",</p>");
-        html.append("<p>").append(matches.size() == 1 ? "A new listing matches" : "New listings match")
-                .append(" your saved search <strong>").append(escape(alert.getName()))
-                .append("</strong>:</p>");
+        List<MailTemplate.Card> cards = matches.stream().limit(MAX_MATCHES)
+                .map(property -> new MailTemplate.Card(
+                        base + "/property/" + property.getReference(),
+                        property.getTitle(),
+                        where(property),
+                        money(property.getPrice(), property.getCurrency())))
+                .toList();
 
-        for (Property property : matches.stream().limit(MAX_MATCHES).toList()) {
-            html.append("<div style=\"border:1px solid #e2e8e5;border-radius:10px;padding:14px;")
-                    .append("margin:0 0 10px\">")
-                    .append("<div style=\"font-weight:600;font-size:15px\">")
-                    .append("<a style=\"color:#12211c;text-decoration:none\" href=\"")
-                    .append(base).append("/property/").append(property.getReference()).append("\">")
-                    .append(escape(property.getTitle())).append("</a></div>")
-                    .append("<div style=\"color:#5c6b66;font-size:13px;margin-top:3px\">")
-                    .append(escape(where(property))).append("</div>")
-                    .append("<div style=\"font-weight:600;margin-top:6px\">")
-                    .append(money(property.getPrice(), property.getCurrency())).append("</div>")
-                    .append("</div>");
-        }
+        String intro = (matches.size() == 1 ? "A new listing matches" : "New listings match")
+                + " your saved search \u201c" + alert.getName() + "\u201d.";
+        MailTemplate.More more = matches.size() > MAX_MATCHES
+                ? new MailTemplate.More("\u2026and " + (matches.size() - MAX_MATCHES) + " more.",
+                        "See the full search", base + "/account/alerts")
+                : null;
 
-        if (matches.size() > MAX_MATCHES) {
-            html.append("<p style=\"color:#5c6b66;font-size:13px\">…and more. ")
-                    .append("<a href=\"").append(base).append("\">See the full search</a>.</p>");
-        }
+        /*
+         * Every non-transactional message carries the way to stop receiving it. A preference somebody has to
+         * go looking for is a preference they will report as spam instead.
+         *
+         * This is the one footer the templates do not write themselves, because it is the one kind of message
+         * that can be switched off. Composed with MailTemplate.link so both halves of each anchor are escaped.
+         */
+        MailPalette palette = mail.palette();
+        String footer = "<p style=\"margin:0 0 8px\">You are receiving this because you saved a search on "
+                + MailTemplate.escape(palette.appName()) + ". "
+                + MailTemplate.link(palette, "Manage your saved searches", base + "/account/alerts")
+                + " or " + MailTemplate.link(palette, "change what we send you",
+                        base + "/account/notifications") + ".</p>";
 
-        // Every non-transactional message carries the way to stop receiving it. A preference somebody has to
-        // go looking for is a preference they will report as spam instead.
-        html.append("<hr style=\"border:none;border-top:1px solid #e2e8e5;margin:20px 0\">")
-                .append("<p style=\"color:#5c6b66;font-size:12px\">")
-                .append("You are receiving this because you saved a search on Hodi Market Place. ")
-                .append("<a href=\"").append(base).append("/account/alerts\">Manage your saved searches</a>")
-                .append(" or <a href=\"").append(base)
-                .append("/account/notifications\">change what we send you</a>.</p></div>");
-        return html.toString();
+        return mail.digest(owner.getFirstName(), intro, cards, more, footer);
     }
 
     /**
@@ -246,20 +250,5 @@ public class SearchAlertRunner {
         if (amount == null) return "";
         NumberFormat format = NumberFormat.getIntegerInstance(Locale.UK);
         return (currency == null ? "KES" : currency) + " " + format.format(amount);
-    }
-
-    /**
-     * Escapes text that came from a seller into an email body.
-     *
-     * <p>A listing title is somebody else's input and the recipient's mail client renders whatever arrives.
-     * The title is validated for length on the way in and for nothing else, so this is the boundary at which
-     * it stops being markup.
-     */
-    private static String escape(String value) {
-        if (value == null) return "";
-        return value.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;");
     }
 }
