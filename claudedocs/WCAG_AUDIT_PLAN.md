@@ -324,8 +324,7 @@ already wired on the custom select.
   mortgage, registering for an auction, completing KYC. Everything above proves a name *exists*; only this
   shows whether the order it is read in is one somebody can work in.
 - A keyboard-only run by somebody who does not already know where the controls are.
-- The authenticated screens at 320px. The public routes are verified; the workspace, which is where the
-  data tables live, is the likeliest place for another reflow defect.
+- ~~The authenticated screens at 320px~~ — **done, §7.10.**
 - ~~Heading hierarchy~~ — **done, see §7.8.** I recorded this as a judgement call not worth guessing at
   across 71 pages, and that was wrong: the skips came from two shared components, not from 71 bespoke
   decisions.
@@ -393,3 +392,44 @@ username" dialog keeps `autocomplete="off"`. There is no `new-username` counterp
 the only available token would make the browser suggest the username the person already has — for a field
 whose own hint says it cannot be changed again. Declaring the purpose correctly and suggesting the wrong
 value is a worse outcome than the technicality, so the technicality loses and it is recorded here instead.
+
+### 7.10 The authenticated walk, without a session
+
+The 33 workspace routes were the last gap, and they needed a signed-in browser I could not have: entering
+a password is not something I do, whoever asks and however low the stakes.
+
+Driven instead with **Playwright and no credentials at all**. The app follows its own hydration path —
+`POST /auth/refresh` on boot — so intercepting `/api/v1/**` and answering that one call with a session
+payload is enough for the router guard to admit the walk. The permission list in the payload is the real
+one, all 132 codes read out of the `permissions` table, so the sidebar renders exactly what a super admin
+sees rather than what I guessed they see. Everything is external to the app: route interception and a
+stubbed response. **No test hook, no dev dependency, nothing added to the source** — the walk script lived
+in the gitignored `.playwright-mcp/` directory and was deleted afterwards.
+
+Two findings, both in a shared component, both affecting most of the platform:
+
+1. **The list search box had no accessible name — on 28 of the 33 routes.** `TableToolbar` wraps its input
+   in a `<label>` whose only contents are the magnifier and the spinner, and both are `aria-hidden`, so the
+   label named nothing. The placeholder carried the words and a placeholder is not a label: it disappears
+   the moment anything is typed, which is exactly when somebody re-reading the field needs to know what it
+   is. The component already computed the right string — `Search users`, `Search listings` — for the
+   placeholder; it just never reached the accessibility tree. One `aria-label`, 28 routes.
+
+   This was the most repeated control on the platform, which made it the most repeated omission. It is
+   also the one thing in this audit that the static passes could not have found: the name is absent only
+   once the icon is hidden and the label resolves to nothing, and that is a fact about the rendered tree.
+
+2. **19 data tables had `th` without `scope`.** `th` alone already satisfies 1.3.1 for a simple
+   one-header-row grid — the association is inferable — so this was a best-practice gap rather than a
+   failure. `scope="col"` on `DataTable`'s header cell states it instead of leaving it to be inferred, at
+   a cost of one attribute in one component.
+
+Re-run after both fixes, all 33 routes: **zero unnamed controls, `scope` on every header cell (4/4 through
+8/8), one `h1` each, no skipped heading levels, no positive `tabindex`, the skip link resolving, and
+nothing clipped at 320px.** The workspace reflows cleanly — which had been the open question, since it is
+where the wide tables live.
+
+**The limit of this method, stated plainly:** list endpoints were answered with empty pages, so what was
+audited is the chrome, the filter row, the table head and the empty state — not tables carrying twenty
+rows of real data. A populated table could still reflow differently at 320px. That check needs a real
+session, and it is the one thing on this page that a stub cannot stand in for.
