@@ -94,6 +94,8 @@ public class TenantService {
 
     public record TenantResponse(
             String id, String name, String slug, String tenantRef, String sellerType,
+            /** SELLER, AGENT or VENDOR. What the platform does with the row differs by this. */
+            String organisationKind,
             String contactName, String contactEmail, String contactPhone,
             String country, String currency, String timezone,
             String onboardingStatus, OffsetDateTime activatedAt, OffsetDateTime suspendedAt,
@@ -126,6 +128,13 @@ public class TenantService {
             @Size(max = 3) String currency,
             @Size(max = 64) String timezone) {}
 
+    @lombok.Getter
+    @lombok.Setter
+    public static class TenantListRequest extends PagedDataRequest {
+        /** SELLER (the default), AGENT or VENDOR. */
+        private String kind;
+    }
+
     /** What onboarding returns: the organisation, and the owner's one-time credential. */
     public record OnboardedTenant(TenantResponse tenant, String ownerUsername,
                                   String ownerTemporaryPassword) {}
@@ -141,11 +150,22 @@ public class TenantService {
      * rather than three branches.
      */
     @Transactional(readOnly = true)
-    public PagedResponse<TenantResponse> list(PagedDataRequest request) {
+    public PagedResponse<TenantResponse> list(TenantListRequest request) {
         Specification<Tenant> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.statusIn(request.effectiveStatuses()),
+                /*
+                 * Sellers unless asked otherwise.
+                 *
+                 * Agent and vendor organisations live in this table so they can reuse TenantScope, and this
+                 * screen is about the sellers the platform onboarded. Asking for a kind returns that kind,
+                 * so nothing is unreachable — but the default matches what the page is called.
+                 */
+                SearchSpecs.eq("organisationKind",
+                        request.getKind() == null || request.getKind().isBlank()
+                                ? AppConstant.ORG_KIND_SELLER
+                                : request.getKind().trim().toUpperCase()),
                 // "id", not "tenantId": on the Tenant entity itself the tenant id *is* the primary key.
                 TenantScope.restrict("id"));
         var page = repository.findAll(spec,
@@ -264,6 +284,7 @@ public class TenantService {
                 // An independent agent is an agency in the seller-type taxonomy, which is what makes the
                 // register and the reporting read honestly rather than showing a null.
                 .sellerType("AGENCY")
+                .organisationKind(AppConstant.ORG_KIND_AGENT)
                 .contactName(contactName)
                 .contactEmail(email)
                 .contactPhone(phone)
@@ -592,6 +613,7 @@ public class TenantService {
                 tenant.getSlug(),
                 tenant.getTenantRef(),
                 tenant.getSellerType(),
+                tenant.getOrganisationKind(),
                 tenant.getContactName(),
                 tenant.getContactEmail(),
                 tenant.getContactPhone(),

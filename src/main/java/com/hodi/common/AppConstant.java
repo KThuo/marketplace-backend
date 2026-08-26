@@ -68,6 +68,13 @@ public final class AppConstant {
     public static final String KYC_APPROVED     = "APPROVED";
     public static final String KYC_REJECTED     = "REJECTED";
 
+    // ── Organisation kind (tenants.organisation_kind) ────────────────────────
+    // One table, three populations, one visibility rule. The kind is what stops the seller administration
+    // screen from offering staff management and partnerships to a one-person agency.
+    public static final String ORG_KIND_SELLER = "SELLER";
+    public static final String ORG_KIND_AGENT  = "AGENT";
+    public static final String ORG_KIND_VENDOR = "VENDOR";
+
     // ── Seller-tenant lifecycle (tenants.onboarding_status) ──────────────────
     public static final String ONBOARDING_PENDING    = "PENDING";
     public static final String ONBOARDING_ACTIVE     = "ACTIVE";

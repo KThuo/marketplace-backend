@@ -30,7 +30,8 @@ public class TenantController {
      */
     @GetMapping("/list")
     @PreAuthorize("hasAnyAuthority('TENANTS_VIEW','PARTNERSHIPS_VIEW')")
-    public ApiResponse<PagedResponse<TenantResponse>> list(@ModelAttribute PagedDataRequest request) {
+    public ApiResponse<PagedResponse<TenantResponse>> list(
+            @ModelAttribute TenantService.TenantListRequest request) {
         return ApiResponse.success(service.list(request));
     }
 

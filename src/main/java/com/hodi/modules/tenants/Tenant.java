@@ -41,6 +41,16 @@ public class Tenant {
 
     @Column(name = "seller_type", length = 32) private String sellerType;
 
+    /**
+     * What kind of organisation this is: a property seller, an agent's own one-person business, or a vendor.
+     *
+     * <p>They share a table because they share a visibility rule — {@code TenantScope} scopes all three the
+     * same way — and they differ in what the platform does with them. Without this column the seller
+     * administration screen offered partnerships and staff management to a one-person agency.
+     */
+    @Column(name = "organisation_kind", nullable = false, length = 16)
+    @Builder.Default private String organisationKind = AppConstant.ORG_KIND_SELLER;
+
     @Column(name = "contact_name", length = 128) private String contactName;
     @Column(name = "contact_email", length = 128) private String contactEmail;
     @Column(name = "contact_phone", length = 32) private String contactPhone;
