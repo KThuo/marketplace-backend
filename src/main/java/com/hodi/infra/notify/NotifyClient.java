@@ -28,6 +28,12 @@ import java.util.UUID;
  * own credentials are picked up automatically whenever a tenant is bound. The caller does not choose which
  * account to bill; the tenant context does.
  *
+ * <p><strong>Success is what the envelope says, not what the HTTP status says.</strong> The service answers
+ * {@code {"status": "00" | <error code>, "message": ..., "data": ...}} and documents {@code 00} (or {@code 0})
+ * as the only success — an insufficient unit balance ({@code 01}) and a rejected email
+ * ({@code EMAIL_SEND_FAILED}) are error codes carried inside an otherwise ordinary response. Reading the HTTP
+ * status alone, as this client did until 26 Aug 2026, recorded both as delivered and dropped the message.
+ *
  * <p>Every call logs the outbound URL with the API key masked and the inbound status and body, so a delivery
  * question can be answered from these logs without reaching for the notify service's own. The
  * {@code sendSensitive*} variants additionally mask the message body: an OTP or a password-reset link in an
@@ -40,6 +46,9 @@ public class NotifyClient {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Duration TIMEOUT = Duration.ofSeconds(15);
+    /** The documented success codes. Anything else in {@code status} is an error code. */
+    private static final Set<String> DELIVERED = Set.of("00", "0");
+
     private static final String SMS_PATH = "/api/v1/messages/sendsms";
     private static final String EMAIL_PATH = "/api/v1/email/send";
 
@@ -101,16 +110,24 @@ public class NotifyClient {
                     .body(body)
                     .retrieve()
                     .toEntity(String.class);
-            String correlationId = UUID.randomUUID().toString();
-            log.info("SMS response: status={} body={} (phone={} len={} corr={})",
-                    response.getStatusCode().value(), truncate(response.getBody(), 800),
-                    mask(phone), length, correlationId);
-            return NotifyResult.ok(correlationId);
+            NotifyResult result = interpret(response.getBody());
+            // warn, not info, when the gateway declined it: a message that did not arrive should be findable
+            // at the same level as an HTTP rejection, because to the recipient it is the same event.
+            if (result.success()) {
+                log.info("SMS response: status={} body={} (phone={} len={} corr={})",
+                        response.getStatusCode().value(), truncate(response.getBody(), 800),
+                        mask(phone), length, result.correlationId());
+            } else {
+                log.warn("SMS declined by the gateway: status={} body={} (phone={} len={} reason={})",
+                        response.getStatusCode().value(), truncate(response.getBody(), 800),
+                        mask(phone), length, result.error());
+            }
+            return result;
         } catch (RestClientResponseException e) {
             log.warn("SMS rejected: status={} body={} (phone={} len={})",
                     e.getStatusCode().value(), truncate(e.getResponseBodyAsString(), 800),
                     mask(phone), length);
-            return NotifyResult.failed("HTTP " + e.getStatusCode().value());
+            return NotifyResult.failed(httpError(e));
         } catch (Exception e) {
             log.warn("SMS send failed: phone={} len={} err={}", mask(phone), length, e.getMessage());
             return NotifyResult.failed(e.getMessage());
@@ -179,16 +196,24 @@ public class NotifyClient {
                     .body(body)
                     .retrieve()
                     .toEntity(String.class);
-            String correlationId = UUID.randomUUID().toString();
-            log.info("Email response: status={} body={} (from={} to={} subject='{}' len={} corr={})",
-                    response.getStatusCode().value(), truncate(response.getBody(), 800),
-                    from.address(), mask(to), subject == null ? "" : subject, length, correlationId);
-            return NotifyResult.ok(correlationId);
+            NotifyResult result = interpret(response.getBody());
+            if (result.success()) {
+                log.info("Email response: status={} body={} (from={} to={} subject='{}' len={} corr={})",
+                        response.getStatusCode().value(), truncate(response.getBody(), 800),
+                        from.address(), mask(to), subject == null ? "" : subject, length,
+                        result.correlationId());
+            } else {
+                log.warn("Email declined by the gateway: status={} body={} (from={} to={} subject='{}' "
+                                + "len={} reason={})",
+                        response.getStatusCode().value(), truncate(response.getBody(), 800),
+                        from.address(), mask(to), subject == null ? "" : subject, length, result.error());
+            }
+            return result;
         } catch (RestClientResponseException e) {
             log.warn("Email rejected: status={} body={} (to={} subject='{}' len={})",
                     e.getStatusCode().value(), truncate(e.getResponseBodyAsString(), 800),
                     mask(to), subject == null ? "" : subject, length);
-            return NotifyResult.failed("HTTP " + e.getStatusCode().value());
+            return NotifyResult.failed(httpError(e));
         } catch (Exception e) {
             log.warn("Email send failed: to={} subject='{}' len={} err={}",
                     mask(to), subject == null ? "" : subject, length, e.getMessage());
@@ -197,6 +222,75 @@ public class NotifyClient {
     }
 
     // ── internals ─────────────────────────────────────────────────────────────
+
+    /**
+     * The outcome of a 2xx response, read out of the envelope.
+     *
+     * <p>{@code data.id} is the service's own id for the message and is what a delivery question can actually
+     * be traced with, so it becomes the correlation id when the response carries one. SMS answers with
+     * {@code data: null}, and there a locally generated id is still worth having: it ties this log line to
+     * whatever row stores it.
+     *
+     * <p>A body that is not the documented envelope counts as a failure rather than a success. It is the less
+     * comfortable default — a provider that ever answered 204 with an empty body would have every send marked
+     * failed — but the asymmetry is deliberate: a false failure is visible and retryable, while a false
+     * success loses the message with nothing left to show that it happened.
+     *
+     * <p>One documented case this cannot catch: a blacklisted number comes back {@code status: "00"} with the
+     * reason in {@code message}, so it is a success by the contract and delivered nothing. The reason is in
+     * the response body logged by the caller; distinguishing it structurally is not possible, and matching on
+     * the provider's prose would break the first time they reword it.
+     */
+    private static NotifyResult interpret(String rawBody) {
+        Object parsed;
+        try {
+            parsed = JSON.readValue(rawBody == null ? "" : rawBody, Object.class);
+        } catch (RuntimeException e) {
+            return NotifyResult.failed("BAD_ENVELOPE");
+        }
+        if (!(parsed instanceof Map<?, ?> envelope)) return NotifyResult.failed("BAD_ENVELOPE");
+
+        String code = text(envelope.get("status"));
+        String message = text(envelope.get("message"));
+        if (!DELIVERED.contains(code)) return NotifyResult.failed(reason(code, message));
+
+        // "" rather than null: SMS answers with `data: null`, which leaves this untouched, and the check
+        // below is the ordinary success path for every OTP the platform sends.
+        String providerId = "";
+        if (envelope.get("data") instanceof Map<?, ?> payload) {
+            // A success code over `sent: false` is a contradiction. Believe the flag: it is the one the
+            // service sets from the outcome of the send itself.
+            if (Boolean.FALSE.equals(payload.get("sent"))) {
+                return NotifyResult.failed(reason(code.isBlank() ? "NOT_SENT" : code, message));
+            }
+            providerId = text(payload.get("id"));
+        }
+        return NotifyResult.ok(providerId.isBlank() ? UUID.randomUUID().toString() : providerId);
+    }
+
+    /** An error envelope on an HTTP error, so the code that explains the rejection is not thrown away. */
+    private static String httpError(RestClientResponseException e) {
+        String http = "HTTP " + e.getStatusCode().value();
+        try {
+            if (JSON.readValue(e.getResponseBodyAsString(), Object.class) instanceof Map<?, ?> envelope) {
+                String code = text(envelope.get("status"));
+                if (!code.isBlank()) return http + " " + reason(code, text(envelope.get("message")));
+            }
+        } catch (RuntimeException ignored) {
+            // Not an envelope — the status on its own is the whole story.
+        }
+        return http;
+    }
+
+    /** "01 — You have insufficient Unit balance": the code to act on, the message to read. */
+    private static String reason(String code, String message) {
+        if (code.isBlank()) return "BAD_ENVELOPE";
+        return message.isBlank() ? code : code + " — " + truncate(message, 160);
+    }
+
+    private static String text(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
+    }
 
     private String baseUrl() {
         return configs.getString(ConfigKey.NOTIFY_BASE_URL);

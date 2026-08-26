@@ -3,9 +3,10 @@ package com.hodi.infra.notify;
 /**
  * Outcome of a {@link NotifyClient} send.
  *
- * <p>The notify service returns a generic response without exposing a message id, so a locally-generated
- * {@link #correlationId} is what gets stored on the notification row — enough to tie a log line to a row when
- * someone asks why a message did not arrive.
+ * <p>{@link #correlationId} is the service's own message id when the response carries one — email answers
+ * with {@code data.id}, and that is the id support can trace. SMS answers with {@code data: null}, and there
+ * the id is generated locally: enough to tie a log line to a row when someone asks why a message did not
+ * arrive, even though the service knows nothing about it.
  *
  * <p>{@code skipped} is distinct from {@code failed} on purpose. "SMS is switched off" and "the gateway
  * rejected it" both mean nothing was delivered, but only one of them is worth retrying or alerting on.

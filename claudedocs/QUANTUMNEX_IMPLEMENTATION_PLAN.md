@@ -1811,23 +1811,29 @@ Five callers: `OtpChallengeService`, `PasswordResetService`, `LeadNotifier`, `Se
 `StorageService`. **Four of the five discard the `NotifyResult`.** Only `SearchAlertRunner` reads it, for its
 own run log.
 
-### 27.2 Four defects the published contract reveals
+### 27.2 Four defects the published contract reveals — two of them now fixed
 
-Read against the documentation, the client has four faults. None of them has been reproduced against the live
-service — we hold no API key, and both channels are switched off by default — so each is stated as what the
-documentation says, not as an observed failure.
+Read against the documentation, the client had four faults. None was reproduced against the live service — we
+hold no API key, and both channels are switched off by default — so each is stated as what the documentation
+says, not as an observed failure. **The first two were fixed on 26 Aug 2026**; the other two stand.
 
-1. **The response envelope is never checked, so failed sends are recorded as successes.** The docs are
+1. **~~The response envelope is never checked, so failed sends are recorded as successes.~~ Fixed.** The docs are
    explicit: *"Always check the `status` field — `00` means success; any other value is an error code."* Our
    client checks the HTTP status only, and any 2xx becomes `NotifyResult.ok(...)`. The documented
    insufficient-balance response (`status: "01"`) and the documented email failure
    (`status: "EMAIL_SEND_FAILED"`, `data.sent: false`) both read as body-level errors rather than HTTP errors.
-   If they arrive with a 2xx, we log a success and drop the message. **This is the one item here worth fixing
-   before anything else is built on top of it**, because a queue that retries on failure is worthless while
-   failure is indistinguishable from success.
-2. **The correlation id is fabricated locally.** `NotifyResult.ok(UUID.randomUUID().toString())` invents an
-   id at our end. The email response carries the provider's own (`data.id`, e.g. `"Qb7K2x"`), which is the
-   only id support can trace. The id we log and would store cannot be quoted to anyone.
+   If they arrive with a 2xx, we logged a success and dropped the message. `NotifyClient.interpret` now reads
+   the envelope: `00` or `0` is delivery, anything else is `NotifyResult.failed` carrying the code and the
+   message, and a body that is not the documented envelope is a failure rather than an assumed success. That
+   asymmetry is deliberate — a false failure is visible and retryable, a false success loses the message —
+   and it had to land first, because a retry queue is worthless while failure is indistinguishable from
+   success. `NotifyEnvelopeTest` holds the documented samples, including the two failures, so this cannot
+   quietly return.
+2. **~~The correlation id is fabricated locally.~~ Fixed.** `NotifyResult.ok(UUID.randomUUID().toString())`
+   invented an id at our end. The email response carries the provider's own (`data.id`, e.g. `"Qb7K2x"`),
+   which is the only id support can trace, and that is now the correlation id whenever the response has one.
+   SMS answers `data: null` and still gets a local id: the service knows nothing about it, but it ties a log
+   line to whatever row stores it.
 3. **`senderId` is not a documented request field.** The docs list `apikey`, `phoneNo`, `text` and `name` for
    SMS, and say the sender ID is configured in *Dashboard → Sender IDs / API key management* — resolved from
    the key, not the payload. If that is right, `notify.sms.sender.id` (default `HODI`) has no effect and the
@@ -1883,7 +1889,7 @@ scope the BRD does not ask for. What transfers is the outbound row, the dispatch
 
 Ordered by what unblocks what, not by size:
 
-1. **Check the envelope** (§27.2, defects 1 and 2). Small, self-contained, and everything else assumes it.
+1. ~~**Check the envelope** (§27.2, defects 1 and 2).~~ **Done, 26 Aug 2026.** Everything below assumed it.
 2. **`outbound_message` + a dispatcher**, modelled on axis's `notifications`. Move the five call sites from a
    synchronous send to an enqueue. This is what turns a failed send into a retry instead of a lost message.
 3. **`integration_log`** and a platform-staff view over it, so a delivery question is answerable from our own
@@ -1892,5 +1898,18 @@ Ordered by what unblocks what, not by size:
    local-development implementation.
 5. **The CRM connector**, when the target system is chosen.
 
-Steps 1–3 are ours and could start now. Steps 4 and 5 cannot start without information from outside this
+Steps 2–3 are ours and could start now. Steps 4 and 5 cannot start without information from outside this
 repository, and no amount of sequencing changes that.
+
+### 27.6 One thing the envelope fix taught
+
+The first version of `interpret` read the provider id out of `data` and left it null when there was no `data`
+to read — and SMS answers `data: null`, so the null went straight into `isBlank()`. Every successful SMS on
+the platform, which is every OTP and every password reset, would have thrown inside the try block and been
+recorded as a failure. The fix for "successes were being recorded as failures" would have shipped as
+"failures are recorded for successes", in the code path used most.
+
+`NotifyEnvelopeTest` caught it on its first run, before anything was committed. Worth stating plainly because
+it argues for the test rather than for the care: the compiler was happy, the change read correctly, and the
+one path with no `data` field was the one path nobody thinks about — it is the *absence* of a value, and there
+is nothing on screen to look at.
