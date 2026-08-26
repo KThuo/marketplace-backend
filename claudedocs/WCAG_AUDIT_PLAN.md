@@ -452,8 +452,17 @@ to re-earn all of that, usually gets half, and there were 24 of them.
 
 Five states, in both themes: resting (surface fill, `--border-control` at 3:1), checked (`--brand` fill
 with the tick in white at 4.78:1), indeterminate (a dash, same fill), disabled, and disabled-but-checked —
-still legibly *on*, just not yours to change. The tick is a `clip-path` rather than a glyph or an SVG file,
-so it scales with the box, takes its colour from the fill, and costs no request. Six per-file rules setting
+still legibly *on*, just not yours to change.
+
+The tick is the right and bottom edges of a small box, rotated 45°. It started as a clipped polygon, which
+was legible and blunt — hard corners, both arms the same weight, reading as a chunk rather than a stroke.
+The sister project `axis-f` uses Naive UI's stock checkbox, whose mark is a tapered stroke, and rotating two
+borders gives that shape in four lines: two arms of unequal length, even weight, an elbow `border-radius`
+can soften. Naive's own path as a `mask` data URI would have matched to the pixel and put 400 unreadable
+characters in the middle of the design system for a shape that is adjustable this way.
+
+The indeterminate dash has to un-rotate explicitly, since it inherits the tick's 45° and a diagonal dash
+reads as a broken tick rather than a deliberate state. Six per-file rules setting
 `accent-color` and their own 15/16/17px sizes were removed; the platform had three checkbox sizes.
 
 Two things the browser corrected:
