@@ -1,6 +1,8 @@
 package com.hodi.modules.leads;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.operations.AssignmentService;
+import com.hodi.modules.operations.OperationsConstants;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.RefGenerator;
 import com.hodi.common.exception.HodiException;
@@ -51,6 +53,7 @@ public class EnquiryService {
     private static final String REFERENCE_PREFIX = "EQ";
 
     private final EnquiryTicketRepository repository;
+    private final AssignmentService assignment;
     private final EnquiryMessageRepository messages;
     private final PropertyRepository properties;
     private final UserRepository users;
@@ -87,6 +90,24 @@ public class EnquiryService {
                 .createdBy(buyer.getUsername())
                 .updatedBy(buyer.getUsername())
                 .build());
+
+        /*
+         * Onto a desk, if a rule says whose (M12).
+         *
+         * Before this, an enquiry arrived unassigned and attached itself to whoever opened it first — which
+         * means the ones nobody opened were the ones nobody was accountable for. Routing never fails the
+         * enquiry: no rule, or a rule pointing at somebody who has left, leaves it unassigned exactly as
+         * before.
+         */
+        assignment.routeFor(OperationsConstants.WORK_ENQUIRY, property.getTenantId(),
+                        property.getCounty(), property.getPropertyType())
+                .ifPresent(route -> {
+                    ticket.setAssignedToUserId(route.userId());
+                    ticket.setAssignedToName(route.userName());
+                    repository.save(ticket);
+                    log.debug("Enquiry {} routed to {} by rule {}", ticket.getReference(),
+                            route.userName(), route.ruleReference());
+                });
 
         addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), request.message());
 

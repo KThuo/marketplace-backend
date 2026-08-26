@@ -762,7 +762,9 @@ public class SeederService {
                 "PURCHASE_REQUESTS_VIEW", "PURCHASE_REQUESTS_DECIDE",
                 "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST",
                 // What people said about them, and the right of reply (M7).
-                "RATINGS_VIEW", "RATINGS_REPLY"));
+                "RATINGS_VIEW", "RATINGS_REPLY",
+                // Their own week (M12).
+                "CALENDAR_VIEW", "CALENDAR_MANAGE", "ASSIGNMENT_VIEW", "ASSIGNMENT_MANAGE"));
 
         UserGroup group = userGroups.findGlobalByName(AGENT_GROUP).orElse(null);
         if (group == null) {
@@ -813,7 +815,9 @@ public class SeederService {
                 "CATALOGUE_CREATE", "CATALOGUE_UPDATE", "CATALOGUE_SUBMIT", "CATALOGUE_WITHDRAW",
                 "CATALOGUE_DELETE",
                 // What people said about them, and the right of reply (M7).
-                "RATINGS_VIEW", "RATINGS_REPLY"));
+                "RATINGS_VIEW", "RATINGS_REPLY",
+                // Their own week (M12).
+                "CALENDAR_VIEW", "CALENDAR_MANAGE"));
 
         UserGroup group = userGroups.findGlobalByName(VENDOR_GROUP).orElse(null);
         if (group == null) {

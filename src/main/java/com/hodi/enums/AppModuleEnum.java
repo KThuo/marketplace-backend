@@ -387,7 +387,31 @@ public enum AppModuleEnum {
     MODERATION("MODERATION", "Moderation",
             "Reviews somebody has objected to, or that were held on the way in",
             true, 81,
-            "SUPER_ADMIN,SUPPORT_ADMIN");
+            "SUPER_ADMIN,SUPPORT_ADMIN"),
+
+    /**
+     * Where new work lands (M12).
+     *
+     * <p>Both sides: the platform routes what reaches it, and a seller routes their own leads among their
+     * own staff. A seller's rules can only ever point inside their own organisation, which the service
+     * enforces — routing to somebody else's staff would be a data leak dressed as a workflow setting.
+     */
+    ASSIGNMENT("ASSIGNMENT", "Routing",
+            "Rules deciding whose desk a new enquiry, viewing or offer lands on",
+            true, 85,
+            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,LENDER_ADMIN,AGENT"),
+
+    /**
+     * The diary (M12).
+     *
+     * <p>Admits everybody whose week has appointments in it. What each of them sees is scoped the ordinary
+     * way — a seller their organisation's, the platform everybody's.
+     */
+    CALENDAR("CALENDAR", "Diary",
+            "Viewings, auctions and whatever else somebody put in the week",
+            true, 86,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
+                    + "AGENT,VENDOR,LENDER_ADMIN");
 
     private final String code;
     private final String displayName;

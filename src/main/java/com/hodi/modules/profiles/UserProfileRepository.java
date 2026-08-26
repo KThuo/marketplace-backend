@@ -40,6 +40,11 @@ public interface UserProfileRepository
             + "and p.status <> 5 and p.status <> 4")
     long countLiveMembers(@Param("groupId") Long groupId);
 
+    /** The live members of one group, oldest first — what round-robin assignment walks (M12). */
+    @Query("select p from UserProfile p where p.userGroupId = :groupId and p.status not in (4, 5) "
+            + "order by p.userId asc")
+    List<UserProfile> findLiveByGroup(@Param("groupId") Long groupId);
+
     /** How many live profiles hold one user type — the type list's usage column and its in-use guard. */
     @Query("select count(p) from UserProfile p where p.userTypeCode = :code "
             + "and p.status <> 5 and p.status <> 4")

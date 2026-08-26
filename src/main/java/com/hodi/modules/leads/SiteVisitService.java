@@ -1,6 +1,8 @@
 package com.hodi.modules.leads;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.operations.CalendarService;
+import com.hodi.modules.operations.OperationsConstants;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.RefGenerator;
 import com.hodi.common.exception.HodiException;
@@ -45,6 +47,7 @@ public class SiteVisitService {
             DateTimeFormatter.ofPattern("EEEE d MMMM 'at' h:mma");
 
     private final SiteVisitRepository repository;
+    private final CalendarService calendar;
     private final PropertyRepository properties;
     private final UserRepository users;
     private final AuditService audit;
@@ -196,6 +199,20 @@ public class SiteVisitService {
 
         audit.record(AppConstant.AUDIT_VISIT_DECIDED, "SiteVisit", visit.getId(), null,
                 visit.getReference() + " " + visit.getState());
+        /*
+         * Into the diary (M12).
+         *
+         * On confirmation there is a time, so there is an event; on a decline there is not, and `project`
+         * removes any entry a previous confirmation left. The calendar never throws back into this method —
+         * a viewing must not fail to be confirmed because a diary row could not be written.
+         */
+        calendar.project(OperationsConstants.SOURCE_SITE_VISIT, visit.getId(), visit.getReference(),
+                "Viewing — " + visit.getPropertyTitle(),
+                visit.getBuyerName() + " · " + visit.getBuyerPhone(),
+                visit.getPropertyTitle(),
+                AppConstant.VISIT_CONFIRMED.equals(visit.getState()) ? visit.getSlotAt() : null,
+                visit.getTenantId(), visit.getTenantName(),
+                visit.getDecidedByUserId(), null);
         notifier.toBuyer(visit.getUserId(), "About your viewing of " + visit.getPropertyTitle(), line,
                 "/account/viewings?ref=" + visit.getReference());
         return toResponse(visit);
@@ -212,6 +229,7 @@ public class SiteVisitService {
         visit.setState(AppConstant.VISIT_COMPLETED);
         visit.setOutcomeNote(EnquiryService.blankToNull(request == null ? null : request.outcomeNote()));
         visit.setUpdatedBy(AuthContext.username());
+        calendar.closeProjection(OperationsConstants.SOURCE_SITE_VISIT, visit.getId(), false);
         return toResponse(repository.save(visit));
     }
 

@@ -281,9 +281,9 @@ turn lands backend **and** frontend together.
 | **0b** | §3.2 approvals, folding partnerships into it | **done** |
 | **1** | **done** — M2 (listings, marketplace, shortlist, saved searches), M1 consent, M3 (products, affordability), M4 (enquiries, viewings, offers) | 6–8 |
 | **2** | **done** — M8: KYC + §3.9 vault (§13), seller types with a mandatory-KYC policy, and listing progress updates (§14). Listing CRUD, media and the approval queue had arrived early with M2 | 6–8 |
-| **3** | M5 **done** (§15) → M6 next | 4–5 |
-| **4** | M9, M10, M7 | 4–5 |
-| **5** | M12, M13, M15 | 5–6 |
+| **3** | **done** — M5 (§15), M6 (§16) | 4–5 |
+| **4** | **done** — M9 (§17), M10 (§18), M7 (§19) | 4–5 |
+| **5** | M12, M13, M15 — next | 5–6 |
 | **6** | M11 | 2–3 |
 | **7** | NFR hardening (§5 below) | 2–3 |
 
@@ -1205,3 +1205,68 @@ The headline figure needed the same fix twice over: reading only the `SELLER` su
 published review a count of zero, because the review was filed against the vendor rather than the tenant. An
 organisation's figure is now every rating about them across every subject type — the only number that
 answers "how are we doing".
+
+---
+
+## 20. Phase 5 / M12 — internal management, buyer side
+
+**Plan:** §4 — `ticket_assignment_rule`, `event_calendar_entry`.
+
+Two tables, and the §4 names say exactly what they are. Neither is a new ticket system: M4 already has
+enquiries, viewings and offers, and a second inbox beside them would be the platform competing with itself
+for somebody's attention.
+
+### 1. Routing, so an enquiry lands on a desk
+
+Before this, an enquiry arrived unassigned and stayed unassigned until somebody replied — at which point it
+attached itself to whoever happened to open it first. That works for a two-person seller and fails for
+everybody else: **the enquiries nobody opens are exactly the ones nobody is accountable for.**
+
+A rule matches on what is knowable when a lead arrives — county, property type, organisation — and names
+who it goes to, either a person or a group shared round in turn.
+
+- **First match wins, by explicit order.** Deliberately not "most specific wins": that is a scoring system,
+  and a scoring system is one nobody can predict the behaviour of by reading the list. The page says so at
+  the top, because the two readings only diverge when something goes to the wrong person.
+- **Round-robin remembers rather than randomises.** Random distributes badly over five people and twenty
+  leads a week, and nobody can tell by looking whether it is working.
+- **Routing never fails a lead.** No rule, or a rule pointing at somebody who has left, leaves the enquiry
+  unassigned exactly as before. A buyer's question must not fail to send because an administrator wrote a
+  rule badly.
+- **A rule can only point inside its own organisation** — routing to somebody else's staff would be a data
+  leak dressed as a workflow setting.
+
+Verified: an apartment enquiry in Nairobi landed on Peter, an earlier one on the owner, and both are visible
+in the seller's inbox with the assignee shown.
+
+### 2. A diary, because the work has dates on it
+
+Viewings, valuations and auctions all have times, in three different modules. Somebody whose job is the week
+ahead should not open three screens to find it.
+
+The calendar is a **projection**, not a second source of truth: `project(...)` upserts one entry per source
+row and the source modules call it whenever a date is set or moved. A projected entry **cannot be edited
+here** and says where to change it — a diary that could be dragged while the viewing stayed put would be a
+diary that lies.
+
+Projection never throws back into its caller. A viewing must not fail to be confirmed because a diary row
+could not be written; the diary is a convenience over facts that live elsewhere.
+
+**A list by day, not a month grid.** A grid looks like a calendar and answers a question nobody has — what
+this page is for is "what is happening, in order, with enough detail to prepare for it", and a grid gives
+four words per cell.
+
+### What is deliberately not projected
+
+`VALUATION` is in the source CHECK and nothing writes it. A valuation job records when it was assigned and
+when it was finished, and **neither of those is an appointment** — projecting `assigned_at` would put a fact
+in the diary that is not the fact it claims to be. The value stays in the constraint so that giving a
+valuation a visit time later is a service change rather than a migration.
+
+### One defect it surfaced
+
+**The users list returns profile ids, and the first version of the rule form treated them as user ids.**
+Both test rules resolved to the wrong person — the same person, which is what made it obvious. The fix is
+not defensive decoding but a better model: a rule now points at a **profile**, because a profile *is* "this
+person in this organisation", which is exactly what routing means. The organisation check became exact at
+the same time, where before it accepted any of the target's profiles.

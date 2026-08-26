@@ -310,7 +310,15 @@ public enum AppPermissionEnum {
 
     // ── MODERATION ────────────────────────────────────────────────────────────
     MODERATION_VIEW("See the moderation queue", AppModuleEnum.MODERATION, true),
-    MODERATION_DECIDE("Publish or hide a review", AppModuleEnum.MODERATION, true);
+    MODERATION_DECIDE("Publish or hide a review", AppModuleEnum.MODERATION, true),
+
+    // ── ASSIGNMENT ────────────────────────────────────────────────────────────
+    ASSIGNMENT_VIEW("See the routing rules", AppModuleEnum.ASSIGNMENT),
+    ASSIGNMENT_MANAGE("Write and change routing rules", AppModuleEnum.ASSIGNMENT),
+
+    // ── CALENDAR ──────────────────────────────────────────────────────────────
+    CALENDAR_VIEW("See the diary", AppModuleEnum.CALENDAR),
+    CALENDAR_MANAGE("Add and change diary entries", AppModuleEnum.CALENDAR);
 
     private final String actionName;
     private final AppModuleEnum module;

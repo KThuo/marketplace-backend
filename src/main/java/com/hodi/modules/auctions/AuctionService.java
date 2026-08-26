@@ -50,6 +50,7 @@ public class AuctionService {
     private static final String REFERENCE_PREFIX = "AU";
 
     private final AuctionLotRepository lots;
+    private final com.hodi.modules.operations.CalendarService calendar;
     private final AuctioneerRepository auctioneers;
     private final AuctionRegistrationRepository registrations;
     private final StorageService storage;
@@ -174,6 +175,13 @@ public class AuctionService {
         audit.record(AppConstant.AUDIT_LOT_PUBLISHED, "AuctionLot", saved.getId(), null,
                 saved.getReference() + " scheduled for " + saved.getAuctionDate()
                         + " under " + auctioneer.getName());
+        // Into the organisation's diary (M12). An auction has a date and a venue already; the calendar is
+        // where somebody looking at the week ahead finds it beside their viewings.
+        calendar.project(com.hodi.modules.operations.OperationsConstants.SOURCE_AUCTION,
+                saved.getId(), saved.getReference(),
+                "Auction — " + saved.getTitle(),
+                "Conducted by " + auctioneer.getName(), saved.getVenue(), saved.getAuctionDate(),
+                saved.getTenantId(), saved.getTenantName(), null, null);
         return toResponse(saved);
     }
 
@@ -211,6 +219,9 @@ public class AuctionService {
         audit.record(AppConstant.AUDIT_LOT_RESULT, "AuctionLot", saved.getId(), null,
                 saved.getReference() + " " + saved.getState()
                         + (saved.getSoldPrice() == null ? "" : " at " + saved.getSoldPrice()));
+        calendar.closeProjection(com.hodi.modules.operations.OperationsConstants.SOURCE_AUCTION,
+                saved.getId(), !AppConstant.LOT_SOLD.equals(saved.getState())
+                        && !AppConstant.LOT_UNSOLD.equals(saved.getState()));
         return toResponse(saved);
     }
 
