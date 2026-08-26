@@ -21,6 +21,7 @@ that needs a human on a screen reader named rather than pretended.
 | Colour contrast, text and non-text | 1.4.3, 1.4.11 |
 | Accessible names on every control | 4.1.2 |
 | Label/field association, required and error state | 1.3.1, 3.3.1, 3.3.2 |
+| Input purpose declared for a person's own details | 1.3.5 |
 | Landmarks, headings, bypass blocks | 1.3.1, 2.4.1, 2.4.6 |
 | Keyboard reachability and focus order | 2.1.1, 2.4.3 |
 | Visible focus indicator | 2.4.7 |
@@ -360,3 +361,35 @@ is not.
 One thing found and deliberately not fixed: `TenantListView` carries a bare `h4 { … }` rule with no `h4`
 in its template. It is identical at `HEAD`, so it is pre-existing dead CSS rather than fallout from this
 change, and tidying it is not what this change is for.
+
+### 7.9 Input purpose — a criterion I had left out
+
+1.3.5 Identify Input Purpose is level AA and it was missing from §1's table: fields collecting a person's
+own details have to declare what they are, which in practice means an `autocomplete` token from the
+WCAG-enumerated list.
+
+A scan of all 264 fields against that list returned 34 candidates, 19 of them with no token. **Applying
+all 19 would have been a mistake**, and this is the part worth recording, because the criterion is
+narrower than it first reads: 1.3.5 is about fields collecting information about **the user**. Most of
+those 19 collect information about somebody or something else, and there autofill is not merely
+unnecessary — it is harmful:
+
+| Field | Whose details | Verdict |
+|---|---|---|
+| `UserFormModal` first/last/email/phone | a colleague the admin is creating | `autocomplete="off"` is **already right** — filling the operator's own name into another person's record is a data-integrity bug wearing an accessibility badge |
+| `ValuerPanelView` first/last/email/phone | another person being added to a panel | out of scope, leave as is |
+| `AuctioneersView` contact name/phone/email | another organisation's contact | out of scope |
+| `AuctionLotsView`, `PropertyEditView` county/town/address | a *property's* address | out of scope — not a person at all |
+| `RoutingRulesView` county, `TenantListView` country | a rule's criterion, an organisation's country | out of scope |
+
+Four were genuinely in scope and are fixed:
+
+- `MyAgentProfileView` — `fullName` → `name`, `phone` → `tel`. "My registration" is the agent's own.
+- `AuctionCatalogueView` — `contactPhone` → `tel`. "Register to bid" is the buyer registering themselves.
+- `VendorApplyView` — `businessName` → `organization`. The applicant's own business.
+
+Every in-scope field now carries the right token, with **one deliberate exception**: the "Choose your
+username" dialog keeps `autocomplete="off"`. There is no `new-username` counterpart to `new-password`, so
+the only available token would make the browser suggest the username the person already has — for a field
+whose own hint says it cannot be changed again. Declaring the purpose correctly and suggesting the wrong
+value is a worse outcome than the technicality, so the technicality loses and it is recorded here instead.
