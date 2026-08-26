@@ -18,7 +18,7 @@ landed. See **§0** for how to restart the machine and pick up.
 | 4 | M9 agents, M10 vendors, M7 ratings | done — §17–§19 |
 | 5 | M12 routing + diary, M13 seller operations, M15 reports | done — §20–§22 |
 | 6 | M11 assistant | done — §23 |
-| 7 | NFR hardening | first pass done — §24; the rest is deployment work, listed there |
+| 7 | NFR hardening | first pass done — §24; accessibility audited and fixed — §25; the rest is deployment work |
 
 ---
 
@@ -86,7 +86,8 @@ than an empty table.
 
 Phase 7 is the only phase with work left, and **none of it is code waiting to be written in these two
 repositories** — it is VAPT, APM and alerting, load testing against the 50k/1k target, the read replica for
-M15's views, DR/RPO/RTO, and a WCAG audit. §24 says why each is listed rather than attempted.
+M15's views, and DR/RPO/RTO. §24 says why each is listed rather than attempted. The WCAG audit was the one
+item on that list that turned out to be code rather than deployment work, and it is done — §25.
 
 If the next session is feature work rather than hardening, the honest starting point is not this document
 but the BRD: every module it names is built, so what comes next is whatever the business has learned since
@@ -390,7 +391,7 @@ numbers*, not the funnel around them.
 | Logs exclude PII/credentials | **Done** — credentials replaced outright; personal data partially masked so two log lines about the same buyer still match without the file being worth stealing (§24) |
 | APM + alerting | Not started |
 | DR, RPO < 15 min / RTO < 4 h | Infrastructure, outside this codebase; flag to whoever owns the Postgres |
-| WCAG 2.1 | Partial by construction — semantic markup, labelled fields, focus-visible rings, reduced-motion honoured. Needs a real audit |
+| WCAG 2.1 AA | **Audited and fixed** — the measurable half: contrast in both themes, accessible names, field association, focus management, reflow at 320px. §25, and `WCAG_AUDIT_PLAN.md` in full. A screen-reader session with a person is what remains |
 | English / KES / DD-MM-YYYY | **Done** — `src/utils/format.ts` owns the house style and every screen uses it. The one surviving `toLocaleDateString` call asks for a weekday name, which is not a date format (§24) |
 
 ---
@@ -1525,9 +1526,6 @@ one enquiry and sees the lot.
 
 Also corrected on the way: "three bedroom in Kilimani" matched no bedroom filter at all, because the pattern
 read digits only — and then cheerfully offered a one-bedroom flat. Written numbers are understood now.
-
----
-
 ## 24. Phase 7 — NFR hardening, first pass
 
 Three items from §5 that live in this codebase rather than in the infrastructure around it.
@@ -1607,3 +1605,129 @@ VAPT, APM and alerting, load testing against the 50k/1k target, the read replica
 real WCAG audit. Every one of those is either an exercise against a deployed environment or a decision for
 whoever owns the infrastructure — none of them is a code change waiting to be written here, and listing them
 as "not started" is more useful than a partial gesture at each.
+
+**One of those was wrong.** The WCAG audit turned out to be mostly code, and mostly measurable: see §25.
+The rest of the list stands.
+
+---
+
+## 25. Phase 7 — the accessibility audit
+
+§24 listed "a real WCAG audit" with the deployment work, and that was half right. A *conformance statement*
+does need somebody using a screen reader. But most of what fails AA on this platform failed **measurably**,
+in the token file and in the templates, and none of it needed a deployed environment to find.
+
+The audit and its findings are in **`WCAG_AUDIT_PLAN.md`**. The short version:
+
+- **The palette.** Twenty-two token pairs were under AA, in both themes. The structural fix was splitting
+  brand-as-fill from brand-as-text: `--brand` at 4.41:1 on the workspace is under AA for a link, while the
+  same colour behind white button text is fine, and one token could not be both.
+- **Two hover states were inverted.** Hover *lightened* the fill, dropping white label text to 3.63:1 and
+  4.43:1. The state whose only job is to confirm what you are about to click was the one you could not read.
+- **A configured brand is now computed, not assumed.** `--brand` comes from the platform's own settings, so
+  fixing the shipped default would have fixed the one palette nobody runs. `themeStore` derives the legible
+  text variant from whatever accent is configured — verified against the live app, which is running
+  `#1B7F79` and lands at 4.90:1.
+- **Thirty-three filter selects had no name.** Each announced its own current value — "Every state", then
+  "Approved" — and never what it filtered.
+- **Three reflow defects only the browser could show**, including the marketplace header clipping "Create
+  account" at 320px, because the bar hid its nav below 700px but never wrapped and the document clips
+  rather than scrolls.
+
+`scripts/contrast-audit.py` in `hodimp-f` reads the palette out of `theme.css` and checks 166 pairs in both
+themes, so this cannot quietly regress: it is one command, and it fails the build's own arithmetic rather
+than somebody's eye.
+
+**Still open, and it needs a person, not a script:** a screen-reader session on the workflows that matter,
+a keyboard-only run by somebody who does not know where the controls are, the authenticated screens at
+320px, and the heading hierarchy (`h1` → `h3` with no `h2`), which is a judgement call about what counts as
+a section on each screen rather than something to guess at across 71 pages.
+
+---
+
+## 26. Validation errors that name the box, not the variable
+
+Submitting the sign-in form empty used to answer with this, in one line at the bottom of the form:
+
+```
+password: Password is required, username: Username or email is required
+```
+
+A debugging aid wearing a user message's clothes. It put the DTO's property names in front of somebody
+filling in a form, it became unreadable as soon as three fields were wrong, and it left the screen
+nothing to work with: the form could only print it whole, while every input stayed unmarked.
+
+### The backend answers with a map
+
+`GlobalExceptionHandler` now keys the messages by field and leaves `message` as a sentence:
+
+```json
+{ "success": false,
+  "message": "Please correct the 2 highlighted fields",
+  "errors": { "username": "Username or email is required",
+              "password": "Password is required" } }
+```
+
+When exactly one field is wrong, `message` **is** that field's message — "Password is required" is
+already the whole story, and "Please correct the field below" would be a worse way of saying it. The
+`errors` key is omitted entirely when absent, so every other response is byte-identical to before.
+`ConstraintViolationException` gets the same treatment, keyed on the leaf of the property path, because
+`createUser.request.email` is not a name any form has for an input.
+
+### The frontend routes each message to its own box
+
+`FormField` gained a `name` — the server's name for that field — and picks up its own message from the
+enclosing form's error state. Red border, red label, message underneath, and `aria-invalid` on the
+control. Border *and* message, not either alone: colour by itself fails 1.4.1 and says nothing about what
+is wrong, while a message alone leaves the reader scanning a fourteen-field form for which box it means.
+
+Wired once per form rather than once per field: `useFormErrors()` provides the map to the subtree, and
+each field finds its own. **260 fields across 45 files** were given their `name` — derived from the
+`v-model` binding each one wraps, which is the same name the payload uses — and 124 catch blocks now
+route through `capture`. The message clears the moment the field is edited, because it described what was
+submitted, not what is in the box now; a border that stays red while you fix the thing it complained
+about teaches people to ignore red borders.
+
+Focus moves to the first rejected field, and *first* means first on the page. Taking the first key of the
+response looked equivalent and was not: Spring's field errors do not arrive in declaration order — an
+empty registration comes back `firstName, email, password, lastName` — so that version put focus in the
+middle of the form and skipped the empty box at the top.
+
+### One toast, from one place
+
+Any 400 raises a toast at the top: *"The information submitted is not correct, fill the form
+correctly."* Fixed wording rather than the server's message, because the server's message is already on
+screen under the offending input; what the toast adds is that something happened at all, which is what a
+form long enough to push the rejected field below the fold needs. 403, 409, 5xx and an unreachable
+server report the same way — one place, because a screen that forgets to surface an error is a screen
+where a save silently did nothing, and that is not fixed by remembering harder in each new form.
+
+Restyled to the house language rather than left as Naive's white pill: the translucent, blurred surface
+the sticky bars use, a semantic tint and border, and Naive's own per-kind icon kept so the meaning is
+not carried by colour alone. Identical messages within two seconds are shown once — a double-clicked
+save sends two requests, fails twice the same way, and a stack of duplicates looks broken.
+
+It starts **below the header** rather than over it. The offset is a token, `--toast-top`, because the
+container is teleported to `<body>` and cannot read a height off the layout it belongs to, so the number
+has to live somewhere both can see. It is `--topbar-h + 12px`: the workspace topbar is that token's 62px
+and the marketplace and account bars render at 60px, so one value clears every header on the platform.
+The sign-in screens have no header at all and simply inherit it.
+
+Two earlier attempts at the translucency are worth recording. At 82% opacity it looked right on the
+workspace and failed on the sign-in screen, where a centred toast lies across the join between the ink
+panel and the white card: the dark half showed through and took the text with it. A toast appears over
+*whatever* is on screen, so its legibility cannot depend on what that is — hence 94%, with the blur doing
+the work the transparency was there for. And the first version carried a coloured bar down the leading
+edge, which was one signal too many next to the tint, the border and the icon.
+
+### Two defects found by opening the browser rather than reading the code
+
+1. **The buyer registration form was the only form that failed silently.** `publicApi` is a bare axios
+   instance on purpose — the shared client's 401 interceptor would turn "the theme endpoint is down"
+   into a spurious logout on first paint — and the toast rule had been attached to the other instance.
+   The rule moved into `services/requestFailures` and both clients attach it. The 401 separation stands;
+   being silent was never part of it.
+2. **The toast api was being unregistered by the component that no longer owned it.** `ToastHost` cleared
+   the slot on unmount, and Vue mounts a replacement before unmounting the original — so any re-render
+   that recreated the host nulled the api the new instance had just registered, and toasts stopped
+   appearing with nothing in the console. It now releases the slot only if it still holds it.

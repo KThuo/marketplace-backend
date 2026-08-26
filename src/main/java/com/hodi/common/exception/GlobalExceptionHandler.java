@@ -14,12 +14,15 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -36,22 +39,73 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(ex.getStatus()).body(ApiResponse.error(ex.getMessage()));
     }
 
+    /**
+     * A request body that failed Bean Validation.
+     *
+     * <p>This used to answer with the field errors joined into one string — {@code "password: Password
+     * is required, username: Username or email is required"} — which is a debugging aid wearing a user
+     * message's clothes. It named the DTO's properties to somebody filling in a form, it grew unreadable
+     * as soon as three fields were wrong, and it gave the screen nothing to work with: the form could
+     * only print it whole, at the bottom, while every input stayed unmarked.
+     *
+     * <p>Now the messages come back keyed by field, so each one lands under the input it is about, and
+     * {@code message} is a sentence with no field names in it. When exactly one field is wrong that
+     * sentence is simply the message itself, because "Username or email is required" is already the
+     * whole story and "Please correct the field below" would be a worse way of saying it.
+     *
+     * <p>First message wins for a field with several violations — a merge keeps the map in the order the
+     * fields were declared, and reading two rules about one box at once helps nobody.
+     */
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiResponse<Void>> handleValidationException(MethodArgumentNotValidException ex) {
-        String errors = ex.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .collect(Collectors.joining(", "));
+        Map<String, String> errors = ex.getBindingResult().getFieldErrors().stream()
+                .collect(Collectors.toMap(
+                        FieldError::getField,
+                        error -> messageOf(error.getDefaultMessage()),
+                        (first, second) -> first,
+                        LinkedHashMap::new));
         log.warn("Validation failed: {}", errors);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(errors));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.validationError(summarise(errors), errors));
     }
 
+    /**
+     * A validated method parameter — a path variable, a query parameter, or a field reached through a
+     * nested {@code @Valid}. Same shape as above; the key is the leaf of the property path, because
+     * {@code createUser.request.email} is not a name any form has for an input.
+     */
     @ExceptionHandler(ConstraintViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleConstraintViolation(ConstraintViolationException ex) {
-        String errors = ex.getConstraintViolations().stream()
-                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
-                .collect(Collectors.joining(", "));
+        Map<String, String> errors = ex.getConstraintViolations().stream()
+                .collect(Collectors.toMap(
+                        violation -> leafOf(violation.getPropertyPath().toString()),
+                        violation -> messageOf(violation.getMessage()),
+                        (first, second) -> first,
+                        LinkedHashMap::new));
         log.warn("Constraint violation: {}", errors);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(errors));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.validationError(summarise(errors), errors));
+    }
+
+    /** The last segment of a dotted property path, which is the name the form knows the input by. */
+    private static String leafOf(String propertyPath) {
+        int lastDot = propertyPath.lastIndexOf('.');
+        return lastDot < 0 ? propertyPath : propertyPath.substring(lastDot + 1);
+    }
+
+    /** Bean Validation allows a null default message; never hand the client an empty string. */
+    private static String messageOf(String message) {
+        return message == null || message.isBlank() ? "This value is not valid" : message;
+    }
+
+    /**
+     * The banner sentence. One bad field speaks for itself; several are counted rather than listed,
+     * because the individual messages are already going under their own inputs.
+     */
+    private static String summarise(Map<String, String> errors) {
+        if (errors.isEmpty()) return "Some of what was submitted is not valid";
+        if (errors.size() == 1) return errors.values().iterator().next();
+        return "Please correct the " + errors.size() + " highlighted fields";
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
