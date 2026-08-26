@@ -1724,11 +1724,24 @@ the sticky bars use, a semantic tint and border, and Naive's own per-kind icon k
 not carried by colour alone. Identical messages within two seconds are shown once — a double-clicked
 save sends two requests, fails twice the same way, and a stack of duplicates looks broken.
 
-It starts **below the header** rather than over it. The offset is a token, `--toast-top`, because the
-container is teleported to `<body>` and cannot read a height off the layout it belongs to, so the number
-has to live somewhere both can see. It is `--topbar-h + 12px`: the workspace topbar is that token's 62px
-and the marketplace and account bars render at 60px, so one value clears every header on the platform.
-The sign-in screens have no header at all and simply inherit it.
+Where it starts depends on whether the screen has a header, and it took a few passes to see that this is
+one question rather than two.
+
+The offset is a token, `--toast-top`, because the container is teleported to `<body>` and cannot read a
+height off the layout it belongs to — the number has to live somewhere both can see. On a screen with a
+sticky header it is `--topbar-h + 4px`, or 66px: the workspace topbar is that token's 62px and the
+marketplace and account bars render at 60px, so one value clears every header on the platform, and 4px is
+enough to read as a gap without reading as a margin.
+
+The sign-in screens are the exception: they have no header, so a value chosen to clear one leaves the
+toast hanging in the middle of an empty panel. They get **26px**, and `App.vue` publishes which case
+applies by stamping `data-chrome` on `<html>` — the one thing the toast needs to know that it cannot see
+from where it is rendered.
+
+Worth recording that the first two attempts both got this wrong in the same way, by looking for a single
+number: 12px above the header was too detached, and 4px was right for a header and still far too low
+without one. The fix was not a better number but noticing that "below the header" and "near the top of the
+window" are the same intent applied to two different screens.
 
 Two earlier attempts at the translucency are worth recording. At 82% opacity it looked right on the
 workspace and failed on the sign-in screen, where a centred toast lies across the join between the ink
