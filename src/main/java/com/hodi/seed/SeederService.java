@@ -64,6 +64,7 @@ public class SeederService {
     private static final String PLATFORM_GROUP = "Platform Super Admin";
     private static final String BUYER_GROUP = "Buyer";
     private static final String VALUER_GROUP = "Valuer";
+    private static final String AGENT_GROUP = "Property Agent";
 
     private final UserTypeRepository userTypes;
     private final AppModuleRepository appModules;
@@ -155,13 +156,16 @@ public class SeederService {
         int platform = topUpPlatformGroup();
         int buyer = topUpBuyerGroup();
         int valuerPerms = topUpValuerGroup();
+        int agentPerms = topUpAgentGroup();
         int owners = topUpOrganisationOwnerGroups();
         int enabled = enableCoreModulesEverywhere();
         boolean bootstrapped = seedBootstrapAdmin();
 
         log.info("Seeder: {} user types, {} modules, {} permissions, {} configs, {} templates "
-                        + "(+{} platform, +{} buyer, +{} valuer, +{} owner perms, +{} tenant modules){}",
-                types, modules, perms, configs, templates, platform, buyer, valuerPerms, owners, enabled,
+                        + "(+{} platform, +{} buyer, +{} valuer, +{} agent, +{} owner perms, "
+                        + "+{} tenant modules){}",
+                types, modules, perms, configs, templates, platform, buyer, valuerPerms, agentPerms,
+                owners, enabled,
                 bootstrapped ? ", bootstrap admin created" : "");
     }
 
@@ -704,6 +708,64 @@ public class SeederService {
             userGroups.save(UserGroup.builder()
                     .name(VALUER_GROUP)
                     .description("What every panel valuer holds: their own record, and their own jobs.")
+                    .userTypeId(type.getId())
+                    .userTypeCode(type.getCode())
+                    .userTypeName(type.getName())
+                    .template(false)
+                    .system(true)
+                    .permissions(expected)
+                    .status(AppConstant.STATUS_ACTIVE)
+                    .statusFlag(AppConstant.FLAG_ACTIVE)
+                    .createdBy(ACTOR)
+                    .build());
+            return expected.size();
+        }
+        int added = 0;
+        for (Permission p : expected) {
+            if (group.getPermissions().stream()
+                    .noneMatch(x -> x.getActionCode().equals(p.getActionCode()))) {
+                group.getPermissions().add(p);
+                added++;
+            }
+        }
+        if (added > 0) {
+            group.setUpdatedBy(ACTOR);
+            userGroups.save(group);
+        }
+        return added;
+    }
+
+    /**
+     * The group every independent agent belongs to (M9).
+     *
+     * <p>Global and {@code system}, like the valuer's and the buyer's, because an agent is not somebody's
+     * staff: there is no organisation whose owner would maintain their role. What they hold is fixed by the
+     * platform, and widening it means editing this list rather than editing a group.
+     *
+     * <p>The listing verbs are here <em>and</em> gated. An agent holds {@code PROPERTIES_CREATE} from the
+     * moment they register; {@code EffectivePermissionResolver} drops it until their profile's KYC standing
+     * clears, which approval is what does. Granting the permission and gating it is deliberate — the
+     * alternative, editing the group at approval, would mean an agent's rights lived in a mutable row
+     * somebody could hand-edit rather than in a rule.
+     */
+    private int topUpAgentGroup() {
+        UserType type = userTypes.findByCode("AGENT").orElse(null);
+        if (type == null) return 0;
+        Set<Permission> expected = resolve(List.of(
+                "DASHBOARD_VIEW", "AGENT_SELF_VIEW", "AGENT_SELF_UPDATE", "AGENTS_VIEW",
+                "PROPERTIES_VIEW", "PROPERTIES_CREATE", "PROPERTIES_UPDATE", "PROPERTIES_SUBMIT",
+                "PROPERTIES_MEDIA", "PROPERTIES_WITHDRAW", "PROPERTIES_MARK_SOLD",
+                "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_CLOSE",
+                "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
+                "PURCHASE_REQUESTS_VIEW", "PURCHASE_REQUESTS_DECIDE",
+                "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST"));
+
+        UserGroup group = userGroups.findGlobalByName(AGENT_GROUP).orElse(null);
+        if (group == null) {
+            userGroups.save(UserGroup.builder()
+                    .name(AGENT_GROUP)
+                    .description("What every independent agent holds: their own registration, their "
+                            + "listings, and the leads those listings produce.")
                     .userTypeId(type.getId())
                     .userTypeCode(type.getCode())
                     .userTypeName(type.getName())

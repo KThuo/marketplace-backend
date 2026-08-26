@@ -109,6 +109,16 @@ public class Property {
     @Column(name = "search_text", insertable = false, updatable = false)
     private String searchText;
 
+    // ── whose property this is (M9, BRD FR161) ────────────────────────────────
+    // Null on a seller organisation's listing, and honestly so: the question "is this the agent's own or a
+    // client's" has no answer when there is no agent. Set for every listing an agent creates.
+
+    @Column(name = "agent_profile_id") private Long agentProfileId;
+    @Column(name = "listing_ownership", length = 16) private String listingOwnership;
+    /** The client's own details. On the private listing record only — never on the public one. */
+    @Column(name = "client_owner_name", length = 160) private String clientOwnerName;
+    @Column(name = "client_owner_phone", length = 32) private String clientOwnerPhone;
+
     public boolean isDraft() {
         return AppConstant.LISTING_DRAFT.equals(listingState);
     }

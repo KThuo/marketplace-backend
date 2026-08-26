@@ -95,6 +95,20 @@ public class SecurityConfig {
              * /api/v1/me/affordability, and that one requires a session.
              */
             "/api/v1/public/affordability/estimate",
+            /*
+             * An agent applying to join the platform (M9, FR160).
+             *
+             * The most consequential thing on this list: it creates an account for somebody who intends to
+             * list property, where buyer registration creates one for somebody who intends to look at it. It
+             * is here rather than behind a session because an applicant by definition has neither.
+             *
+             * What makes it safe is that it grants nothing. The application lands PENDING, the profile's KYC
+             * standing fails the listing gate, and no organisation exists to list into until the platform
+             * approves it — three independent conditions, because one gate is one thing to get wrong. A
+             * self-registered agent who is never approved can sign in and see an empty workspace, which is
+             * exactly what they are.
+             */
+            "/api/v1/public/agents/apply",
     };
 
     private final PublicMarketplaceFilter publicMarketplaceFilter;

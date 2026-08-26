@@ -284,6 +284,80 @@ public enum ConfigKey {
             "Comma-separated seller types that must be cleared by Compliance before they can list. "
                     + "Empty means nobody is blocked.", false, false),
 
+    // ── AGENTS (M9, BRD FR160–FR161) ─────────────────────────────────────────
+    /**
+     * Whether an agent can start an application themselves.
+     *
+     * <p>Unlike buyer self-registration this creates a *privileged* actor — somebody who will list property —
+     * so the switch matters more. It is safe on by default only because registering does not grant anything:
+     * the application lands PENDING, the profile's KYC status fails the listing gate, and no organisation
+     * exists to list into until the platform approves it.
+     */
+    AGENT_SELF_REGISTRATION_ENABLED(
+            "agent.self.registration.enabled", "BOOLEAN", "AGENT", "true",
+            "Agents may apply themselves",
+            "When false, agent applications can only be started by platform staff.", false, false),
+    /**
+     * The version of the terms currently in force.
+     *
+     * <p>Bumping this is what makes existing signatures historical rather than wrong: an artifact records the
+     * version it was captured against, so "which agents have accepted the current terms" is answerable
+     * afterwards rather than needing to have been anticipated.
+     */
+    AGENT_TERMS_VERSION(
+            "agent.terms.version", "STRING", "AGENT", "2026.1",
+            "Agent terms version",
+            "Bump this when the terms change. Signatures keep the version they were captured against.",
+            false, false),
+    /**
+     * The terms themselves.
+     *
+     * <p>In configuration rather than in a template file because the hash of this exact text is the evidence:
+     * a text a deploy can change without anybody noticing is a text nobody can be held to. Changing it here
+     * is an audited settings edit with a name against it.
+     */
+    AGENT_TERMS_TEXT(
+            "agent.terms.text", "TEXT", "AGENT",
+            "1. You confirm that the information in your application is true, and that any licence you have "
+                    + "named is current and held in your own name or your agency's.\n"
+                    + "2. You will mark every listing you create as either your own property or a client's, "
+                    + "and you will not list a client's property without their instruction to do so.\n"
+                    + "3. You will keep your clients' personal details accurate and will not use them for "
+                    + "anything other than the sale you were instructed on.\n"
+                    + "4. You are responsible for the accuracy of every listing you publish, including its "
+                    + "price, its description and its photographs.\n"
+                    + "5. Hodi Market Place introduces buyers and sellers. It is not a party to any sale, it "
+                    + "holds no deposit, and it gives no valuation or legal advice.\n"
+                    + "6. Your registration may be suspended if a listing is found to be materially "
+                    + "inaccurate, if a licence lapses, or if a client complains and the complaint is upheld.\n"
+                    + "7. You may end this agreement at any time by writing to the platform, and your live "
+                    + "listings will be withdrawn.",
+            "Agent terms",
+            "The text an agent is shown and signs. Its SHA-256 is stored with every signature, so editing "
+                    + "this does not change what anybody has already accepted.", false, false),
+    /**
+     * The agreement generated on approval.
+     *
+     * <p>Placeholders in double braces are filled at generation: {@code {{agentName}}}, {@code {{agency}}},
+     * {@code {{licence}}}, {@code {{reference}}}, {@code {{date}}}, {@code {{termsVersion}}},
+     * {@code {{signedBy}}}, {@code {{signedAt}}}, {@code {{terms}}}.
+     */
+    AGENT_AGREEMENT_TEMPLATE(
+            "agent.agreement.template", "TEXT", "AGENT",
+            "AGENCY AGREEMENT\n"
+                    + "Hodi Market Place and {{agentName}}\n"
+                    + "Reference {{reference}} · effective {{date}} · terms version {{termsVersion}}\n\n"
+                    + "Agent: {{agentName}}\n"
+                    + "Agency: {{agency}}\n"
+                    + "Licence: {{licence}}\n\n"
+                    + "The agent named above has applied to list property on Hodi Market Place, has been "
+                    + "approved by the platform, and accepted the following terms:\n\n"
+                    + "{{terms}}\n\n"
+                    + "Signed by {{signedBy}} on {{signedAt}}.",
+            "Agent agreement template",
+            "Rendered once when an agent is approved and stored with the agent. Placeholders in double "
+                    + "braces are filled at generation.", false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

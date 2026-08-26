@@ -170,6 +170,11 @@ public class UserPrincipal implements UserDetails {
         return AppConstant.ACTOR_VALUER.equals(actorClass);
     }
 
+    /** An independent agent. Carries their own organisation, so scoped exactly like seller staff (M9). */
+    public boolean isAgent() {
+        return AppConstant.ACTOR_AGENT.equals(actorClass);
+    }
+
     public boolean isSellerStaff() {
         return AppConstant.ACTOR_SELLER.equals(actorClass);
     }

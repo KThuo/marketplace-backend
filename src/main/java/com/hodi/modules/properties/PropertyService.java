@@ -1,6 +1,9 @@
 package com.hodi.modules.properties;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.agents.AgentProfile;
+import com.hodi.modules.agents.AgentProfileRepository;
+import com.hodi.modules.agents.AgentState;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
@@ -60,6 +63,7 @@ import java.time.OffsetDateTime;
 public class PropertyService {
 
     private final PropertyRepository repository;
+    private final AgentProfileRepository agents;
     private final PropertyMediaRepository media;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
@@ -115,6 +119,7 @@ public class PropertyService {
         property.setStatusFlag(AppConstant.FLAG_ACTIVE);
         property.setCreatedBy(AuthContext.username());
         apply(property, request);
+        applyOwnership(property, request, caller);
 
         Property saved = repository.save(property);
         audit.record(AppConstant.ACTION_CREATE, "Property", saved.getId(), null, snapshot(saved));
@@ -131,6 +136,7 @@ public class PropertyService {
         }
         String before = snapshot(property);
         apply(property, request);
+        applyOwnership(property, request, AuthContext.require());
         property.setStatus(AppConstant.STATUS_EDITED);
         property.setStatusFlag(AppConstant.FLAG_EDITED);
         property.setUpdatedBy(AuthContext.username());
@@ -375,6 +381,47 @@ public class PropertyService {
         property.setRainwaterHarvesting(Boolean.TRUE.equals(request.rainwaterHarvesting()));
     }
 
+    /**
+     * Whose property this is (M9, BRD FR161).
+     *
+     * <p>Asked of an agent and of nobody else. A seller organisation listing its own stock is not answering
+     * this question, and defaulting them to {@code SELF} would put a claim on the row that nobody made.
+     *
+     * <p>The agent is taken from the caller, never from the request: a listing that named its own agent
+     * would be a field somebody could point at somebody else.
+     */
+    private void applyOwnership(Property property, SavePropertyRequest request, UserPrincipal caller) {
+        if (!caller.isAgent()) return;
+
+        AgentProfile agent = agents.findFirstByUserIdOrderByIdDesc(caller.getUserId())
+                .orElseThrow(() -> new HodiException(
+                        "Your agent registration could not be found.", HttpStatus.FORBIDDEN));
+
+        String ownership = request.listingOwnership() == null
+                ? null : request.listingOwnership().trim().toUpperCase();
+        if (!AgentState.OWNERSHIP_SELF.equals(ownership)
+                && !AgentState.OWNERSHIP_CLIENT.equals(ownership)) {
+            throw new HodiException(
+                    "Say whether this is your own property or a client's.", HttpStatus.BAD_REQUEST);
+        }
+        if (AgentState.OWNERSHIP_CLIENT.equals(ownership)
+                && (request.clientOwnerName() == null || request.clientOwnerName().isBlank())) {
+            throw new HodiException("Name the client whose property this is.", HttpStatus.BAD_REQUEST);
+        }
+
+        property.setAgentProfileId(agent.getId());
+        property.setListingOwnership(ownership);
+        if (AgentState.OWNERSHIP_CLIENT.equals(ownership)) {
+            property.setClientOwnerName(request.clientOwnerName().trim());
+            property.setClientOwnerPhone(blankToNull(request.clientOwnerPhone()));
+        } else {
+            // Switching a listing from a client's to their own clears the client. Leaving the old name on it
+            // would keep somebody's details against a property that is no longer theirs.
+            property.setClientOwnerName(null);
+            property.setClientOwnerPhone(null);
+        }
+    }
+
     /** A reference nobody holds yet. Retried, because the generator is random rather than sequential. */
     private String freshReference() {
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -429,10 +476,21 @@ public class PropertyService {
                 p.getWithdrawnReason(),
                 storage.urlFor(p.getPrimaryImageKey()),
                 (int) media.countForProperty(p.getId()),
+                p.getListingOwnership(),
+                agentOf(p).map(AgentProfile::getReference).orElse(null),
+                agentOf(p).map(AgentProfile::getFullName).orElse(null),
+                p.getClientOwnerName(),
+                p.getClientOwnerPhone(),
                 p.getStatus(),
                 p.getStatusFlag(),
                 p.getCreatedAt(),
                 p.getCreatedBy());
+    }
+
+    private java.util.Optional<AgentProfile> agentOf(Property p) {
+        return p.getAgentProfileId() == null
+                ? java.util.Optional.empty()
+                : agents.findById(p.getAgentProfileId());
     }
 
     private static String snapshot(Property p) {

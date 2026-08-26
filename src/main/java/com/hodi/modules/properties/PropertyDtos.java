@@ -65,6 +65,14 @@ public final class PropertyDtos {
             String withdrawnReason,
             String primaryImageUrl,
             int photoCount,
+            // Whose property it is (M9, FR161). Null for a seller organisation's own listing — see the
+            // entity. The client's name and number are here and deliberately absent from PublicProperty:
+            // they belong to somebody who never signed up to this platform.
+            String listingOwnership,
+            String agentReference,
+            String agentName,
+            String clientOwnerName,
+            String clientOwnerPhone,
             Integer status,
             String statusFlag,
             OffsetDateTime createdAt,
@@ -123,7 +131,15 @@ public final class PropertyDtos {
             String energyRating,
             Boolean hasSolar,
             Boolean hasBorehole,
-            Boolean rainwaterHarvesting) {}
+            Boolean rainwaterHarvesting,
+
+            /**
+             * {@code SELF} or {@code CLIENT} (FR161). Required of an agent, ignored from anybody else — a
+             * seller organisation listing its own stock is not answering this question.
+             */
+            String listingOwnership,
+            String clientOwnerName,
+            String clientOwnerPhone) {}
 
     public record SubmitRequest(String note) {}
 

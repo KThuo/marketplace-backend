@@ -273,7 +273,18 @@ public enum AppPermissionEnum {
      * The one permission a buyer holds. It admits them to their own area; what they see inside it is
      * resolved from their own user id, so there is nothing further to grant and nothing that widens it.
      */
-    BUYER_PORTAL_ACCESS("Use the buyer portal", AppModuleEnum.BUYER_PORTAL);
+    BUYER_PORTAL_ACCESS("Use the buyer portal", AppModuleEnum.BUYER_PORTAL),
+
+    // ── AGENTS ────────────────────────────────────────────────────────────────
+    AGENTS_VIEW("See the agent register", AppModuleEnum.AGENTS),
+    /** Deciding an application: approve, reject, suspend, reinstate. Never the agent's own. */
+    AGENTS_DECIDE("Decide agent applications", AppModuleEnum.AGENTS, true),
+    /** Opening the signature and the executed agreement behind an application. */
+    AGENTS_EVIDENCE("Open an agent's signature and agreement", AppModuleEnum.AGENTS, true),
+
+    // ── AGENT_SELF ────────────────────────────────────────────────────────────
+    AGENT_SELF_VIEW("See my own agent profile and agreement", AppModuleEnum.AGENT_SELF),
+    AGENT_SELF_UPDATE("Update my own agent details", AppModuleEnum.AGENT_SELF);
 
     private final String actionName;
     private final AppModuleEnum module;

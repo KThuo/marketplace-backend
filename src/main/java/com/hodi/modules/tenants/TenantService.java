@@ -231,6 +231,59 @@ public class TenantService {
     }
 
     /**
+     * The one-person organisation an approved agent lists into (M9).
+     *
+     * <p>Deliberately not {@link #create}: that path mints an owner group and an owner account with a
+     * temporary password, and an agent already has an account — the one they registered with. What they lack
+     * is somewhere to put a listing, and this supplies exactly that.
+     *
+     * <p>Here rather than in the agents module so that slug normalisation, reference allocation and
+     * collision handling stay in one place. A second implementation of "make a unique handle" is a second
+     * chance to get uniqueness wrong, and the failure is a duplicate-key error in front of somebody being
+     * approved.
+     *
+     * <p>The caller attaches the agent's profile to it and decides their KYC standing — this method takes no
+     * view on either, because for an agent both are decided by the approval rather than by onboarding.
+     */
+    @Transactional
+    public Tenant createForAgent(String name, String contactName, String email, String phone) {
+        String base = normaliseSlug(null, name);
+        String slug = base;
+        for (int suffix = 2; repository.existsBySlugIgnoreCase(slug) && suffix < 1000; suffix++) {
+            slug = base + "-" + suffix;
+        }
+        if (repository.existsBySlugIgnoreCase(slug)) {
+            throw new HodiException("Could not allocate a handle for this agent — try a different name.",
+                    HttpStatus.CONFLICT);
+        }
+
+        Tenant tenant = repository.save(Tenant.builder()
+                .name(name.trim())
+                .slug(slug)
+                .tenantRef(uniqueRef())
+                // An independent agent is an agency in the seller-type taxonomy, which is what makes the
+                // register and the reporting read honestly rather than showing a null.
+                .sellerType("AGENCY")
+                .contactName(contactName)
+                .contactEmail(email)
+                .contactPhone(phone)
+                .country("KE")
+                .currency("KES")
+                .timezone("Africa/Nairobi")
+                .onboardingStatus(AppConstant.ONBOARDING_ACTIVE)
+                .activatedAt(OffsetDateTime.now())
+                .status(AppConstant.STATUS_ACTIVE)
+                .statusFlag(AppConstant.FLAG_ACTIVE)
+                .createdBy(AuthContext.username())
+                .build());
+
+        tenantModules.enableCoreModules(tenant.getId());
+        audit.record(AppConstant.ACTION_CREATE, "Tenant", tenant.getId(), null, snapshot(tenant));
+        log.info("Created agent organisation {} ({})", tenant.getName(), tenant.getSlug());
+        return tenant;
+    }
+
+    /**
      * The organisation's own owner group, carrying every permission a seller may hold.
      *
      * <p>Built from a query — {@code findByPlatformOnlyFalse} — rather than a hand-maintained list, because a

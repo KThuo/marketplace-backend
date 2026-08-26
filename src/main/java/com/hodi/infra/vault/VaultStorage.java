@@ -88,14 +88,42 @@ public class VaultStorage {
             throw new HodiException("That file could not be read.", HttpStatus.BAD_REQUEST, e);
         }
 
-        String key = buildKey(folder, file.getOriginalFilename());
+        return store(bytes, file.getOriginalFilename(), contentType, folder);
+    }
+
+    /**
+     * The same, for bytes that never arrived as an upload.
+     *
+     * <p>A drawn signature reaches the server inside a JSON registration payload as a data URL, not as a
+     * multipart part — and a signature belongs in the vault for exactly the reasons a KYC document does. The
+     * alternative was a second endpoint and a half-finished registration waiting for it, which is a worse
+     * shape than an overload: the signature and the application it is evidence for should be written in one
+     * transaction or not at all.
+     *
+     * <p>Same ceiling, same allowlist, same checksum. The caller states the content type because there is no
+     * file to sniff one from; anything outside the allowlist is refused here as it would be there.
+     */
+    public Stored store(byte[] bytes, String fileName, String declaredType, String folder) {
+        if (bytes == null || bytes.length == 0) {
+            throw new HodiException("There was nothing to store", HttpStatus.BAD_REQUEST);
+        }
+        if (bytes.length > MAX_BYTES) {
+            throw new HodiException("That file is larger than the 15 MB limit.",
+                    HttpStatus.PAYLOAD_TOO_LARGE);
+        }
+        String contentType = normalise(declaredType);
+        if (!ALLOWED.contains(contentType)) {
+            throw new HodiException("Upload a PDF or a photograph. " + contentType + " is not accepted.",
+                    HttpStatus.UNSUPPORTED_MEDIA_TYPE);
+        }
+
+        String key = buildKey(folder, fileName);
         String checksum = sha256(bytes);
         String encryption = bucket().isBlank() ? AppConstant.ENCRYPTION_NONE : writeToS3(key, bytes, contentType);
         if (bucket().isBlank()) writeLocally(key, bytes);
 
         log.info("Vault stored {} ({} bytes, {}) sha256={}", key, bytes.length, encryption, checksum);
-        return new Stored(key, contentType, bytes.length, safeName(file.getOriginalFilename()),
-                checksum, encryption);
+        return new Stored(key, contentType, bytes.length, safeName(fileName), checksum, encryption);
     }
 
     /**

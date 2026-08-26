@@ -126,7 +126,7 @@ public enum AppModuleEnum {
     PROPERTIES("PROPERTIES", "Listings",
             "The properties a seller offers, from draft to live to sold",
             true, 30,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT"),
 
     /**
      * The Maker/Checker queue (plan §3.2).
@@ -156,7 +156,7 @@ public enum AppModuleEnum {
     MORTGAGE_PRODUCTS("MORTGAGE_PRODUCTS", "Mortgage Products",
             "What each lender offers — rates, terms, deposit and who qualifies",
             true, 35,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT"),
 
     /**
      * Affordability checks (M3), and <strong>platform staff only</strong>.
@@ -181,7 +181,7 @@ public enum AppModuleEnum {
     ENQUIRIES("ENQUIRIES", "Enquiries",
             "Questions buyers have asked about your listings, and the replies",
             true, 40,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT"),
 
     /**
      * Viewings (M4). Admits the same people as enquiries, plus nobody: showing somebody round a house is
@@ -190,7 +190,7 @@ public enum AppModuleEnum {
     SITE_VISITS("SITE_VISITS", "Viewings",
             "Requests to see a property, and the diary of what was agreed",
             true, 45,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT"),
 
     /**
      * Offers (M4).
@@ -202,7 +202,7 @@ public enum AppModuleEnum {
     PURCHASE_REQUESTS("PURCHASE_REQUESTS", "Offers",
             "Offers buyers have made on your listings",
             true, 50,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,AGENT"),
 
     /**
      * KYC (M8 slice 1).
@@ -232,7 +232,7 @@ public enum AppModuleEnum {
             "Valuation jobs, from request to signed report",
             true, 60,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VALUER"),
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VALUER,AGENT"),
 
     /**
      * The valuer's own workspace (M5).
@@ -300,7 +300,7 @@ public enum AppModuleEnum {
             "The landing figures for whichever kind of user is signed in",
             true, 110,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT"),
 
     /**
      * Admits a buyer to their own area, and nothing else.
@@ -313,7 +313,32 @@ public enum AppModuleEnum {
     BUYER_PORTAL("BUYER_PORTAL", "Buyer Portal",
             "A buyer's own saved properties, enquiries and finance applications",
             true, 120,
-            "BUYER");
+            "BUYER"),
+
+    /**
+     * The register of independent agents (M9).
+     *
+     * <p>Admits agents themselves so they can find each other in a directory, and platform staff who decide
+     * applications. Approving is {@code platformOnly} on the permission, not on the module, so an agent can
+     * read the register without any chance of deciding their own application.
+     */
+    AGENTS("AGENTS", "Agents",
+            "Independent agents, their applications and the agreements they signed",
+            true, 70,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,AGENT"),
+
+    /**
+     * An agent's own application, agreement and profile.
+     *
+     * <p>Its own module for the reason {@code VALUATION_WORK} is: the owner-group top-up hands every
+     * non-platform-only permission whose module admits a user type to every organisation owner of that type,
+     * so an agent-only verb sitting in a shared module reaches everybody. This one admits {@code AGENT} and
+     * nobody else — not even platform staff, who have {@code AGENTS_VIEW} for the same rows.
+     */
+    AGENT_SELF("AGENT_SELF", "My Agent Profile",
+            "An agent's own registration, agreement and details",
+            true, 71,
+            "AGENT");
 
     private final String code;
     private final String displayName;

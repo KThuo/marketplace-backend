@@ -44,6 +44,19 @@ public final class AppConstant {
      * difference from a platform administrator is this column rather than an inference from two nulls.
      */
     public static final String ACTOR_VALUER   = "VALUER";
+    /**
+     * An independent property agent (M9, BRD FR160–FR161).
+     *
+     * <p>Unlike a valuer, an agent <em>does</em> carry an organisation — their own, created when the platform
+     * approves them. So their visibility needed no new mechanism: a one-person seller organisation is what
+     * an independent agent is, and {@code PrincipalFactory} already resolves anybody with a tenant to that
+     * tenant's rows.
+     *
+     * <p>Distinct from the {@code SALES_AGENT} user type, which is a seller organisation's employee. The two
+     * are easy to confuse and are not the same person: one works for a seller, the other <em>is</em> the
+     * business.
+     */
+    public static final String ACTOR_AGENT    = "AGENT";
 
     // ── KYC state (user_profiles.kyc_status — plan §3.3) ─────────────────────
     // NOT_REQUIRED is not the same as APPROVED even though both clear the gate: a platform
@@ -312,6 +325,10 @@ public final class AppConstant {
     public static final String AUDIT_LOT_RESULT       = "LOT_RESULT";
     public static final String AUDIT_BIDDER_DECIDED   = "BIDDER_DECIDED";
     public static final String AUDIT_SESSION_REVOKED  = "SESSION_REVOKED";
+    public static final String AUDIT_AGENT_REGISTER   = "AGENT_REGISTERED";
+    public static final String AUDIT_AGENT_DECIDED    = "AGENT_DECIDED";
+    /** Opening the signature or the agreement behind an application. Read events, recorded like vault ones. */
+    public static final String AUDIT_SIGNATURE_READ   = "SIGNATURE_READ";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────
     public static final String OUTCOME_SUCCESS      = "SUCCESS";

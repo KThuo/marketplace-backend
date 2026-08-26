@@ -126,6 +126,11 @@ public class UserProfile {
         return AppConstant.ACTOR_VALUER.equals(profileType);
     }
 
+    /** An independent property agent. Carries their own one-person organisation once approved (M9). */
+    public boolean isAgentActor() {
+        return AppConstant.ACTOR_AGENT.equals(profileType);
+    }
+
     /** True when Compliance has cleared this profile, or never needed to. */
     public boolean isKycCleared() {
         return AppConstant.KYC_NOT_REQUIRED.equals(kycStatus)
@@ -138,6 +143,7 @@ public class UserProfile {
         if (institutionName != null) return institutionName;
         if (isBuyerActor()) return "Buyer";
         if (isValuerActor()) return "Valuer";
+        if (isAgentActor()) return "Agent";
         return "Platform";
     }
 

@@ -88,7 +88,19 @@ public enum UserTypeEnum {
      */
     VALUER("Valuer",
             "An independent valuer on the platform's panel, working the jobs assigned to them",
-            AppConstant.ACTOR_VALUER, 110);
+            AppConstant.ACTOR_VALUER, 110),
+
+    /**
+     * An independent property agent (M9, BRD FR160–FR161).
+     *
+     * <p>Not to be confused with {@code SALES_AGENT} above, which is a seller organisation's employee. This
+     * one registers themselves, signs the platform's terms, and on approval becomes their own one-person
+     * selling organisation — so unlike a valuer they carry a tenant, and their visibility is the ordinary
+     * "my organisation's rows" rule with nothing new behind it.
+     */
+    AGENT("Property Agent",
+            "An independent agent listing their own property and their clients'",
+            AppConstant.ACTOR_AGENT, 120);
 
     private final String displayName;
     private final String description;
