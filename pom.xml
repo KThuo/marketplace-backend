@@ -140,6 +140,28 @@
             <version>${hashids.version}</version>
         </dependency>
 
+        <!--
+            Report exports.
+
+            poi-ooxml for .xlsx: the mature, universally used choice, and heavier than the alternatives —
+            a cost worth paying for a server-side export nobody has to look up later.
+
+            openpdf for .pdf: LGPL + MPL, so it can be used in a commercial product without the copyleft
+            reaching this code, and it carries PdfPTable, which is most of a tabular report already written.
+            iText 7 is deliberately NOT used: it is AGPL, and linking it here would put this codebase under
+            that licence or a paid one.
+        -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>2.0.3</version>
+        </dependency>
+
         <!-- S3-compatible object storage (AWS SDK v2; works with AWS, Contabo, MinIO … via endpoint
              override) for avatars now and property media later. Sync client only — the async Netty
              transport is excluded. -->

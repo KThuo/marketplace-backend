@@ -27,7 +27,45 @@ public final class ReportCatalogue {
      */
     public record Report(String code, String name, String description, String view,
                          String dateColumn, Map<String, String> columns, List<String> numeric,
-                         boolean platformOnly) {}
+                         boolean platformOnly, List<Filter> filters) {
+
+        /** The columns a free-text search looks at: everything that is neither a figure nor a timestamp. */
+        public List<String> searchable() {
+            return columns().values().stream()
+                    .filter(c -> !numeric().contains(c))
+                    .filter(c -> !c.endsWith("_at") && !c.equals(dateColumn()))
+                    .toList();
+        }
+
+        /** True when this report declares that column. The gate every request-named column passes. */
+        public boolean declares(String column) {
+            return columns().containsValue(column);
+        }
+
+        public Filter filter(String column) {
+            return filters().stream().filter(f -> f.column().equals(column)).findFirst().orElse(null);
+        }
+    }
+
+    /**
+     * A filter a report offers.
+     *
+     * <p>Declared per report because "the necessary filters" are not the same question twice: a listings
+     * report wants state, county and kind; a commission report wants how far a settlement has got. A
+     * generic "filter any column" would be both useless — sixty selects — and the injection surface this
+     * catalogue exists to avoid.
+     *
+     * @param column the column to filter, which must be one this report already declares
+     * @param kind   how the client should render it, and how the value is bound
+     */
+    public record Filter(String label, String column, Kind kind) {
+        public enum Kind {
+            /** A select, its options read from the distinct values present in the caller's own scope. */
+            ENUM,
+            /** A yes/no select. */
+            BOOLEAN,
+        }
+    }
 
     /** Insertion-ordered, because it is also the order the picker shows them in. */
     private static final List<Report> REPORTS = List.of(
@@ -39,7 +77,12 @@ public final class ReportCatalogue {
                             "Price", "price", "State", "listing_state", "Promoted", "promoted",
                             "Drafted", "drafted_at", "Published", "published_at", "Sold", "sold_at",
                             "Days to sell", "days_to_sell"),
-                    List.of("price"), false),
+                    List.of("price"), false,
+                    List.of(new Filter("State", "listing_state", Filter.Kind.ENUM),
+                            new Filter("County", "county", Filter.Kind.ENUM),
+                            new Filter("Kind", "property_type", Filter.Kind.ENUM),
+                            new Filter("Seller", "tenant_name", Filter.Kind.ENUM),
+                            new Filter("Promoted", "promoted", Filter.Kind.BOOLEAN))),
 
             new Report("LEADS", "Leads",
                     "Enquiries, viewing requests and offers, in one list.",
@@ -47,7 +90,10 @@ public final class ReportCatalogue {
                     ordered("Kind", "lead_type", "Reference", "reference", "Seller", "tenant_name",
                             "Listing", "property_title", "State", "state",
                             "Handled by", "handled_by", "Raised", "created_at"),
-                    List.of(), false),
+                    List.of(), false,
+                    List.of(new Filter("Kind", "lead_type", Filter.Kind.ENUM),
+                            new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Seller", "tenant_name", Filter.Kind.ENUM))),
 
             new Report("COMMISSION", "Commission",
                     "What the platform earned on completed sales, and where each figure stands.",
@@ -57,7 +103,9 @@ public final class ReportCatalogue {
                             "Rate %", "rate_percent", "Commission", "amount",
                             "State", "state", "Sold", "sold_at", "Invoiced", "invoiced_at",
                             "Paid", "paid_at"),
-                    List.of("sale_price", "amount"), false),
+                    List.of("sale_price", "amount"), false,
+                    List.of(new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Seller", "tenant_name", Filter.Kind.ENUM))),
 
             new Report("PROMOTIONS", "Placements",
                     "Paid placement bought, and whether it ran.",
@@ -66,7 +114,9 @@ public final class ReportCatalogue {
                             "Listing", "property_title", "Package", "package_name",
                             "Placement", "placement", "Price", "price", "Days", "duration_days",
                             "State", "state", "Started", "starts_at", "Ends", "ends_at"),
-                    List.of("price"), false),
+                    List.of("price"), false,
+                    List.of(new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Seller", "tenant_name", Filter.Kind.ENUM))),
 
             new Report("VALUATIONS", "Valuations",
                     "Turnaround from request to signed report.",
@@ -75,7 +125,9 @@ public final class ReportCatalogue {
                             "Valuer", "valuer_name", "State", "state",
                             "Requested", "requested_at", "Assigned", "assigned_at",
                             "Completed", "completed_at", "Days taken", "days_to_complete"),
-                    List.of(), false),
+                    List.of(), false,
+                    List.of(new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Valuer", "valuer_name", Filter.Kind.ENUM))),
 
             new Report("AUCTIONS", "Auctions",
                     "What went under the hammer, and what it fetched against the guide.",
@@ -85,7 +137,9 @@ public final class ReportCatalogue {
                             "Guide", "guide_price", "Fetched", "sold_price",
                             "% of guide", "percent_of_guide", "State", "state",
                             "Auction", "auction_date"),
-                    List.of("guide_price", "sold_price"), false),
+                    List.of("guide_price", "sold_price"), false,
+                    List.of(new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("County", "county", Filter.Kind.ENUM))),
 
             new Report("COMPLIANCE", "Compliance",
                     "Where every organisation stands with Compliance, and what they have live.",
@@ -97,7 +151,10 @@ public final class ReportCatalogue {
                     List.of("live_listings"),
                     // Every organisation's compliance standing beside every other's is the platform's view
                     // of its own market, and nobody else's business.
-                    true),
+                    true,
+                    List.of(new Filter("Standing", "onboarding_status", Filter.Kind.ENUM),
+                            new Filter("Kind", "organisation_kind", Filter.Kind.ENUM),
+                            new Filter("Seller type", "seller_type", Filter.Kind.ENUM))),
 
             new Report("RATINGS", "Reviews",
                     "What buyers said, by subject.",
@@ -105,7 +162,10 @@ public final class ReportCatalogue {
                     ordered("Reference", "reference", "About", "subject_label",
                             "Kind", "subject_type", "Score", "score", "Verified", "verified",
                             "State", "state", "Reports", "report_count", "Written", "created_at"),
-                    List.of(), false));
+                    List.of(), false,
+                    List.of(new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Kind", "subject_type", Filter.Kind.ENUM),
+                            new Filter("Verified", "verified", Filter.Kind.BOOLEAN))));
 
     public static List<Report> all() {
         return REPORTS;
