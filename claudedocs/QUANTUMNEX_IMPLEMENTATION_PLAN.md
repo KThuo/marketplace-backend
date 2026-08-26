@@ -5,9 +5,92 @@
 **Companion document:** `HODI_ACCESS_MANAGEMENT_PLAN.md` — what is already built, and why it is built that way. This
 document does not restate it; it audits it against the BRD and then sequences the rest.
 
-**Status:** **Phases 0, 1 and 2 are built and verified** (§7–§14). **Phase 3 has started**: M5 valuation
-landed with §3.5's assignment-scoped visibility and a fifth actor class (§15). Sections 3.4 and 3.6 — Agent
-and Vendor — remain planning; **M6 (auction) is next**.
+**Status — 26 August 2026:** **all fifteen modules are built and verified**, phases 0 through 6 complete,
+phase 7 (NFR) in its first pass. Everything below §7 is an "as built" record written after each module
+landed. See **§0** for how to restart the machine and pick up.
+
+| Phase | Contents | State |
+|---|---|---|
+| 0a / 0b | Profiles, auth audit, phone recovery, Maker/Checker | done — §7, §8 |
+| 1 | M2 listings + marketplace, M1 consent, M3 affordability, M4 leads | done — §9–§12 |
+| 2 | M8 KYC, the document vault, seller types, progress updates | done — §13, §14 |
+| 3 | M5 valuation, M6 auction | done — §15, §16 |
+| 4 | M9 agents, M10 vendors, M7 ratings | done — §17–§19 |
+| 5 | M12 routing + diary, M13 seller operations, M15 reports | done — §20–§22 |
+| 6 | M11 assistant | done — §23 |
+| 7 | NFR hardening | first pass done — §24; the rest is deployment work, listed there |
+
+---
+
+## 0. Resuming after a restart
+
+Nothing in this build depends on a running process — the state is in Postgres and in the two git
+repositories. What follows is how to get back to a working machine.
+
+### Start the infrastructure
+
+Postgres and Redis are shared containers, not per-project ones:
+
+```
+docker start postgres redis          # database on localhost:54321, redis on 6379
+```
+
+The schema is `hodimp` on that instance, at Flyway version `20260826190000` (31 migrations). The application
+validates the migration state on boot and refuses to start if it disagrees, so a successful boot is proof
+the database is where this document says it is.
+
+### Start the two applications
+
+```
+cd hodimp-b && mvn -o spring-boot:run     # http://localhost:8085
+cd hodimp-f && npm run dev                # http://localhost:3020
+```
+
+Java 23 is the default on this machine — do **not** run `sdk use` first. The backend takes about fifteen
+seconds and prints `Started HodiApplication` when it is up; the seeder line above it reports what it
+reconciled, and zero of everything is the normal steady state.
+
+### Sign in
+
+| Who | Username | Password |
+|---|---|---|
+| Platform super admin | `superadmin` | `Hodi#Verify2026` |
+| Seller owner (Acacia Ridge) | `wanjiru` | `Hodi#Verify2026` |
+| Lender admin (Equatorial Bank) | `otieno` | `Hodi#Verify2026` |
+| Support admin | `grace` | `Hodi#Verify2026` |
+| Buyer | `wanjiru.kamau` | `Marketplace#2026` |
+| Valuer | `aisha.noor` | `Valuer#Verify2026` |
+| Agent (Karanja & Partners) | `mwangi.karanja` | `Agent#Verify2026` |
+| Vendor (Mutiso & Associates) | `faith` | `Vendor#Verify2026` |
+
+These are development credentials seeded or created during the build. They are not in any deployment.
+
+### What is already in the database to look at
+
+A working example of nearly every module, as of the last run:
+
+- **16 listings** across two sellers and one agent, **2 sold** with a commission raised against each, **1**
+  carrying a paid placement — so the Featured badge and the boosted sort are both visible on the front page.
+- **2 auction lots**, both scheduled and in the public catalogue, one with an approved bidder registration.
+- **1 approved agent** with a signed agreement and a client-owned listing; **1 approved vendor** with a
+  published price.
+- **2 reviews**, one of which was held by the word list and then published by a moderator — so the moderation
+  queue has a decided item in it rather than being empty.
+- **1 routing rule** putting Nairobi apartment enquiries on a named person, and **2 diary entries** — one
+  projected from a confirmed viewing, one typed by hand.
+
+Counts drift as the machine is used; what matters is that every module has something real behind it rather
+than an empty table.
+
+### Where to pick up
+
+Phase 7 is the only phase with work left, and **none of it is code waiting to be written in these two
+repositories** — it is VAPT, APM and alerting, load testing against the 50k/1k target, the read replica for
+M15's views, DR/RPO/RTO, and a WCAG audit. §24 says why each is listed rather than attempted.
+
+If the next session is feature work rather than hardening, the honest starting point is not this document
+but the BRD: every module it names is built, so what comes next is whatever the business has learned since
+v1.2 was written.
 
 ---
 
