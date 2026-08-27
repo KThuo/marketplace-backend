@@ -85,9 +85,14 @@ public class PublicDevelopmentService {
 
         var page = developments.findAll(spec,
                 request.toPageable(Sort.by(Sort.Direction.DESC, "publishedAt")));
-        // The card does not need the typologies, so the list mapping leaves them out — twenty results would
-        // otherwise be twenty extra queries for panels nobody has opened.
-        return PagedResponse.from(page, d -> toCard(d));
+        /*
+         * The card does not need the typologies, so the list mapping leaves them out — twenty results would
+         * otherwise be twenty extra queries for panels nobody has opened. The bedroom span it does need, and
+         * that is one query for the whole page rather than one per card.
+         */
+        Map<Long, short[]> ranges = bedroomRanges(
+                page.getContent().stream().map(Development::getId).toList());
+        return PagedResponse.from(page, d -> toCard(d, ranges.get(d.getId())));
     }
 
     @Transactional(readOnly = true)
@@ -278,8 +283,25 @@ public class PublicDevelopmentService {
                 .toList();
     }
 
-    private PublicDevelopmentResponse toCard(Development d) {
-        return build(d, List.of(), List.of());
+    /**
+     * The bedroom span of each project, keyed by id, from one query.
+     *
+     * <p>{@code short[]} of exactly two rather than a record, because it is read once three lines later and a
+     * named type for it would be a class nobody else ever mentions.
+     */
+    private Map<Long, short[]> bedroomRanges(List<Long> developmentIds) {
+        if (developmentIds.isEmpty()) return Map.of();
+        Map<Long, short[]> ranges = new java.util.HashMap<>();
+        for (Object[] row : unitTypes.bedroomRanges(developmentIds)) {
+            if (row[1] == null || row[2] == null) continue;
+            ranges.put(((Number) row[0]).longValue(), new short[] {
+                    ((Number) row[1]).shortValue(), ((Number) row[2]).shortValue() });
+        }
+        return ranges;
+    }
+
+    private PublicDevelopmentResponse toCard(Development d, short[] bedrooms) {
+        return build(d, List.of(), List.of(), bedrooms);
     }
 
     private PublicDevelopmentResponse toDetail(Development d) {
@@ -288,11 +310,13 @@ public class PublicDevelopmentService {
                 .map(MediaAsset::getStorageKey)
                 .map(storage::urlFor)
                 .toList();
-        return build(d, images, typologies(d));
+        return build(d, images, typologies(d),
+                bedroomRanges(List.of(d.getId())).get(d.getId()));
     }
 
     private PublicDevelopmentResponse build(Development d, List<String> imageUrls,
-                                            List<PublicUnitTypeResponse> typologies) {
+                                            List<PublicUnitTypeResponse> typologies,
+                                            short[] bedrooms) {
         return new PublicDevelopmentResponse(
                 d.getReference(),
                 d.getName(),
@@ -315,6 +339,8 @@ public class PublicDevelopmentService {
                 d.getProjectedCompletionOn(),
                 d.getPrimaryImageKey() == null ? null : storage.urlFor(d.getPrimaryImageKey()),
                 imageUrls,
+                bedrooms == null ? null : bedrooms[0],
+                bedrooms == null ? null : bedrooms[1],
                 typologies);
     }
 

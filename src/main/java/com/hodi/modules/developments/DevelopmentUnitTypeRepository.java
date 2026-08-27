@@ -35,4 +35,16 @@ public interface DevelopmentUnitTypeRepository extends JpaRepository<Development
             + "where u.unitTypeId = :unitTypeId and u.status <> 5 "
             + "and u.saleState in ('AVAILABLE', 'HELD', 'RESERVED')")
     BigDecimal cheapestAvailable(@Param("unitTypeId") Long unitTypeId);
+
+    /**
+     * The bedroom span of each named project, in one query.
+     *
+     * <p>For the search cards, where a per-card lookup would be one query per result — twenty results, twenty
+     * queries, for two numbers each. Returns {@code [developmentId, min, max]} rows and skips projects whose
+     * typologies have said nothing about bedrooms.
+     */
+    @Query("select t.developmentId, min(t.bedrooms), max(t.bedrooms) from DevelopmentUnitType t "
+            + "where t.developmentId in :developmentIds and t.status <> 5 and t.bedrooms is not null "
+            + "group by t.developmentId")
+    List<Object[]> bedroomRanges(@Param("developmentIds") List<Long> developmentIds);
 }

@@ -131,6 +131,16 @@ public final class DevelopmentDtos {
             LocalDate projectedCompletionOn,
             String primaryImageUrl,
             List<String> imageUrls,
+            /*
+             * The bedroom span across the project's typologies, for a card that carries one figure where a
+             * listing carries a number. Null when no typology has said — which is different from a studio,
+             * where the honest answer is 0.
+             *
+             * Present on the card as well as the detail, so the bedroom filter means something at development
+             * level. Without it a project matching "2 bed" gave a card that never said why.
+             */
+            Short minBedrooms,
+            Short maxBedrooms,
             List<PublicUnitTypeResponse> unitTypes) {}
 
     /** A typology as a buyer sees it: what it is, what it costs, how many are left. */
