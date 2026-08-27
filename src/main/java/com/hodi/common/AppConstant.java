@@ -218,6 +218,17 @@ public final class AppConstant {
     public static final String PAY_MANUAL  = "MANUAL";
     public static final String PAY_GATEWAY = "GATEWAY";
 
+    /*
+     * Where an inbound Pesi notification stands.
+     *
+     * UNMAPPED is not a failure — it is a payment that arrived and is waiting for a person, which is the
+     * normal outcome for a mistyped reference or a walk-in payer. IGNORED is a person's decision that it is
+     * not ours; keeping it apart from UNMAPPED stops a dismissed row reappearing on the queue every day.
+     */
+    public static final String STATEMENT_MAPPED   = "MAPPED";
+    public static final String STATEMENT_UNMAPPED = "UNMAPPED";
+    public static final String STATEMENT_IGNORED  = "IGNORED";
+
     public static final String PAY_CASH          = "CASH";
     public static final String PAY_CHEQUE        = "CHEQUE";
     public static final String PAY_BANK_TRANSFER = "BANK_TRANSFER";

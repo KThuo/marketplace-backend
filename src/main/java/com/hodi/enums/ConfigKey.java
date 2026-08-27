@@ -470,7 +470,29 @@ public enum ConfigKey {
                     + "progress files.", false, false),
     STORAGE_AVATAR_MAX_KB(
             "storage.avatar.max.kb", "INTEGER", "STORAGE", "2048",
-            "Max avatar size (KB)", "Rejected above this before anything is written.", false, false);
+            "Max avatar size (KB)", "Rejected above this before anything is written.", false, false),
+
+    /**
+     * The shared secret an inbound Pesi notification must carry.
+     *
+     * <p>Blank by default, and what that means is deliberate: the endpoint still accepts and stores every
+     * notification — refusing them would make Pesi retry and eventually give up, losing real money — but
+     * nothing is matched to a booking automatically. Every payment waits for a person instead.
+     *
+     * <p>That is the safe failure. An unauthenticated endpoint that creates payment records is one where a
+     * forged notification guessing a four-character code and an amount could credit somebody's balance. With
+     * no secret configured we will take the money in and let a human place it; with one configured we will
+     * place it ourselves.
+     *
+     * <p>Secret, and not tenant-overridable: there is one Pesi business — the marketplace — so there is one
+     * key, held by the platform. A tenant able to set this could authorise notifications against everybody's
+     * tills.
+     */
+    PESI_IPN_SECRET(
+            "pesi.ipn.secret", "STRING", "INTEGRATION", "",
+            "Pesi notification secret",
+            "Required in the X-Pesi-Signature header on inbound notifications. While blank, payments are "
+                    + "still accepted and stored but never matched automatically.", true, false);
 
     private final String key;
     private final String valueType;

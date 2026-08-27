@@ -1,0 +1,150 @@
+package com.hodi.infra.pesi;
+
+import com.hodi.common.util.RrnGenerator;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/**
+ * The endpoint as Pesi sees it: no session, its own response shape, and 200 for anything we stored.
+ *
+ * <p>Worth testing over HTTP rather than through the service, because everything that matters here is in the
+ * layers around the method — the security chain letting an unauthenticated POST through, and the response body
+ * carrying {@code statusCode} rather than the platform's envelope. Pesi reads that field and retries on
+ * anything non-zero, so an envelope would turn every notification into an infinite redelivery.
+ *
+ * <p>Not {@code @Transactional}: the handler is {@code REQUIRES_NEW} and commits, so the rows are removed
+ * afterwards instead.
+ */
+@SpringBootTest
+class PesiIpnApiIT {
+
+    @Autowired WebApplicationContext context;
+    @Autowired JdbcTemplate jdbc;
+
+    private MockMvc mvc;
+    private String refNo;
+
+    @BeforeEach
+    void setUp() {
+        // Built from the context because Boot 4 no longer offers @AutoConfigureMockMvc on this classpath.
+        mvc = MockMvcBuilders.webAppContextSetup(context)
+                .apply(SecurityMockMvcConfigurers.springSecurity())
+                .build();
+        refNo = RrnGenerator.generate("RF");
+    }
+
+    @AfterEach
+    void cleanUp() {
+        jdbc.update("delete from pesi_statements where ref_no = ? or ref_no like 'UNKNOWN-%'", refNo);
+    }
+
+    private String body(String refNoValue) {
+        return """
+                {
+                  "refNo": "%s",
+                  "traceId": "PS-TEST",
+                  "timestamp": "2026-08-27 10:30:00",
+                  "amount": "500.00",
+                  "currency": "KES",
+                  "reference": "NOPE",
+                  "customerName": "Walk In",
+                  "phoneNo": "254700000000",
+                  "accountIdentifier": "not-a-till-of-ours",
+                  "transType": "BUNI_IPN_TILL"
+                }
+                """.formatted(refNoValue);
+    }
+
+    @Test
+    @DisplayName("an unauthenticated notification is accepted and answered in Pesi's own shape")
+    void acceptsWithoutASession() throws Exception {
+        mvc.perform(post("/api/v1/public/pesi/notifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(refNo)))
+                .andExpect(status().isOk())
+                /*
+                 * Zero even though nothing could be placed — the till is not ours and the reference matches
+                 * nothing. A retry would deliver the same wrong reference again while giving us another chance
+                 * to double-post, so this is a success as far as Pesi is concerned.
+                 */
+                .andExpect(jsonPath("$.statusCode").value(0))
+                .andExpect(jsonPath("$.transactionID").exists())
+                .andExpect(jsonPath("$.statusMessage").value("Notification received"))
+                // And no platform envelope: Pesi reads statusCode at the top level.
+                .andExpect(jsonPath("$.success").doesNotExist())
+                .andExpect(jsonPath("$.data").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("a field we have never seen does not refuse the payment")
+    void unknownFieldsAreIgnored() throws Exception {
+        /*
+         * Pesi adding a field must not stop money arriving. Boot leaves FAIL_ON_UNKNOWN_PROPERTIES off, and
+         * this test is what says so out loud — the alternative is every notification 400ing on the day they
+         * extend their payload, and every one of them retrying.
+         */
+        String extended = body(refNo).replace("\"transType\": \"BUNI_IPN_TILL\"",
+                "\"transType\": \"BUNI_IPN_TILL\", \"settlementBatch\": \"SB-99\"");
+
+        mvc.perform(post("/api/v1/public/pesi/notifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(extended))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusCode").value(0));
+    }
+
+    @Test
+    @DisplayName("the same delivery twice answers with the same reference both times")
+    void retryEchoesTheFirstReference() throws Exception {
+        String first = mvc.perform(post("/api/v1/public/pesi/notifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(refNo)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        String again = mvc.perform(post("/api/v1/public/pesi/notifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(refNo)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        org.junit.jupiter.api.Assertions.assertEquals(first, again,
+                "Pesi stores our transactionID as its RRN, so a retry must not be told a different one");
+
+        Integer rows = jdbc.queryForObject(
+                "select count(*) from pesi_statements where ref_no = ?", Integer.class, refNo);
+        org.junit.jupiter.api.Assertions.assertEquals(1, rows);
+    }
+
+    @Test
+    @DisplayName("a notification with no refNo is still stored rather than lost")
+    void missingRefNoIsStored() throws Exception {
+        String noRef = body("x").replace("\"refNo\": \"x\",", "");
+
+        mvc.perform(post("/api/v1/public/pesi/notifications")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(noRef))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusCode").value(0));
+
+        // Given a placeholder key rather than dropped: money that arrived without an identifier is still money
+        // that arrived, and a person can match it from the amount and the phone number.
+        Integer rows = jdbc.queryForObject(
+                "select count(*) from pesi_statements where ref_no like 'UNKNOWN-%'", Integer.class);
+        org.junit.jupiter.api.Assertions.assertTrue(rows >= 1);
+    }
+}
