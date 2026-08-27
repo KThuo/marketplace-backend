@@ -87,4 +87,13 @@ public interface DevelopmentUnitRepository
 
     @Query("select count(u) from DevelopmentUnit u where u.unitTypeId = :unitTypeId and u.status <> 5")
     long countForUnitType(@Param("unitTypeId") Long unitTypeId);
+
+    /** Every label in use, for the generator to check a whole plan against before writing any of it. */
+    @Query("select u.unitLabel from DevelopmentUnit u where u.developmentId = :developmentId "
+            + "and u.status <> 5")
+    List<String> labelsForDevelopment(@Param("developmentId") Long developmentId);
+
+    /** How many units a phase still holds. What stops a phase being archived out from under them. */
+    @Query("select count(u) from DevelopmentUnit u where u.phaseId = :phaseId and u.status <> 5")
+    long countForPhase(@Param("phaseId") Long phaseId);
 }

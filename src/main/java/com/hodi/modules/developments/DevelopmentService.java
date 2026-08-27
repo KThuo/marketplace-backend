@@ -69,13 +69,20 @@ public class DevelopmentService {
     @Transactional(readOnly = true)
     public PagedResponse<DevelopmentResponse> list(DevelopmentListRequest request) {
         UserPrincipal caller = AuthContext.require();
-        Specification<Development> spec = Specification.allOf(
+        /*
+         * SearchSpecs.allOf, not Specification.allOf.
+         *
+         * The project's own helper skips nulls; Spring's rejects them. Every filter here is null when it was
+         * not supplied and visibility.mine returns null for platform staff, so Spring's would have thrown for
+         * an administrator opening the list — which is exactly what it did until a test called this method.
+         */
+        Specification<Development> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
-                SearchSpecs.fuzzy(request.getSearch(), "searchText"),
-                SearchSpecs.eq(request.getListingState(), "listingState"),
-                SearchSpecs.eq(request.getPurpose(), "purpose"),
-                SearchSpecs.eq(request.getConstructionStatus(), "constructionStatus"),
-                SearchSpecs.eq(request.getCounty(), "county"),
+                SearchSpecs.fuzzy("searchText", request.getSearch()),
+                SearchSpecs.eq("listingState", blankToNull(request.getListingState())),
+                SearchSpecs.eq("purpose", blankToNull(request.getPurpose())),
+                SearchSpecs.eq("constructionStatus", blankToNull(request.getConstructionStatus())),
+                SearchSpecs.eq("county", blankToNull(request.getCounty())),
                 visibility.mine(caller));
 
         var page = repository.findAll(spec,
@@ -507,7 +514,7 @@ public class DevelopmentService {
     /** The list a caller may reach, for another service that needs the same rule. */
     @Transactional(readOnly = true)
     public List<Development> visibleTo(UserPrincipal caller) {
-        Specification<Development> spec = Specification.allOf(
+        Specification<Development> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(), visibility.mine(caller));
         return repository.findAll(spec);
     }

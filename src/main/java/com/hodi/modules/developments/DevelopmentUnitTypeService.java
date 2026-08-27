@@ -1,0 +1,321 @@
+package com.hodi.modules.developments;
+
+import com.hodi.common.AppConstant;
+import com.hodi.common.exception.HodiException;
+import com.hodi.common.exception.ResourceNotFoundException;
+import com.hodi.common.util.RrnGenerator;
+import com.hodi.infra.storage.StorageService;
+import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.developments.DevelopmentUnitTypeDtos.SaveUnitTypeRequest;
+import com.hodi.modules.developments.DevelopmentUnitTypeDtos.UnitTypeResponse;
+import com.hodi.modules.media.MediaAssetRepository;
+import com.hodi.modules.properties.Property;
+import com.hodi.modules.properties.PropertyRepository;
+import com.hodi.security.hashid.HashIdUtil;
+import com.hodi.security.principal.AuthContext;
+import com.hodi.security.principal.UserPrincipal;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * A development's typologies, and how one becomes something a buyer can enquire about.
+ *
+ * <h2>Why a typology gets a listing</h2>
+ *
+ * <p>Ten tables already point at {@code properties(id)}: enquiries, viewings, offers, valuations, saved
+ * listings, media, promotions, commissions, affordability checks and progress. A buyer asking about "the
+ * two-beds at Highrise" has to land somewhere those all work, and making every one of them polymorphic to
+ * avoid a row here would have been the larger change by a wide margin.
+ *
+ * <p>So {@link #listOnMarketplace} creates or relinks a {@code properties} row for the typology and hands it
+ * to the ordinary listing lifecycle — draft, submit, approve, live. What the marketplace search *shows* is the
+ * development's own card; the typology's listing is where a buyer arrives after clicking into it. One
+ * listing per typology, enforced by a partial unique index rather than by this service hoping.
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class DevelopmentUnitTypeService {
+
+    private final DevelopmentUnitTypeRepository repository;
+    private final DevelopmentRepository developments;
+    private final DevelopmentUnitRepository units;
+    private final PropertyRepository properties;
+    private final MediaAssetRepository media;
+    private final DevelopmentVisibility visibility;
+    private final DevelopmentInventoryService inventory;
+    private final AuditService audit;
+    private final StorageService storage;
+
+    @Transactional(readOnly = true)
+    public List<UnitTypeResponse> list(String developmentHashId) {
+        Development development = requireVisible(developmentHashId);
+        return repository.findForDevelopment(development.getId()).stream().map(this::toResponse).toList();
+    }
+
+    @Transactional
+    public UnitTypeResponse create(String developmentHashId, SaveUnitTypeRequest request) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        assertCodeFree(development.getId(), request.code(), -1L);
+
+        DevelopmentUnitType type = DevelopmentUnitType.builder()
+                .developmentId(development.getId())
+                .reference(nextReference())
+                .currency(development.getCurrency())
+                .build();
+        apply(type, request);
+        type.setCreatedBy(AuthContext.username());
+
+        DevelopmentUnitType saved = repository.save(type);
+        inventory.recountUnitType(saved.getId());
+        audit.record(AppConstant.ACTION_CREATE, "DevelopmentUnitType", saved.getId(), null, snapshot(saved));
+        return toResponse(repository.findById(saved.getId()).orElse(saved));
+    }
+
+    @Transactional
+    public UnitTypeResponse update(String developmentHashId, String typeHashId,
+                                   SaveUnitTypeRequest request) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        DevelopmentUnitType type = require(development, typeHashId);
+        assertCodeFree(development.getId(), request.code(), type.getId());
+
+        String before = snapshot(type);
+        apply(type, request);
+        type.setStatus(AppConstant.STATUS_EDITED);
+        type.setStatusFlag(AppConstant.FLAG_EDITED);
+        type.setUpdatedBy(AuthContext.username());
+
+        DevelopmentUnitType saved = repository.save(type);
+        // A changed price moves the "from" figure on the typology, the development and the listing.
+        inventory.recountUnitType(saved.getId());
+        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnitType", saved.getId(), before,
+                snapshot(saved));
+        return toResponse(repository.findById(saved.getId()).orElse(saved));
+    }
+
+    /**
+     * Gives a typology a listing, so buyers can find and enquire about it.
+     *
+     * <p>Creates the row as a DRAFT and stops there: publishing goes through the approvals queue like any
+     * other listing, and short-circuiting that here would mean a development's typology reaching the
+     * marketplace by a route a listing cannot take.
+     *
+     * <p>Idempotent — calling it twice returns the listing that already exists rather than colliding with the
+     * unique index, because a person clicking a button twice is not an error worth a 409.
+     */
+    @Transactional
+    public String listOnMarketplace(String developmentHashId, String typeHashId) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        if (development.getSellingTenantId() == null) {
+            throw new HodiException(
+                    "Say which organisation is marketing this development before listing a unit type.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        DevelopmentUnitType type = require(development, typeHashId);
+
+        Optional<Property> existing = properties.findByUnitTypeId(type.getId());
+        if (existing.isPresent()) return existing.get().getReference();
+
+        if (type.getListPrice() == null && type.getFromPrice() == null) {
+            throw new HodiException("Give the unit type a price before listing it.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        Property listing = Property.builder()
+                .tenantId(development.getSellingTenantId())
+                .tenantName(development.getSellingTenantName())
+                .reference(nextListingReference())
+                .title(type.getName() + " at " + development.getName())
+                .description(type.getDescription() != null
+                        ? type.getDescription() : development.getDescription())
+                .propertyType(type.getPropertyType())
+                .price(type.getFromPrice() != null ? type.getFromPrice() : type.getListPrice())
+                .currency(type.getCurrency())
+                .serviceCharge(type.getServiceCharge())
+                .bedrooms(type.getBedrooms())
+                .bathrooms(type.getBathrooms())
+                .parkingSpaces(type.getParkingSpaces())
+                .floorAreaSqm(type.getFloorAreaSqm())
+                .county(development.getCounty())
+                .town(development.getTown())
+                .estate(development.getEstate())
+                .addressLine(development.getAddressLine())
+                .latitude(development.getLatitude())
+                .longitude(development.getLongitude())
+                .listingState(AppConstant.LISTING_DRAFT)
+                .developmentId(development.getId())
+                .unitTypeId(type.getId())
+                .developmentName(development.getName())
+                .createdBy(AuthContext.username())
+                .build();
+
+        Property saved = properties.save(listing);
+        // Availability and construction status arrive through the one writer, not by being set here.
+        inventory.recountUnitType(type.getId());
+
+        audit.record(AppConstant.ACTION_CREATE, "Property", saved.getId(), null,
+                "listing for unit type " + type.getCode() + " of " + development.getReference());
+        log.info("Unit type {} of {} is listed as {}", type.getCode(), development.getReference(),
+                saved.getReference());
+        return saved.getReference();
+    }
+
+    /**
+     * Archives a typology and its listing.
+     *
+     * <p>Refused while units exist under it, for the reason a phase is: a unit whose typology has gone is a
+     * unit with no price, no bedroom count and nothing to render. The composite foreign key would still hold,
+     * which is exactly why the service has to say no.
+     */
+    @Transactional
+    public void archive(String developmentHashId, String typeHashId) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        DevelopmentUnitType type = require(development, typeHashId);
+        long existing = units.countForUnitType(type.getId());
+        if (existing > 0) {
+            throw new HodiException(
+                    "That unit type still has " + existing + " unit" + (existing == 1 ? "" : "s")
+                            + " under it. Remove them first.", HttpStatus.CONFLICT);
+        }
+
+        String before = snapshot(type);
+        type.setStatus(AppConstant.STATUS_DELETED);
+        type.setStatusFlag(AppConstant.FLAG_DELETED);
+        type.setUpdatedBy(AuthContext.username());
+        repository.save(type);
+
+        // The listing goes with it. Left behind it would be a live page for something that is not for sale,
+        // and the partial unique index would block relisting the typology if it ever came back.
+        properties.findByUnitTypeId(type.getId()).ifPresent(listing -> {
+            listing.setStatus(AppConstant.STATUS_DELETED);
+            listing.setStatusFlag(AppConstant.FLAG_DELETED);
+            listing.setUpdatedBy(AuthContext.username());
+            properties.save(listing);
+            log.info("Listing {} archived with its unit type", listing.getReference());
+        });
+
+        inventory.recomputeDevelopment(development.getId());
+        audit.record(AppConstant.ACTION_DELETE, "DevelopmentUnitType", type.getId(), before,
+                snapshot(type));
+    }
+
+    // ── internals ─────────────────────────────────────────────────────────────
+
+    private void apply(DevelopmentUnitType type, SaveUnitTypeRequest request) {
+        type.setCode(request.code().trim().toUpperCase());
+        type.setName(request.name().trim());
+        type.setDescription(blankToNull(request.description()));
+        type.setPropertyType(request.propertyType().trim().toUpperCase());
+        type.setBedrooms(request.bedrooms());
+        type.setBathrooms(request.bathrooms());
+        type.setParkingSpaces(request.parkingSpaces());
+        type.setFloorAreaSqm(request.floorAreaSqm());
+        type.setBalconyAreaSqm(request.balconyAreaSqm());
+        type.setListPrice(request.listPrice());
+        type.setServiceCharge(request.serviceCharge());
+        if (request.plannedUnitCount() != null) type.setPlannedUnitCount(request.plannedUnitCount());
+        if (request.sortOrder() != null) type.setSortOrder(request.sortOrder());
+    }
+
+    private void assertCodeFree(Long developmentId, String code, Long exceptId) {
+        if (repository.countWithCode(developmentId, code.trim(), exceptId) > 0) {
+            throw new HodiException("Another unit type here is already called " + code.trim().toUpperCase()
+                    + ".", HttpStatus.CONFLICT);
+        }
+    }
+
+    private Development requireVisible(String developmentHashId) {
+        Development development = developments.findById(HashIdUtil.decodeId(developmentHashId))
+                .orElseThrow(() -> new ResourceNotFoundException("Development", developmentHashId));
+        if (!visibility.mayRead(development, AuthContext.require())) {
+            throw new ResourceNotFoundException("Development", developmentHashId);
+        }
+        return development;
+    }
+
+    private DevelopmentUnitType require(Development development, String typeHashId) {
+        DevelopmentUnitType type = repository.findById(HashIdUtil.decodeId(typeHashId))
+                .orElseThrow(() -> new ResourceNotFoundException("Unit type", typeHashId));
+        if (!type.getDevelopmentId().equals(development.getId())) {
+            throw new ResourceNotFoundException("Unit type", typeHashId);
+        }
+        return type;
+    }
+
+    private String nextReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = RrnGenerator.generate("UT");
+            if (!repository.existsByReference(candidate)) return candidate;
+        }
+        throw new HodiException("Could not allocate a unit type reference. Try again.",
+                HttpStatus.CONFLICT);
+    }
+
+    private String nextListingReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = RrnGenerator.generate("PR");
+            if (!properties.existsByReference(candidate)) return candidate;
+        }
+        throw new HodiException("Could not allocate a listing reference. Try again.", HttpStatus.CONFLICT);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private UnitTypeResponse toResponse(DevelopmentUnitType t) {
+        Optional<Property> listing = properties.findByUnitTypeId(t.getId());
+        return new UnitTypeResponse(
+                HashIdUtil.encodeId(t.getId()),
+                t.getReference(),
+                t.getCode(),
+                t.getName(),
+                t.getDescription(),
+                t.getPropertyType(),
+                t.getBedrooms(),
+                t.getBathrooms(),
+                t.getParkingSpaces(),
+                t.getFloorAreaSqm(),
+                t.getBalconyAreaSqm(),
+                t.getListPrice(),
+                t.getServiceCharge(),
+                t.getCurrency(),
+                t.getPlannedUnitCount(),
+                t.getUnitsTotal(),
+                t.getUnitsAvailable(),
+                t.getUnitsReserved(),
+                t.getUnitsSold(),
+                t.getFromPrice(),
+                t.getConstructionStatus(),
+                t.getFloorPlanKey() == null ? null : storage.urlFor(t.getFloorPlanKey()),
+                t.getPrimaryImageKey() == null ? null : storage.urlFor(t.getPrimaryImageKey()),
+                t.getSortOrder(),
+                listing.map(Property::getReference).orElse(null),
+                listing.map(Property::getListingState).orElse(null),
+                (int) media.countForOwner(AppConstant.MEDIA_OWNER_UNIT_TYPE, t.getId()));
+    }
+
+    private String snapshot(DevelopmentUnitType t) {
+        return "code=" + t.getCode() + ", name=" + t.getName() + ", beds=" + t.getBedrooms()
+                + ", price=" + t.getListPrice() + ", planned=" + t.getPlannedUnitCount()
+                + ", units=" + t.getUnitsTotal();
+    }
+}
