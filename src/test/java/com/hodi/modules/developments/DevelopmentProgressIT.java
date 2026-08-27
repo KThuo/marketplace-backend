@@ -103,11 +103,16 @@ class DevelopmentProgressIT {
         return HashIdUtil.encodeId(d.getId());
     }
 
+    /** A detailed update, which is what most of these tests are about. */
     private SaveDevelopmentUpdateRequest post(String title, String milestoneCode) {
+        return post(title, milestoneCode, AppConstant.AUDIENCE_STAKEHOLDERS);
+    }
+
+    private SaveDevelopmentUpdateRequest post(String title, String milestoneCode, String audience) {
         return new SaveDevelopmentUpdateRequest(
                 new SaveUpdateRequest(title, "The slab went down on Tuesday.", (short) 25, null,
                         LocalDate.now()),
-                milestoneCode, null, null);
+                milestoneCode, null, null, audience);
     }
 
     // ── the write path ────────────────────────────────────────────────────────
@@ -141,7 +146,7 @@ class DevelopmentProgressIT {
         UpdateResponse saved = progress.create(id(live), new SaveDevelopmentUpdateRequest(
                 new SaveUpdateRequest("Stage reached", null, (short) 65, "Roof sheets on, ridge to follow",
                         LocalDate.now()),
-                "ROOFING", null, null));
+                "ROOFING", null, null, AppConstant.AUDIENCE_STAKEHOLDERS));
         assertEquals("Roof sheets on, ridge to follow", saved.milestone(),
                 "the site's own words survive the picker");
     }
@@ -164,7 +169,8 @@ class DevelopmentProgressIT {
         assertThrows(ResourceNotFoundException.class, () -> progress.create(id(live),
                 new SaveDevelopmentUpdateRequest(
                         new SaveUpdateRequest("Block B roofed", null, (short) 65, null, LocalDate.now()),
-                        null, HashIdUtil.encodeId(elsewhere.getId()), null)));
+                        null, HashIdUtil.encodeId(elsewhere.getId()), null,
+                        AppConstant.AUDIENCE_STAKEHOLDERS)));
     }
 
     // ── the publish gate ─────────────────────────────────────────────────────
@@ -205,15 +211,88 @@ class DevelopmentProgressIT {
     }
 
     @Test
-    @DisplayName("an archived post stops serving from the public timeline")
-    void archivedPostLeavesThePublicTimeline() {
-        UpdateResponse saved = progress.create(id(live), post("Slab cast", "SLAB"));
+    @DisplayName("an archived post stops serving publicly")
+    void archivedPostLeavesThePublicFeed() {
+        UpdateResponse saved = progress.create(id(live),
+                post("Roof is on", "ROOFING", AppConstant.AUDIENCE_PUBLIC));
         progress.setPublished(id(live), saved.id(), true);
-        assertEquals(1, progress.published(live.getReference()).size());
+        assertEquals(1, progress.publicPosts(live.getReference()).size());
 
         progress.archive(id(live), saved.id());
-        assertEquals(0, progress.published(live.getReference()).size(),
+        assertEquals(0, progress.publicPosts(live.getReference()).size(),
                 "archived and unpublished together, or a removed post keeps being served");
+    }
+
+    // ── the audience boundary ────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a published detailed update is still not public")
+    void detailedUpdatesNeverGoPublic() {
+        /*
+         * The rule this whole distinction exists for. Publishing is about drafts; audience is about who it was
+         * written for, and a detailed update somebody published is still a detailed update. Before the split,
+         * publishing one put its percentage and its stage in front of anybody browsing the marketplace.
+         */
+        UpdateResponse detailed = progress.create(id(live),
+                post("Blocks A & B at 62%", "SUPERSTRUCTURE", AppConstant.AUDIENCE_STAKEHOLDERS));
+        progress.setPublished(id(live), detailed.id(), true);
+
+        assertEquals(0, progress.publicPosts(live.getReference()).size(),
+                "published, and still nobody's business but the owner's and the financier's");
+        assertEquals(1, progress.forOwner(id(live)).size(),
+                "and it is on the workspace's own timeline, which is where it belongs");
+    }
+
+    @Test
+    @DisplayName("a post with no audience given is treated as detailed, not published to the world")
+    void silenceMeansNotPublic() {
+        // The column defaults to PUBLIC so existing listing timelines keep working. A development post
+        // arriving with no audience is a caller who has not said, and the safe reading of silence is private.
+        UpdateResponse saved = progress.create(id(live), new SaveDevelopmentUpdateRequest(
+                new SaveUpdateRequest("Unsaid", null, (short) 40, null, LocalDate.now()),
+                null, null, null, null));
+        progress.setPublished(id(live), saved.id(), true);
+
+        assertEquals(0, progress.publicPosts(live.getReference()).size());
+    }
+
+    @Test
+    @DisplayName("a public post carries words and pictures, and no percentage at all")
+    void publicPostHasNoDetail() {
+        UpdateResponse saved = progress.create(id(live),
+                post("Roof is on and the view is worth seeing", "ROOFING",
+                        AppConstant.AUDIENCE_PUBLIC));
+        progress.setPublished(id(live), saved.id(), true);
+
+        var posts = progress.publicPosts(live.getReference());
+        assertEquals(1, posts.size());
+        assertEquals("Roof is on and the view is worth seeing", posts.getFirst().title());
+        assertNotNull(posts.getFirst().body());
+        assertNotNull(posts.getFirst().imageUrls(), "an empty list, not null, when there are no photographs");
+        /*
+         * There is nothing to assert about a percentage, because the record has no field for one. That is the
+         * point of a separate shape rather than a shared one with fields left null: a null is something
+         * somebody fills in later without noticing where it goes.
+         */
+    }
+
+    @Test
+    @DisplayName("the project's page gets the most recent public post, not the whole history")
+    void latestPostIsOnePost() {
+        UpdateResponse older = progress.create(id(live),
+                post("Foundations done", "FOUNDATION", AppConstant.AUDIENCE_PUBLIC));
+        progress.setPublished(id(live), older.id(), true);
+
+        UpdateResponse newer = progress.create(id(live), new SaveDevelopmentUpdateRequest(
+                new SaveUpdateRequest("Roof is on", "The ridge went on at the weekend.", null, null,
+                        LocalDate.now().plusDays(1)),
+                "ROOFING", null, null, AppConstant.AUDIENCE_PUBLIC));
+        progress.setPublished(id(live), newer.id(), true);
+
+        var latest = progress.latestPublicPost(live.getReference());
+        assertTrue(latest.isPresent());
+        assertEquals("Roof is on", latest.get().title(),
+                "newest first, by the date the work happened rather than the date it was written");
     }
 
     // ── the public reads ─────────────────────────────────────────────────────
@@ -221,25 +300,27 @@ class DevelopmentProgressIT {
     @Test
     @DisplayName("a private project's timeline is not found at all, rather than found and empty")
     void privateProjectHasNoPublicTimeline() {
-        assertThrows(ResourceNotFoundException.class, () -> progress.published(tracked.getReference()));
+        assertThrows(ResourceNotFoundException.class, () -> progress.publicPosts(tracked.getReference()));
     }
 
     @Test
     @DisplayName("drafts stay off the public timeline")
     void draftsAreNotPublic() {
-        progress.create(id(live), post("Not ready yet", "SLAB"));
-        assertEquals(0, progress.published(live.getReference()).size());
+        progress.create(id(live), post("Not ready yet", "SLAB", AppConstant.AUDIENCE_PUBLIC));
+        assertEquals(0, progress.publicPosts(live.getReference()).size());
     }
 
     @Test
     @DisplayName("the cross-project feed carries the project's identity and excludes tracked projects")
     void feedNamesItsProjectAndSkipsPrivateOnes() {
-        UpdateResponse shown = progress.create(id(live), post("Slab cast", "SLAB"));
+        UpdateResponse shown = progress.create(id(live),
+                post("Slab cast", "SLAB", AppConstant.AUDIENCE_PUBLIC));
         progress.setPublished(id(live), shown.id(), true);
 
         // Published on the private project by going round the gate, which is what a stale row would look like
         // if a project were published, posted to, and then made private.
-        UpdateResponse hidden = progress.create(id(tracked), post("Foundation poured", "FOUNDATION"));
+        UpdateResponse hidden = progress.create(id(tracked),
+                post("Foundation poured", "FOUNDATION", AppConstant.AUDIENCE_PUBLIC));
         jdbc.update("update listing_progress_updates set published = true, published_at = now() where id = ?",
                 HashIdUtil.decodeId(hidden.id()));
 

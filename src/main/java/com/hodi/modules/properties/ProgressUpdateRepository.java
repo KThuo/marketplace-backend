@@ -35,14 +35,21 @@ public interface ProgressUpdateRepository extends JpaRepository<ProgressUpdate, 
             + "order by u.reportedOn desc, u.id desc")
     List<ProgressUpdate> findForDevelopment(@Param("developmentId") Long developmentId);
 
-    /** What the public sees on a development's page. Published only, its own query for the same reason. */
+    /**
+     * What the public sees on a development's page.
+     *
+     * <p>Published <em>and</em> written for the public. A detailed update that somebody published is still a
+     * detailed update, and this is the query that decides a stranger never reads one — not a filter applied
+     * afterwards, which is a condition somebody can forget.
+     */
     @Query("select u from ProgressUpdate u where u.developmentId = :developmentId "
-            + "and u.published = true and u.status <> 5 order by u.reportedOn desc, u.id desc")
-    List<ProgressUpdate> findPublishedForDevelopment(@Param("developmentId") Long developmentId);
+            + "and u.published = true and u.audience = 'PUBLIC' and u.status <> 5 "
+            + "order by u.reportedOn desc, u.id desc")
+    List<ProgressUpdate> findPublicForDevelopment(@Param("developmentId") Long developmentId);
 
     @Query("select count(u) from ProgressUpdate u where u.developmentId = :developmentId "
-            + "and u.published = true and u.status <> 5")
-    long countPublishedForDevelopment(@Param("developmentId") Long developmentId);
+            + "and u.published = true and u.audience = 'PUBLIC' and u.status <> 5")
+    long countPublicForDevelopment(@Param("developmentId") Long developmentId);
 
     /**
      * The cross-project feed on the public site.
@@ -55,7 +62,8 @@ public interface ProgressUpdateRepository extends JpaRepository<ProgressUpdate, 
      * stable. Without the tiebreak, page two can repeat a row or skip one.
      */
     @Query("select u from ProgressUpdate u where u.developmentId in :developmentIds "
-            + "and u.published = true and u.status <> 5 order by u.reportedOn desc, u.id desc")
-    Page<ProgressUpdate> findPublishedFeed(
+            + "and u.published = true and u.audience = 'PUBLIC' and u.status <> 5 "
+            + "order by u.reportedOn desc, u.id desc")
+    Page<ProgressUpdate> findPublicFeed(
             @Param("developmentIds") List<Long> developmentIds, Pageable pageable);
 }

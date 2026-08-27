@@ -219,6 +219,16 @@ public final class AppConstant {
     public static final String PAY_GATEWAY = "GATEWAY";
 
     /*
+     * Who a progress post was written for.
+     *
+     * PUBLIC is a blog or newsletter post — words and photographs, written to interest somebody in a project.
+     * STAKEHOLDERS is a detailed update — the percentage, the stage, the phase — for the people running and
+     * financing the build. Different audiences, different tone, and different consequences if they leak.
+     */
+    public static final String AUDIENCE_PUBLIC       = "PUBLIC";
+    public static final String AUDIENCE_STAKEHOLDERS = "STAKEHOLDERS";
+
+    /*
      * Where an inbound Pesi notification stands.
      *
      * UNMAPPED is not a failure — it is a payment that arrived and is waiting for a person, which is the

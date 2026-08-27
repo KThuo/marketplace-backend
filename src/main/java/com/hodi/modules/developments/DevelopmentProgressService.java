@@ -7,7 +7,7 @@ import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.progress.ProgressMilestoneRepository;
 import com.hodi.modules.properties.ProgressUpdate;
 import com.hodi.modules.properties.ProgressUpdateRepository;
-import com.hodi.modules.properties.ProgressUpdateService.PublicUpdate;
+import com.hodi.modules.developments.DevelopmentDtos.PublicPost;
 import com.hodi.modules.properties.ProgressUpdateService.SaveUpdateRequest;
 import com.hodi.modules.properties.ProgressUpdateService.UpdateResponse;
 import com.hodi.security.hashid.HashIdUtil;
@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Progress updates on a development, its phases and its units.
@@ -56,6 +57,7 @@ public class DevelopmentProgressService {
     private final DevelopmentPhaseRepository phases;
     private final DevelopmentUnitRepository units;
     private final ProgressMilestoneRepository milestones;
+    private final com.hodi.modules.media.MediaAssetRepository media;
     private final DevelopmentVisibility visibility;
     private final StorageService storage;
 
@@ -147,19 +149,35 @@ public class DevelopmentProgressService {
     // ── the public's side ─────────────────────────────────────────────────────
 
     /**
-     * One development's published timeline.
+     * A development's public posts — the blog and newsletter kind, newest first.
+     *
+     * <p>Only {@code audience = PUBLIC}, and the repository query is where that is decided rather than a
+     * filter applied here: a detailed update somebody published is still a detailed update, and a condition
+     * in a stream is one somebody can drop without the tests noticing.
      *
      * <p>Resolved through {@code findLiveByReference}, so a PRIVATE or draft project is not found at all
-     * rather than found and returned empty — the difference matters, because an empty timeline invites a
-     * retry and a 404 does not.
+     * rather than found and returned empty — the difference matters, because an empty list invites a retry and
+     * a 404 does not.
      */
     @Transactional(readOnly = true)
-    public List<PublicUpdate> published(String developmentReference) {
+    public List<PublicPost> publicPosts(String developmentReference) {
         Development development = developments
                 .findLiveByReference(developmentReference == null ? "" : developmentReference.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Development", developmentReference));
-        return repository.findPublishedForDevelopment(development.getId()).stream()
-                .map(this::toPublic).toList();
+        return repository.findPublicForDevelopment(development.getId()).stream()
+                .map(this::toPublicPost).toList();
+    }
+
+    /**
+     * The most recent public post, for the project's own page.
+     *
+     * <p>One post rather than the timeline. A stranger deciding whether to enquire wants to see that something
+     * is happening and what it looked like; the history of it is for the people with a stake, and the page
+     * that shows a whole timeline to everybody is the page this change exists to undo.
+     */
+    @Transactional(readOnly = true)
+    public Optional<PublicPost> latestPublicPost(String developmentReference) {
+        return publicPosts(developmentReference).stream().findFirst();
     }
 
     // ── internals ─────────────────────────────────────────────────────────────
@@ -209,6 +227,7 @@ public class DevelopmentProgressService {
         applyMilestone(update, base.milestone(), request.milestoneCode());
         applyPhase(update, development, request.phaseId());
         applyUnit(update, development, request.unitId());
+        update.setAudience(audience(request.audience()));
     }
 
     /**
@@ -232,6 +251,18 @@ public class DevelopmentProgressService {
             text = milestones.findLiveByCode(trimmedCode).map(m -> m.getName()).orElse(null);
         }
         update.setMilestone(text);
+    }
+
+    /** Silence means STAKEHOLDERS: a caller who has not said is not a caller asking to publish. */
+    private String audience(String requested) {
+        if (requested == null || requested.isBlank()) return AppConstant.AUDIENCE_STAKEHOLDERS;
+        String value = requested.trim().toUpperCase();
+        if (!AppConstant.AUDIENCE_PUBLIC.equals(value)
+                && !AppConstant.AUDIENCE_STAKEHOLDERS.equals(value)) {
+            throw new HodiException("A post is either for the public or for the people building it.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return value;
     }
 
     private void applyPhase(ProgressUpdate update, Development development, String phaseHashId) {
@@ -265,13 +296,19 @@ public class DevelopmentProgressService {
     private UpdateResponse toResponse(ProgressUpdate u) {
         return new UpdateResponse(
                 HashIdUtil.encodeId(u.getId()), u.getTitle(), u.getBody(), u.getPercentComplete(),
-                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.isPublished(),
-                u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
+                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.getAudience(),
+                u.isPublished(), u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
     }
 
-    private PublicUpdate toPublic(ProgressUpdate u) {
-        return new PublicUpdate(u.getTitle(), u.getBody(), u.getPercentComplete(), u.getMilestone(),
-                u.getReportedOn(), storage.urlFor(u.getImageKey()));
+    private PublicPost toPublicPost(ProgressUpdate u) {
+        List<String> images = media
+                .findPublicForOwner(AppConstant.MEDIA_OWNER_PROGRESS_UPDATE, u.getId()).stream()
+                .map(com.hodi.modules.media.MediaAsset::getStorageKey)
+                .map(storage::urlFor)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+        return new PublicPost(u.getTitle(), u.getBody(), u.getReportedOn(),
+                storage.urlFor(u.getImageKey()), images);
     }
 
     // ── request ───────────────────────────────────────────────────────────────
@@ -286,5 +323,14 @@ public class DevelopmentProgressService {
             @jakarta.validation.Valid @jakarta.validation.constraints.NotNull SaveUpdateRequest update,
             String milestoneCode,
             String phaseId,
-            String unitId) {}
+            String unitId,
+            /**
+             * PUBLIC for a blog or newsletter post, STAKEHOLDERS for a detailed update.
+             *
+             * <p>Defaults to STAKEHOLDERS when unset, which is the opposite of the column's own default and
+             * deliberately so. The column defaults to PUBLIC to leave existing listing timelines alone; a
+             * development post arriving with no audience is a caller who has not said, and the safe reading of
+             * silence is "not for strangers".
+             */
+            String audience) {}
 }

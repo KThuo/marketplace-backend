@@ -81,6 +81,19 @@ public class ProgressUpdate {
     /** What lets a feed card say "4 photos" without a query per row. */
     @Column(name = "image_count", nullable = false) @Builder.Default private Integer imageCount = 0;
 
+    /**
+     * Who this was written for.
+     *
+     * <p>PUBLIC goes on the project's page and the site's feed: words and photographs, meant to interest
+     * somebody in the build. STAKEHOLDERS stays in the workspace: the percentage, the stage, the phase.
+     *
+     * <p>Defaults to PUBLIC because every row that existed before this column was a listing's progress update,
+     * already published on the listing's own page. Defaulting the other way would have withdrawn content
+     * sellers had published, silently.
+     */
+    @Column(nullable = false, length = 24)
+    @Builder.Default private String audience = AppConstant.AUDIENCE_PUBLIC;
+
     @Column(nullable = false) @Builder.Default private boolean published = false;
     @Column(name = "published_at") private OffsetDateTime publishedAt;
 

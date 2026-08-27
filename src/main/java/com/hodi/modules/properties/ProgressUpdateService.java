@@ -54,6 +54,12 @@ public class ProgressUpdateService {
             String milestone,
             LocalDate reportedOn,
             String imageUrl,
+            /*
+             * Who it was written for, on the workspace response so a list can mark which posts are out in
+             * public. "Published" does not say: a published detailed update is still not public, and that is
+             * exactly the distinction somebody scanning this list needs to see at a glance.
+             */
+            String audience,
             boolean published,
             OffsetDateTime publishedAt,
             OffsetDateTime createdAt,
@@ -225,7 +231,7 @@ public class ProgressUpdateService {
     private UpdateResponse toResponse(ProgressUpdate u) {
         return new UpdateResponse(
                 HashIdUtil.encodeId(u.getId()), u.getTitle(), u.getBody(), u.getPercentComplete(),
-                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.isPublished(),
-                u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
+                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.getAudience(),
+                u.isPublished(), u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
     }
 }

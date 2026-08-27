@@ -141,7 +141,29 @@ public final class DevelopmentDtos {
              */
             Short minBedrooms,
             Short maxBedrooms,
-            List<PublicUnitTypeResponse> unitTypes) {}
+            List<PublicUnitTypeResponse> unitTypes,
+            /*
+             * The most recent post written for the public, with its photographs.
+             *
+             * One post, not a timeline. Somebody deciding whether to enquire wants to see that something is
+             * happening and what it looked like; the history is for the people with a stake. Null on a search
+             * card and on a project that has posted nothing, which is most of them at first.
+             */
+            PublicPost latestPost) {}
+
+    /**
+     * A post as the public reads it: a title, words, and photographs.
+     *
+     * <p>No percentage and no stage, unlike the workspace's own update response. Those are the detail that
+     * belongs to the people running and financing the build, and they are absent from the record rather than
+     * nulled — a nullable field is one somebody fills in later without noticing where it goes.
+     */
+    public record PublicPost(
+            String title,
+            String body,
+            LocalDate reportedOn,
+            String imageUrl,
+            List<String> imageUrls) {}
 
     /** A typology as a buyer sees it: what it is, what it costs, how many are left. */
     public record PublicUnitTypeResponse(
@@ -161,17 +183,6 @@ public final class DevelopmentDtos {
             String floorPlanUrl,
             /** The typology's own listing, when it has one, so a buyer can enquire about it. */
             String listingReference) {}
-
-    /** A phase as a buyer sees it. Dates and progress; never a budget or a spend. */
-    public record PublicPhaseResponse(
-            String name,
-            String description,
-            short sequenceNo,
-            short percentComplete,
-            String milestoneCode,
-            LocalDate plannedCompletionOn,
-            LocalDate revisedCompletionOn,
-            LocalDate actualCompletionOn) {}
 
     @Getter @Setter
     public static class DevelopmentListRequest extends PagedDataRequest {

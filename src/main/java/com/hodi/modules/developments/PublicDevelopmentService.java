@@ -7,7 +7,6 @@ import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
-import com.hodi.modules.developments.DevelopmentDtos.PublicPhaseResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
 import com.hodi.modules.media.MediaAsset;
 import com.hodi.modules.media.MediaAssetRepository;
@@ -131,7 +130,7 @@ public class PublicDevelopmentService {
 
         // The repository orders by reported_on then id, so the sort is not the caller's to choose. A feed
         // whose order a query parameter could change is a feed whose pages do not line up.
-        Page<ProgressUpdate> page = progress.findPublishedFeed(liveIds,
+        Page<ProgressUpdate> page = progress.findPublicFeed(liveIds,
                 request.toPageable(Sort.unsorted()));
 
         // One lookup for the whole page rather than one per row: the card carries the project's name and
@@ -148,21 +147,30 @@ public class PublicDevelopmentService {
                     d == null ? null : d.getName(),
                     d == null ? null : d.getTown(),
                     d == null ? null : d.getCounty(),
-                    u.getTitle(), u.getBody(), u.getPercentComplete(), u.getMilestone(),
-                    u.getReportedOn(), storage.urlFor(u.getImageKey()),
-                    u.getImageCount() == null ? 0 : u.getImageCount());
+                    u.getTitle(), u.getBody(), u.getReportedOn(),
+                    storage.urlFor(u.getImageKey()),
+                    imagesFor(u));
         });
     }
 
     /**
-     * A card on the public progress feed.
+     * A post on the public feed: a project, some words, and photographs.
      *
      * <p>Its own record rather than {@code PublicUpdate} plus a project field, because a feed card needs the
-     * project's identity to link anywhere and a per-project timeline must not repeat it on every row.
+     * project's identity to link anywhere and a per-project page must not repeat it on every row.
      *
-     * <p>No budgets, no spend, no buyer. The same separate-public-record discipline as
-     * {@code PublicPropertyResponse}: a record with private fields blanked is one refactor away from leaking
-     * them.
+     * <h3>What is deliberately absent</h3>
+     *
+     * <p>No percentage and no stage. Those made this a detailed build report, and a detailed build report is
+     * not what a stranger browsing a marketplace should be reading — a slipped date and a stalled percentage
+     * are for the people running and financing the build. What is left is what a post like this is for:
+     * interesting somebody in a project.
+     *
+     * <p>The fields are gone from the record rather than left null, because a nullable field is one somebody
+     * populates later without noticing what it means here.
+     *
+     * <p>No budgets, no spend, no buyer either — the same separate-public-record discipline as
+     * {@code PublicPropertyResponse}.
      */
     public record PublicProgressItem(
             String developmentReference,
@@ -171,11 +179,41 @@ public class PublicDevelopmentService {
             String county,
             String title,
             String body,
-            Short percentComplete,
-            String milestone,
             java.time.LocalDate reportedOn,
+            /** The cover, and then the rest. A post with photographs is the point of the post. */
             String imageUrl,
-            int imageCount) {}
+            List<String> imageUrls) {}
+
+    /**
+     * The photographs on one post.
+     *
+     * <p>One query per post, and that is a real cost on a twelve-card feed. It is paid because a post without
+     * its pictures is not the thing being published — and the alternative, a batched lookup across every post
+     * on the page, is a join this class would have to hold a second map for. Worth revisiting if the feed
+     * grows; not worth pre-solving at twelve.
+     */
+    /**
+     * The newest post written for the public, or nothing.
+     *
+     * <p>Read straight from the repository rather than through {@code DevelopmentProgressService}, which would
+     * be a circular dependency — that service reads this one for the live() predicate. The audience condition
+     * lives in the query either way, which is the part that matters.
+     */
+    private DevelopmentDtos.PublicPost latestPost(Development d) {
+        return progress.findPublicForDevelopment(d.getId()).stream().findFirst()
+                .map(u -> new DevelopmentDtos.PublicPost(
+                        u.getTitle(), u.getBody(), u.getReportedOn(),
+                        storage.urlFor(u.getImageKey()), imagesFor(u)))
+                .orElse(null);
+    }
+
+    private List<String> imagesFor(ProgressUpdate update) {
+        return media.findPublicForOwner(AppConstant.MEDIA_OWNER_PROGRESS_UPDATE, update.getId()).stream()
+                .map(MediaAsset::getStorageKey)
+                .map(storage::urlFor)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
 
     /** The availability table: what each typology is, what it costs and how many are left. */
     @Transactional(readOnly = true)
@@ -185,25 +223,15 @@ public class PublicDevelopmentService {
         return typologies(development);
     }
 
-    /** Phases as dates and progress. Never a budget, a committed figure or a spend. */
-    @Transactional(readOnly = true)
-    public List<PublicPhaseResponse> phases(String reference) {
-        Development development = developments.findLiveByReference(reference)
-                .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
-        return phases.findForDevelopment(development.getId()).stream()
-                .map(p -> new PublicPhaseResponse(
-                        p.getName(),
-                        p.getDescription(),
-                        p.getSequenceNo(),
-                        p.getPercentComplete(),
-                        p.getMilestoneCode(),
-                        p.getPlannedCompletionOn(),
-                        p.getRevisedCompletionOn(),
-                        p.getActualCompletionOn()))
-                .toList();
-    }
-
-    // ── internals ─────────────────────────────────────────────────────────────
+    /*
+     * There is no public phases method any more.
+     *
+     * It returned a phase-by-phase breakdown — names, percentages, planned dates and the revised date beside
+     * each — for a panel on the project's page. A slipped completion date is information for the people
+     * running and financing the build, and publishing it to whoever is browsing was the thing that made the
+     * public page a detailed build report. The headline figures on the detail response are what remains, and
+     * the phases live in the workspace where the permission to see them does.
+     */
 
     /**
      * The only starting point for a public query.
@@ -301,7 +329,8 @@ public class PublicDevelopmentService {
     }
 
     private PublicDevelopmentResponse toCard(Development d, short[] bedrooms) {
-        return build(d, List.of(), List.of(), bedrooms);
+        // No post on a card: twenty cards would be twenty queries for a paragraph nobody has opened yet.
+        return build(d, List.of(), List.of(), bedrooms, null);
     }
 
     private PublicDevelopmentResponse toDetail(Development d) {
@@ -311,12 +340,14 @@ public class PublicDevelopmentService {
                 .map(storage::urlFor)
                 .toList();
         return build(d, images, typologies(d),
-                bedroomRanges(List.of(d.getId())).get(d.getId()));
+                bedroomRanges(List.of(d.getId())).get(d.getId()),
+                latestPost(d));
     }
 
     private PublicDevelopmentResponse build(Development d, List<String> imageUrls,
                                             List<PublicUnitTypeResponse> typologies,
-                                            short[] bedrooms) {
+                                            short[] bedrooms,
+                                            DevelopmentDtos.PublicPost latestPost) {
         return new PublicDevelopmentResponse(
                 d.getReference(),
                 d.getName(),
@@ -341,7 +372,8 @@ public class PublicDevelopmentService {
                 imageUrls,
                 bedrooms == null ? null : bedrooms[0],
                 bedrooms == null ? null : bedrooms[1],
-                typologies);
+                typologies,
+                latestPost);
     }
 
     private static String blankToNull(String value) {
