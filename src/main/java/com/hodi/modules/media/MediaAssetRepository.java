@@ -20,6 +20,20 @@ public interface MediaAssetRepository extends JpaRepository<MediaAsset, Long> {
     List<MediaAsset> findPublicForOwner(@Param("ownerType") String ownerType,
                                         @Param("ownerId") Long ownerId);
 
+    /**
+     * The public photographs for several owners of one kind, in one query.
+     *
+     * <p>For a page that shows every typology in a development with its pictures: four typologies would
+     * otherwise be four queries, and the same shape at twenty would be twenty. Ordered so the caller can group
+     * by owner and keep each gallery in its intended sequence.
+     *
+     * <p>An empty collection is the caller's job to short-circuit — {@code in ()} is not valid SQL.
+     */
+    @Query("select m from MediaAsset m where m.ownerType = :ownerType and m.ownerId in :ownerIds "
+            + "and m.publicVisible = true and m.status <> 5 order by m.ownerId, m.sortOrder, m.id")
+    List<MediaAsset> findPublicForOwners(@Param("ownerType") String ownerType,
+                                         @Param("ownerIds") java.util.Collection<Long> ownerIds);
+
     @Query("select m from MediaAsset m where m.ownerType = :ownerType and m.ownerId = :ownerId "
             + "and m.primary = true and m.status <> 5")
     Optional<MediaAsset> findPrimary(@Param("ownerType") String ownerType, @Param("ownerId") Long ownerId);

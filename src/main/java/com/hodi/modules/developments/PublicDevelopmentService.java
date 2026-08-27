@@ -285,7 +285,24 @@ public class PublicDevelopmentService {
     }
 
     private List<PublicUnitTypeResponse> typologies(Development development) {
-        return unitTypes.findForDevelopment(development.getId()).stream()
+        List<DevelopmentUnitType> types = unitTypes.findForDevelopment(development.getId());
+        if (types.isEmpty()) return List.of();
+
+        /*
+         * Every typology's photographs in one query, grouped by owner.
+         *
+         * A per-typology lookup would be four queries on this project and twenty on a bigger one, for a page
+         * that always shows all of them — the same batching the search cards do for bedroom ranges.
+         */
+        Map<Long, List<String>> imagesByType = media
+                .findPublicForOwners(AppConstant.MEDIA_OWNER_UNIT_TYPE,
+                        types.stream().map(DevelopmentUnitType::getId).toList())
+                .stream()
+                .collect(Collectors.groupingBy(MediaAsset::getOwnerId,
+                        java.util.LinkedHashMap::new,
+                        Collectors.mapping(a -> storage.urlFor(a.getStorageKey()), Collectors.toList())));
+
+        return types.stream()
                 .map(t -> {
                     Optional<Property> listing = properties.findByUnitTypeId(t.getId());
                     return new PublicUnitTypeResponse(
@@ -296,13 +313,17 @@ public class PublicDevelopmentService {
                             t.getPropertyType(),
                             t.getBedrooms(),
                             t.getBathrooms(),
+                            t.getParkingSpaces(),
                             t.getFloorAreaSqm(),
+                            t.getBalconyAreaSqm(),
                             t.getFromPrice() != null ? t.getFromPrice() : t.getListPrice(),
+                            t.getServiceCharge(),
                             t.getCurrency(),
                             t.getUnitsTotal(),
                             t.getUnitsAvailable(),
                             t.getConstructionStatus(),
                             t.getFloorPlanKey() == null ? null : storage.urlFor(t.getFloorPlanKey()),
+                            imagesByType.getOrDefault(t.getId(), List.of()),
                             // Only a live listing is offered as a way in. A draft one would be a link to a
                             // page a buyer cannot see.
                             listing.filter(p -> AppConstant.LISTING_LIVE.equals(p.getListingState()))

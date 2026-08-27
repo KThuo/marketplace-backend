@@ -174,13 +174,25 @@ public final class DevelopmentDtos {
             String propertyType,
             Short bedrooms,
             Short bathrooms,
+            /*
+             * The rest of the specification, because "show me the two-bed" means all of it.
+             *
+             * A buyer choosing between four flats in one building is comparing exactly these: how many baths,
+             * whether there is parking, how big the balcony is, and what the service charge will be every
+             * month. Leaving them off meant the page could describe a project and not the thing being bought.
+             */
+            Short parkingSpaces,
             BigDecimal floorAreaSqm,
+            BigDecimal balconyAreaSqm,
             BigDecimal fromPrice,
+            BigDecimal serviceCharge,
             String currency,
             int unitsTotal,
             int unitsAvailable,
             String constructionStatus,
             String floorPlanUrl,
+            /** The typology's own photographs. Empty rather than null when it has none of its own. */
+            List<String> imageUrls,
             /** The typology's own listing, when it has one, so a buyer can enquire about it. */
             String listingReference) {}
 
