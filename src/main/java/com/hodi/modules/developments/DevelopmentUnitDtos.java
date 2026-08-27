@@ -82,7 +82,17 @@ public final class DevelopmentUnitDtos {
             String buyerEmail,
             BigDecimal soldPrice,
             OffsetDateTime soldAt,
-            String notes) {}
+            String notes,
+            /*
+             * The booking holding this unit, when one does.
+             *
+             * On the row so the inventory screen knows which set of actions applies: a booked unit is managed
+             * through its booking, and the unit's own hold path refuses it. Without this the screen would have
+             * to offer both and let the server say no, which is a refusal for every click.
+             */
+            String bookingId,
+            String bookingReference,
+            String bookingState) {}
 
     /** What a buyer may see of one unit: that it exists and whether it is free. */
     public record PublicUnitAvailability(String unitLabel, Short floorNo, String saleState) {}

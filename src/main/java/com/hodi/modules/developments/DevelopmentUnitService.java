@@ -107,7 +107,11 @@ public class DevelopmentUnitService {
         Map<Long, String> phaseNames = phases.findForDevelopment(development.getId())
                 .stream().collect(Collectors.toMap(DevelopmentPhase::getId, DevelopmentPhase::getName));
 
-        return PagedResponse.from(page, unit -> toResponse(unit, typesById, phaseNames));
+        // And the booking holding each unit, one query for the page rather than one per row.
+        Map<Long, com.hodi.modules.bookings.UnitBooking> bookingsByUnit = liveBookings(
+                page.getContent().stream().map(DevelopmentUnit::getId).toList());
+
+        return PagedResponse.from(page, unit -> toResponse(unit, typesById, phaseNames, bookingsByUnit));
     }
 
     /**
@@ -541,12 +545,24 @@ public class DevelopmentUnitService {
         Map<Long, String> phaseName = unit.getPhaseId() == null ? Map.of()
                 : phases.findById(unit.getPhaseId())
                         .map(p -> Map.of(p.getId(), p.getName())).orElse(Map.of());
-        return toResponse(unit, one, phaseName);
+        return toResponse(unit, one, phaseName, liveBookings(List.of(unit.getId())));
+    }
+
+    /** The live booking against each of these units, keyed by unit id. Empty in, empty out. */
+    private Map<Long, com.hodi.modules.bookings.UnitBooking> liveBookings(List<Long> unitIds) {
+        if (unitIds.isEmpty()) return Map.of();
+        return bookings.findLiveForUnits(unitIds).stream().collect(Collectors.toMap(
+                com.hodi.modules.bookings.UnitBooking::getUnitId, Function.identity(),
+                // Cannot happen — the partial unique index permits one live booking per unit — but a merge
+                // function is required and throwing here would be a 500 for a state the database forbids.
+                (a, b) -> a));
     }
 
     private UnitResponse toResponse(DevelopmentUnit u, Map<Long, DevelopmentUnitType> types,
-                                    Map<Long, String> phaseNames) {
+                                    Map<Long, String> phaseNames,
+                                    Map<Long, com.hodi.modules.bookings.UnitBooking> bookingsByUnit) {
         DevelopmentUnitType type = types.get(u.getUnitTypeId());
+        com.hodi.modules.bookings.UnitBooking booking = bookingsByUnit.get(u.getId());
         return new UnitResponse(
                 HashIdUtil.encodeId(u.getId()),
                 u.getReference(),
@@ -572,7 +588,10 @@ public class DevelopmentUnitService {
                 u.getBuyerEmail(),
                 u.getSoldPrice(),
                 u.getSoldAt(),
-                u.getNotes());
+                u.getNotes(),
+                booking == null ? null : HashIdUtil.encodeId(booking.getId()),
+                booking == null ? null : booking.getReference(),
+                booking == null ? null : booking.getState());
     }
 
     private String snapshot(DevelopmentUnit u) {

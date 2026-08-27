@@ -25,6 +25,20 @@ public interface UnitBookingRepository
             + "and b.state in ('RESERVED', 'AGREED') and b.status <> 5")
     Optional<UnitBooking> findLiveForUnit(@Param("unitId") Long unitId);
 
+    /**
+     * The live bookings for a page of units, in one query.
+     *
+     * <p>The inventory screen needs to know which units a booking holds, so it can offer the booking's actions
+     * rather than the unit's hold path — the server refuses the wrong one, but a screen that offers it anyway
+     * is a screen that produces a refusal for every click. Two hundred rows with a lookup each would be two
+     * hundred queries behind one page, which is the batching the unit list already does for typologies.
+     *
+     * <p>An empty collection is the caller's job to short-circuit: {@code in ()} is not valid SQL.
+     */
+    @Query("select b from UnitBooking b where b.unitId in :unitIds "
+            + "and b.state in ('RESERVED', 'AGREED') and b.status <> 5")
+    List<UnitBooking> findLiveForUnits(@Param("unitIds") java.util.Collection<Long> unitIds);
+
     /** Every booking a unit has ever had, newest first. A cancelled one is part of the record. */
     @Query("select b from UnitBooking b where b.unitId = :unitId and b.status <> 5 "
             + "order by b.bookedOn desc, b.id desc")
