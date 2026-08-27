@@ -451,6 +451,23 @@ public enum AppModuleEnum {
      * way — a seller running the listings report gets their own listings. The one report that is genuinely
      * the platform's own view of its market says so on itself rather than needing a module of its own.
      */
+    /**
+     * Developments (a project with many units).
+     *
+     * <p>Admits lender staff, which {@code PROPERTIES} deliberately does not — and that difference is the
+     * whole reason this module exists separately. A seller's listing is the seller's business; a development
+     * a bank financed is the bank's own record, created by them and tracked for their exposure. A mortgage
+     * officer who cannot open it cannot do the job the module was asked for.
+     *
+     * <p>Not core: a seller who lists resale houses one at a time has no developments, and this is the
+     * per-tenant module gate having something real to switch off.
+     */
+    DEVELOPMENTS("DEVELOPMENTS", "Developments",
+            "Projects with many units — off-plan inventory, phases and build progress",
+            false, 35,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+
     REPORTS("REPORTS", "Reports",
             "The figures behind the platform, scoped to whoever is asking",
             true, 95,

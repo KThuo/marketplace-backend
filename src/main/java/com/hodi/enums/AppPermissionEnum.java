@@ -159,6 +159,31 @@ public enum AppPermissionEnum {
      */
     APP_SETTINGS_VIEW_SECRET("Reveal a stored secret", AppModuleEnum.APP_SETTINGS),
 
+    // ── Developments ─────────────────────────────────────────────────────────
+    DEVELOPMENTS_VIEW("See developments", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_CREATE("Draft a development", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_UPDATE("Change a development", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_SUBMIT("Send a development for approval", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_APPROVE("Approve a development for the marketplace", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_WITHDRAW("Take a development off the marketplace", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_DELETE("Archive a development", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_MEDIA("Add and remove a development's photographs", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_PHASES("Manage a development's phases", AppModuleEnum.DEVELOPMENTS),
+    DEVELOPMENTS_PROGRESS("Post build progress", AppModuleEnum.DEVELOPMENTS),
+    /**
+     * Granting another organisation rights on your development.
+     *
+     * <p>Its own code rather than riding on UPDATE, because it is the only action in this module that widens
+     * somebody else's visibility — and a permission that hands out access should be grantable separately from
+     * one that edits a name.
+     */
+    DEVELOPMENTS_GRANT("Give a developer rights on a project", AppModuleEnum.DEVELOPMENTS),
+
+    UNITS_VIEW("See the unit inventory", AppModuleEnum.DEVELOPMENTS),
+    UNITS_MANAGE("Add, generate and change units", AppModuleEnum.DEVELOPMENTS),
+    /** Reserving and selling. Separate from MANAGE: one arranges the inventory, the other commits a unit. */
+    UNITS_SELL("Reserve, sell and release units", AppModuleEnum.DEVELOPMENTS),
+
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
     MORTGAGE_PRODUCTS_CREATE("Create a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
