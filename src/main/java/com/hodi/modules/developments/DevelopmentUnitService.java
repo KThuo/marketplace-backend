@@ -72,6 +72,7 @@ public class DevelopmentUnitService {
     private final DevelopmentInventoryService inventory;
     private final PayCodeAllocator payCodes;
     private final AuditService audit;
+    private final com.hodi.modules.bookings.UnitBookingRepository bookings;
 
     // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -261,6 +262,7 @@ public class DevelopmentUnitService {
         visibility.assertMayWriteUnits(development, caller);
 
         DevelopmentUnit unit = require(development, unitHashId);
+        assertNoLiveBooking(unit, "Change");
         if (unit.isSold()) {
             throw new HodiException("That unit is already sold.", HttpStatus.CONFLICT);
         }
@@ -298,6 +300,9 @@ public class DevelopmentUnitService {
         visibility.assertMayWriteUnits(development, caller);
 
         DevelopmentUnit unit = require(development, unitHashId);
+        // A booked unit is sold by completing its booking, which checks the balance first. Selling it from
+        // here would mark it sold with money still outstanding and no record of the terms.
+        assertNoLiveBooking(unit, "Complete");
         if (unit.isSold()) {
             throw new HodiException("That unit is already sold.", HttpStatus.CONFLICT);
         }
@@ -343,6 +348,8 @@ public class DevelopmentUnitService {
         visibility.assertMayWriteUnits(development, caller);
 
         DevelopmentUnit unit = require(development, unitHashId);
+        // Releasing a booked unit would free it while the booking still claimed it. Cancel the booking.
+        assertNoLiveBooking(unit, "Cancel");
         if (unit.isSold()) {
             throw new HodiException("A sold unit cannot be released.", HttpStatus.CONFLICT);
         }
@@ -452,6 +459,24 @@ public class DevelopmentUnitService {
             throw new ResourceNotFoundException("Development", developmentHashId);
         }
         return development;
+    }
+
+    /**
+     * Refuses to touch a unit that a booking is holding.
+     *
+     * <p>Two writers of one field is how a unit ends up sold with no booking, or booked while showing
+     * available. The boundary drawn: a unit with a live booking belongs to {@code BookingService}, and this
+     * simple path — a name taken over the phone, no money, no schedule — is for units without one.
+     *
+     * <p>The message names the booking and its buyer, because "you cannot do that" on a screen that shows an
+     * available unit is an answer nobody can act on.
+     */
+    private void assertNoLiveBooking(DevelopmentUnit unit, String action) {
+        bookings.findLiveForUnit(unit.getId()).ifPresent(booking -> {
+            throw new HodiException(unit.getUnitLabel() + " is booked under " + booking.getReference()
+                    + " by " + booking.getBuyerName() + ". " + action + " it through that booking instead.",
+                    HttpStatus.CONFLICT);
+        });
     }
 
     private DevelopmentUnit require(Development development, String unitHashId) {

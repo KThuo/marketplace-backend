@@ -192,6 +192,39 @@ public final class AppConstant {
     /** The approval queue's name for a development. Needs a handler to be decidable. */
     public static final String APPROVAL_ENTITY_DEVELOPMENT = "DEVELOPMENT";
 
+    // ── Bookings ─────────────────────────────────────────────────────────────
+
+    /*
+     * Where a booking stands.
+     *
+     * RESERVED and AGREED are the two that hold the unit, and the partial unique index keys on exactly those
+     * two. LAPSED and CANCELLED are kept apart because they are different facts — a clock and a decision — and
+     * one merged "closed" state would make "how many bookings do we lose to expiry" unanswerable, which is the
+     * first question anybody asks about a hold policy.
+     */
+    public static final String BOOKING_RESERVED  = "RESERVED";
+    public static final String BOOKING_AGREED    = "AGREED";
+    public static final String BOOKING_COMPLETED = "COMPLETED";
+    public static final String BOOKING_CANCELLED = "CANCELLED";
+    public static final String BOOKING_LAPSED    = "LAPSED";
+
+    public static final String PLAN_LUMP_SUM    = "LUMP_SUM";
+    public static final String PLAN_INSTALMENTS = "INSTALMENTS";
+
+    /*
+     * Where a payment came from. MANUAL is the cheque and the transfer a bank actually reconciles, and it is
+     * not a placeholder for a gateway — it stays in production permanently.
+     */
+    public static final String PAY_MANUAL  = "MANUAL";
+    public static final String PAY_GATEWAY = "GATEWAY";
+
+    public static final String PAY_CASH          = "CASH";
+    public static final String PAY_CHEQUE        = "CHEQUE";
+    public static final String PAY_BANK_TRANSFER = "BANK_TRANSFER";
+    public static final String PAY_MOBILE_MONEY  = "MOBILE_MONEY";
+    public static final String PAY_CARD          = "CARD";
+    public static final String PAY_OTHER         = "OTHER";
+
     // ── Media assets (photographs of something that is not a listing) ────────
     // PROPERTY is deliberately absent: a listing's gallery is property_media, and one table per question
     // means nobody has to work out which to read.

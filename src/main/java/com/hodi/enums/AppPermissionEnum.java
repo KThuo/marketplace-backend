@@ -184,6 +184,17 @@ public enum AppPermissionEnum {
     /** Reserving and selling. Separate from MANAGE: one arranges the inventory, the other commits a unit. */
     UNITS_SELL("Reserve, sell and release units", AppModuleEnum.DEVELOPMENTS),
 
+    BOOKINGS_VIEW("See bookings and their balances", AppModuleEnum.DEVELOPMENTS),
+    BOOKINGS_MANAGE("Book a unit, agree it, cancel it", AppModuleEnum.DEVELOPMENTS),
+    /*
+     * Recording money is its own permission, apart from managing the booking.
+     *
+     * A sales agent books units all day and should not be able to write down that money arrived; the person
+     * who reconciles the bank statement does exactly that and books nothing. Folding the two together would
+     * mean everybody who can take a name can also move a balance.
+     */
+    BOOKINGS_PAYMENTS("Record and reverse payments against a booking", AppModuleEnum.DEVELOPMENTS),
+
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
     MORTGAGE_PRODUCTS_CREATE("Create a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),
