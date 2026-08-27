@@ -129,6 +129,84 @@ public final class AppConstant {
     /** The decision being asked for. One entity can need several over its life. */
     public static final String APPROVAL_ACTION_ACTIVATE = "ACTIVATE";
 
+    // ── Developments (a project with many units) ─────────────────────────────
+    /**
+     * Why a development exists. FOR_SALE is the marketplace case; the rest are the tracking case, which is
+     * what a bank financing a developer's block needs and what no listing state can express.
+     */
+    public static final String DEV_PURPOSE_FOR_SALE         = "FOR_SALE";
+    public static final String DEV_PURPOSE_FOR_RENT         = "FOR_RENT";
+    public static final String DEV_PURPOSE_OWNER_OCCUPIED   = "OWNER_OCCUPIED";
+    public static final String DEV_PURPOSE_COMMERCIAL_RENTAL = "COMMERCIAL_RENTAL";
+    public static final String DEV_PURPOSE_MIXED            = "MIXED";
+
+    /**
+     * The sixth listing state, and only a development has it: tracked, never marketed.
+     *
+     * <p>A state rather than a boolean beside the other five, because a project cannot be both private and
+     * live and there is no reading of the data where it is — two columns could say it was.
+     */
+    public static final String DEV_STATE_PRIVATE = "PRIVATE";
+
+    /**
+     * How far the building has got. Deliberately coarse: it is set on two hundred rows by one person, and a
+     * scale fine enough to be accurate is a scale nobody keeps up to date. The fine-grained stage lives on
+     * the phase, where the photographs are.
+     *
+     * <p>Not a listing state. "Off-plan" is PLANNED or UNDER_CONSTRUCTION, derived rather than stored as a
+     * flag that can disagree with the status beside it.
+     */
+    public static final String BUILD_PLANNED            = "PLANNED";
+    public static final String BUILD_UNDER_CONSTRUCTION = "UNDER_CONSTRUCTION";
+    public static final String BUILD_COMPLETE           = "COMPLETE";
+    public static final String BUILD_HANDED_OVER        = "HANDED_OVER";
+
+    /**
+     * Which rule produced a development's percentage. Recorded so a screen can say how, because a derived
+     * figure that cannot explain itself gets read as somebody's opinion.
+     */
+    public static final String PERCENT_BASIS_WEIGHT = "WEIGHT";
+    public static final String PERCENT_BASIS_BUDGET = "BUDGET";
+    public static final String PERCENT_BASIS_UNITS  = "UNITS";
+    public static final String PERCENT_BASIS_EQUAL  = "EQUAL";
+    /** No phases at all: the figure was typed, and the basis says so. */
+    public static final String PERCENT_BASIS_STATED = "STATED";
+
+    /**
+     * Where one unit stands. HELD and RESERVED are both holds and differ in commitment, NOT_FOR_SALE is a
+     * unit that was never inventory, RETAINED is one the developer kept — the last two count in the total
+     * and in none of the available/reserved/sold figures, which is why those three do not sum to it.
+     */
+    public static final String UNIT_AVAILABLE    = "AVAILABLE";
+    public static final String UNIT_HELD         = "HELD";
+    public static final String UNIT_RESERVED     = "RESERVED";
+    public static final String UNIT_SOLD         = "SOLD";
+    public static final String UNIT_NOT_FOR_SALE = "NOT_FOR_SALE";
+    public static final String UNIT_RETAINED     = "RETAINED";
+
+    /** What an owner has granted a collaborating organisation on their development. */
+    public static final String COLLAB_PROGRESS_WRITE = "PROGRESS_WRITE";
+    public static final String COLLAB_UNITS_WRITE    = "UNITS_WRITE";
+    public static final String COLLAB_FULL           = "FULL";
+
+    /** The approval queue's name for a development. Needs a handler to be decidable. */
+    public static final String APPROVAL_ENTITY_DEVELOPMENT = "DEVELOPMENT";
+
+    // ── Media assets (photographs of something that is not a listing) ────────
+    // PROPERTY is deliberately absent: a listing's gallery is property_media, and one table per question
+    // means nobody has to work out which to read.
+    public static final String MEDIA_OWNER_DEVELOPMENT       = "DEVELOPMENT";
+    public static final String MEDIA_OWNER_DEVELOPMENT_PHASE = "DEVELOPMENT_PHASE";
+    public static final String MEDIA_OWNER_UNIT_TYPE         = "UNIT_TYPE";
+    public static final String MEDIA_OWNER_DEVELOPMENT_UNIT  = "DEVELOPMENT_UNIT";
+    public static final String MEDIA_OWNER_PROGRESS_UPDATE   = "PROGRESS_UPDATE";
+
+    public static final String MEDIA_KIND_PHOTO      = "PHOTO";
+    public static final String MEDIA_KIND_FLOOR_PLAN = "FLOOR_PLAN";
+    public static final String MEDIA_KIND_SITE_PLAN  = "SITE_PLAN";
+    public static final String MEDIA_KIND_BROCHURE   = "BROCHURE";
+    public static final String MEDIA_KIND_DRONE      = "DRONE";
+
     // ── Consent (plan §3.8, BRD FR004–FR005) ────────────────────────────────
     // Channels somebody can be reached on, and the three reasons they might be. The purposes are not a
     // taxonomy of messages — they are the granularity at which a person is asked to agree, which is why

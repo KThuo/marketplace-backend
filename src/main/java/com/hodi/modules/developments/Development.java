@@ -1,0 +1,142 @@
+package com.hodi.modules.developments;
+
+import com.hodi.common.AppConstant;
+import jakarta.persistence.*;
+import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+
+/**
+ * One development project: many units, sold off-plan or never sold at all.
+ *
+ * <p>A {@link com.hodi.modules.properties.Property} is one saleable thing. This is the thing a hundred of them
+ * belong to, and it is a different kind of row: it has phases, a budget, a completion date that has moved
+ * twice, and — when a bank financed it rather than a seller listing it — no marketplace presence whatsoever.
+ *
+ * <h2>Exactly one principal, and it may be a lender</h2>
+ *
+ * <p>{@link #tenantId} or {@link #institutionId}, never both and never neither. A bank financing a
+ * developer's block owns that record: they created it and it is their exposure being tracked.
+ * {@code auction_lots} solved the same problem the same way, and this class follows it — including the
+ * consequence, which is that visibility cannot come from {@code TenantScope}. A lender is not a tenant and has
+ * no visible-tenant set describing it, so {@code DevelopmentService} carries a hand-written specification
+ * instead.
+ *
+ * <p>{@link #sellingTenantId} is a third question, not a synonym for either: whose listings the units become
+ * when the project is marketed. A tracked-only project has none, which is why the never-for-sale case needs no
+ * flag — it is a development with no selling tenant, no properties rows, and a {@code PRIVATE} listing state.
+ *
+ * <h2>Counted columns, and one writer</h2>
+ *
+ * <p>Every {@code units*} figure, both prices, and {@link #percentComplete} are counted from the units and
+ * phases below by {@code DevelopmentInventoryService} and by nothing else. They are stored rather than derived
+ * on read for the reason {@code promotionBoost} is stored: a marketplace card reads them once per result, and
+ * an aggregate per card is a join per card. {@link #percentBasis} records which rule produced the percentage
+ * so a screen can say "62%, weighted by phase budget" — a derived figure that cannot explain itself gets read
+ * as somebody's opinion.
+ */
+@Entity
+@Table(name = "developments")
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class Development {
+
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false, unique = true, length = 16) private String reference;
+
+    @Column(name = "tenant_id") private Long tenantId;
+    @Column(name = "tenant_name", length = 255) private String tenantName;
+    @Column(name = "institution_id") private Long institutionId;
+    @Column(name = "institution_name", length = 255) private String institutionName;
+
+    @Column(name = "selling_tenant_id") private Long sellingTenantId;
+    @Column(name = "selling_tenant_name", length = 255) private String sellingTenantName;
+
+    /** The builder, as a label. Not a foreign key: a bank's borrower is usually not on this platform. */
+    @Column(name = "developer_name", length = 255) private String developerName;
+
+    @Column(nullable = false, length = 255) private String name;
+    @Column(columnDefinition = "TEXT") private String description;
+    @Column(name = "development_type", nullable = false, length = 32) private String developmentType;
+
+    @Column(nullable = false, length = 24)
+    @Builder.Default private String purpose = AppConstant.DEV_PURPOSE_FOR_SALE;
+
+    @Column(length = 64) private String county;
+    @Column(length = 64) private String town;
+    @Column(length = 128) private String estate;
+    @Column(name = "address_line", columnDefinition = "TEXT") private String addressLine;
+    @Column(precision = 9, scale = 6) private BigDecimal latitude;
+    @Column(precision = 9, scale = 6) private BigDecimal longitude;
+
+    /** What the developer says they are building, kept apart from what has actually been entered. */
+    @Column(name = "planned_unit_count") private Integer plannedUnitCount;
+
+    @Column(name = "units_total", nullable = false) @Builder.Default private int unitsTotal = 0;
+    @Column(name = "units_available", nullable = false) @Builder.Default private int unitsAvailable = 0;
+    @Column(name = "units_reserved", nullable = false) @Builder.Default private int unitsReserved = 0;
+    @Column(name = "units_sold", nullable = false) @Builder.Default private int unitsSold = 0;
+    @Column(name = "from_price", precision = 15, scale = 2) private BigDecimal fromPrice;
+    @Column(name = "to_price", precision = 15, scale = 2) private BigDecimal toPrice;
+    @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
+
+    @Column(name = "construction_status", nullable = false, length = 24)
+    @Builder.Default private String constructionStatus = AppConstant.BUILD_PLANNED;
+    @Column(name = "percent_complete", nullable = false) @Builder.Default private short percentComplete = 0;
+    @Column(name = "percent_basis", nullable = false, length = 16)
+    @Builder.Default private String percentBasis = AppConstant.PERCENT_BASIS_EQUAL;
+
+    @Column(name = "started_on") private LocalDate startedOn;
+    @Column(name = "projected_completion_on") private LocalDate projectedCompletionOn;
+    @Column(name = "actual_completion_on") private LocalDate actualCompletionOn;
+
+    /** Never on a public response record. The public DTO omits these rather than blanking them. */
+    @Column(name = "budget_amount", precision = 15, scale = 2) private BigDecimal budgetAmount;
+    @Column(name = "facility_reference", length = 32) private String facilityReference;
+    @Column(name = "facility_amount", precision = 15, scale = 2) private BigDecimal facilityAmount;
+
+    @Column(name = "listing_state", nullable = false, length = 16)
+    @Builder.Default private String listingState = AppConstant.LISTING_DRAFT;
+    @Column(name = "published_at") private OffsetDateTime publishedAt;
+    @Column(name = "withdrawn_at") private OffsetDateTime withdrawnAt;
+    @Column(name = "withdrawn_reason", columnDefinition = "TEXT") private String withdrawnReason;
+    @Column(name = "primary_image_key", length = 512) private String primaryImageKey;
+
+    @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
+    @Column(name = "status_flag", nullable = false, length = 32)
+    @Builder.Default private String statusFlag = AppConstant.FLAG_ACTIVE;
+    @Column(name = "deactivation_reason", columnDefinition = "TEXT") private String deactivationReason;
+
+    @CreationTimestamp @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
+    @UpdateTimestamp @Column(name = "updated_at") private OffsetDateTime updatedAt;
+    @Column(name = "created_by", length = 64) private String createdBy;
+    @Column(name = "updated_by", length = 64) private String updatedBy;
+
+    /** Read-only: generated in the database, and writing to it from here would fail on flush. */
+    @Column(name = "search_text", insertable = false, updatable = false) private String searchText;
+
+    // ── the questions asked often enough to deserve a name ────────────────────
+
+    public boolean isDraft() { return AppConstant.LISTING_DRAFT.equals(listingState); }
+    public boolean isLive() { return AppConstant.LISTING_LIVE.equals(listingState); }
+
+    /**
+     * Tracked and never marketed — the bank's financed project.
+     *
+     * <p>Worth a method rather than a string comparison at each call site: it is the condition that decides
+     * whether a development may have a selling tenant, whether its progress may be published, and whether it
+     * appears in any public query at all.
+     */
+    public boolean isPrivate() { return AppConstant.DEV_STATE_PRIVATE.equals(listingState); }
+
+    /** True when a lending institution owns this record rather than a seller organisation. */
+    public boolean isInstitutionOwned() { return institutionId != null; }
+
+    /** The owning organisation's name, whichever kind it is — for a label, never for authorisation. */
+    public String principalName() { return institutionId != null ? institutionName : tenantName; }
+}

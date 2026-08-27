@@ -45,6 +45,23 @@ public final class RrnGenerator {
         return generate("BI");
     }
 
+    /**
+     * A short code a person reads off a letter and types into a phone — the reference a buyer quotes when
+     * paying for a unit.
+     *
+     * <p>No prefix, no date, no counter: those exist above so an RRN is traceable and roughly ordered, and
+     * both cost characters that a payer has to type correctly. Four characters of the ambiguity-free
+     * alphabet is 32^4 = 1,048,576 codes, and the caller persists it to a UNIQUE column and retries on a
+     * clash exactly as the RRN callers do.
+     *
+     * <p>Deliberately carries no checksum. Four random characters means a single mistyped letter produces
+     * another well-formed code, which is why a payment is never matched on this alone without the amount or
+     * the payer's number agreeing — see the column comment on {@code development_units.pay_reference}.
+     */
+    public static String payCode() {
+        return randomTail(4);
+    }
+
     private static String normalisePrefix(String prefix) {
         if (prefix == null || prefix.isBlank()) return "BX";
         String p = prefix.trim().toUpperCase();

@@ -125,6 +125,30 @@ public class Property {
     @Column(name = "promotion_boost", nullable = false) @Builder.Default private Integer promotionBoost = 0;
     @Column(name = "promoted_until") private OffsetDateTime promotedUntil;
 
+    /*
+     * ── The development this listing belongs to, when it belongs to one ──────────────────────────────
+     *
+     * Null on every listing that existed before developments arrived, and null on every ordinary resale house
+     * afterwards — which is why the migration that added these columns needed no backfill.
+     *
+     * A listing with a unitTypeId is a typology: "the two-beds at Highrise", one row standing for however many
+     * units of that kind exist. It is not shown in the marketplace search list — the development's own card is
+     * — but it is a real listing with real enquiries, offers, viewings and photographs, because making six
+     * tables polymorphic to avoid it would have been the larger change.
+     *
+     * The four cached figures below are written by DevelopmentInventoryService and by nothing else.
+     */
+    @Column(name = "development_id") private Long developmentId;
+    @Column(name = "unit_type_id") private Long unitTypeId;
+    @Column(name = "development_name", length = 255) private String developmentName;
+    @Column(name = "units_available") private Integer unitsAvailable;
+    @Column(name = "units_total") private Integer unitsTotal;
+    /** PLANNED, UNDER_CONSTRUCTION, COMPLETE or HANDED_OVER. Null for a listing with no build behind it. */
+    @Column(name = "construction_status", length = 24) private String constructionStatus;
+
+    /** Part of a development — a typology listing rather than a single house. */
+    public boolean isUnitTypeListing() { return unitTypeId != null; }
+
     public boolean isDraft() {
         return AppConstant.LISTING_DRAFT.equals(listingState);
     }

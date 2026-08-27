@@ -62,6 +62,19 @@ public interface PropertyRepository
             + "and p.town is not null order by p.town")
     List<String> liveTowns();
 
+    /**
+     * The listing standing for one typology, if it has one.
+     *
+     * <p>At most one ever, enforced by a partial unique index rather than by this method hoping: "sixty of
+     * seventy available" has to have exactly one place a buyer can read it.
+     */
+    @Query("select p from Property p where p.unitTypeId = :unitTypeId and p.status <> 5")
+    Optional<Property> findByUnitTypeId(@Param("unitTypeId") Long unitTypeId);
+
+    /** Every listing belonging to one development, archived ones excluded. */
+    @Query("select p from Property p where p.developmentId = :developmentId and p.status <> 5")
+    List<Property> findForDevelopment(@Param("developmentId") Long developmentId);
+
     /** Re-stamps the denormalised seller name after a rename. One writer, in TenantService. */
     @Modifying
     @Query("update Property p set p.tenantName = :name where p.tenantId = :tenantId")
