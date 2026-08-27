@@ -88,7 +88,30 @@ public class PublicPropertyService {
                 SearchSpecs.eq("town", blankToNull(request.getTown())),
                 priceBetween(request.getMinPrice(), request.getMaxPrice()),
                 bedroomsBetween(request.getMinBedrooms(), request.getMaxBedrooms()),
-                greenOnly(request.getGreenOnly()));
+                greenOnly(request.getGreenOnly()),
+                standsOnItsOwn());
+    }
+
+    /**
+     * Excludes the listing that stands for a typology inside a development.
+     *
+     * <p>A two-hundred-unit project appears in search as one development card, so its four typologies must not
+     * also appear as four listings — four cards for one project among twenty resale houses is noise, and it
+     * splits the project's identity across the results.
+     *
+     * <p>Those rows still exist and are still LIVE on purpose: enquiries, offers, site visits, valuations,
+     * promotions and commissions all reach a listing through {@code properties(id)}, and a buyer clicking a
+     * typology lands on one. What this hides is the *list*, not the page — {@code findByReference} has its own
+     * query and is untouched.
+     *
+     * <p>Being inside {@code criteria} rather than {@code live} is the deliberate part: {@code criteria} is
+     * also the saved-search dispatcher's query, so a standing search means exactly what the same filters mean
+     * on the marketplace today. The cost is stated rather than hidden — a saved search does not yet fire for a
+     * new typology, and fixing that means extending the criteria and {@code search_alerts} together, because
+     * doing one without the other makes every existing saved search broader than the search that created it.
+     */
+    private Specification<Property> standsOnItsOwn() {
+        return (root, query, cb) -> cb.isNull(root.get("unitTypeId"));
     }
 
     /**
@@ -116,17 +139,20 @@ public class PublicPropertyService {
     public FacetsResponse facets() {
         List<Facet> types = countBy("property_type");
         List<Facet> counties = countBy("county");
-        List<String> towns = repository.liveTowns();
+        List<String> towns = repository.liveTownsOnMarketplace();
 
+        // Every facet counts what the list shows, which is not every live row: a typology's listing is
+        // represented by its development's card. Counting them would offer a filter promising two hundred
+        // results that returns four, and quote a total nobody can reconcile with the page.
         Object[] range = (Object[]) entityManager.createNativeQuery(
                         "select min(price), max(price) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5")
+                                + "where listing_state = 'LIVE' and status <> 5 and unit_type_id is null")
                 .getSingleResult();
 
         return new FacetsResponse(types, counties, towns,
                 range[0] == null ? null : new BigDecimal(range[0].toString()),
                 range[1] == null ? null : new BigDecimal(range[1].toString()),
-                repository.countLive());
+                repository.countLiveOnMarketplace());
     }
 
     // ── specifications ────────────────────────────────────────────────────────
@@ -200,8 +226,12 @@ public class PublicPropertyService {
     @SuppressWarnings("unchecked")
     private List<Facet> countBy(String column) {
         List<Object[]> rows = entityManager.createNativeQuery(
+                        // The column name is spliced because a GROUP BY target cannot be a bind parameter.
+                        // It is a literal from this class and never request input, and the two callers above
+                        // are the only ones; `unit_type_id is null` is likewise fixed text, not a filter.
                         "select " + column + ", count(*) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5 and " + column
+                                + "where listing_state = 'LIVE' and status <> 5 and unit_type_id is null "
+                                + "and " + column
                                 + " is not null group by 1 order by 2 desc, 1 asc")
                 .getResultList();
         List<Facet> out = new ArrayList<>(rows.size());

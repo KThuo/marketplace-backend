@@ -66,6 +66,7 @@ public class PropertyService {
     private final AgentProfileRepository agents;
     private final com.hodi.modules.sellerops.CommissionService commissions;
     private final PropertyMediaRepository media;
+    private final com.hodi.modules.media.MediaAssetRepository mediaAssets;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
     private final StorageService storage;
@@ -344,9 +345,11 @@ public class PropertyService {
      * that the gaps stop being the author's own business.
      */
     private void assertReadyToPublish(Property property) {
-        if (media.countForProperty(property.getId()) == 0) {
-            throw new HodiException(
-                    "Add at least one photograph — a listing without one is not a listing anybody clicks.",
+        if (photographCount(property) == 0) {
+            throw new HodiException(property.isUnitTypeListing()
+                    ? "Add at least one photograph to this typology or to the development it belongs to — "
+                            + "a listing without one is not a listing anybody clicks."
+                    : "Add at least one photograph — a listing without one is not a listing anybody clicks.",
                     HttpStatus.BAD_REQUEST);
         }
         if (property.getDescription() == null || property.getDescription().isBlank()) {
@@ -357,6 +360,30 @@ public class PropertyService {
             throw new HodiException("Say which town it is in — buyers search by it.",
                     HttpStatus.BAD_REQUEST);
         }
+    }
+
+    /**
+     * Photographs this listing can show, its own and the ones it inherits.
+     *
+     * <p>A typology's pictures usually belong to the development — a two-bed does not have its own site
+     * photography — and they are in {@code media_assets}, which the listing's own count knows nothing about.
+     * Counting only {@code property_media} refused a submission with "Add at least one photograph" while the
+     * screen in front of the author showed twelve, which is the kind of refusal nobody can act on.
+     *
+     * <p>The typology is asked first, because a typology with its own floor plan and gallery should not be
+     * gated on the project having any. An ordinary listing never reaches the second branch at all.
+     */
+    private long photographCount(Property property) {
+        long own = media.countForProperty(property.getId());
+        if (own > 0 || !property.isUnitTypeListing()) return own;
+
+        long forTypology = mediaAssets.countForOwner(
+                AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId());
+        if (forTypology > 0) return forTypology;
+
+        return property.getDevelopmentId() == null ? 0
+                : mediaAssets.countForOwner(
+                        AppConstant.MEDIA_OWNER_DEVELOPMENT, property.getDevelopmentId());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
