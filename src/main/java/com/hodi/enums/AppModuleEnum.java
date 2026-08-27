@@ -462,9 +462,21 @@ public enum AppModuleEnum {
      * <p>Not core: a seller who lists resale houses one at a time has no developments, and this is the
      * per-tenant module gate having something real to switch off.
      */
+    /*
+     * Core, like PROPERTIES, AUCTIONS and VALUATIONS.
+     *
+     * It was declared non-core first, and that made it invisible to every organisation already on the
+     * platform: the boot-time top-up deliberately switches on core modules only — a non-core one is an
+     * organisation's own choice, and overriding it on every deploy would be worse. So no tenant_modules row
+     * was ever written, EffectivePermissionResolver dropped all fourteen permissions, and the section was
+     * absent with nothing anywhere saying why. That is the gap enableCoreModulesEverywhere exists to close.
+     *
+     * Who may actually hold it is the CSV below, not this flag. A buyer or a vendor is excluded there whether
+     * the module is core or not — which is the distinction that was being conflated.
+     */
     DEVELOPMENTS("DEVELOPMENTS", "Developments",
             "Projects with many units — off-plan inventory, phases and build progress",
-            false, 35,
+            true, 35,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
                     + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
