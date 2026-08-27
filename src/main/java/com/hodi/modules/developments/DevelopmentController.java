@@ -19,11 +19,13 @@ import com.hodi.modules.developments.DevelopmentUnitDtos.SellUnitRequest;
 import com.hodi.modules.developments.DevelopmentUnitDtos.UnitListRequest;
 import com.hodi.modules.developments.DevelopmentUnitDtos.UnitResponse;
 import com.hodi.modules.developments.DevelopmentUnitTypeDtos.SaveUnitTypeRequest;
+import com.hodi.modules.media.MediaDtos.MediaResponse;
 import com.hodi.modules.developments.DevelopmentUnitTypeDtos.UnitTypeResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -54,6 +56,7 @@ public class DevelopmentController {
     private final DevelopmentUnitTypeService unitTypes;
     private final DevelopmentUnitService units;
     private final DevelopmentCollaboratorService collaborators;
+    private final DevelopmentMediaService mediaService;
 
     // ── the development ───────────────────────────────────────────────────────
 
@@ -285,6 +288,61 @@ public class DevelopmentController {
     public ApiResponse<Void> deleteUnit(@PathVariable String hashId, @PathVariable String unitId) {
         units.archive(hashId, unitId);
         return ApiResponse.success("Unit removed", null);
+    }
+
+    // ── photographs, plans and brochures ──────────────────────────────────────
+    //
+    // One set of paths for five owner types rather than five sets, because the difference between a
+    // development's album and a phase's is a parameter, not a shape. `ownerType` names which, and
+    // DevelopmentMediaService is what confirms the child named actually belongs to the development in the
+    // path — the schema's composite keys stop a bad row, not a bad request.
+
+    @GetMapping("/{hashId}/media")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_VIEW')")
+    public ApiResponse<List<MediaResponse>> media(
+            @PathVariable String hashId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId) {
+        return ApiResponse.success(mediaService.list(hashId, ownerType, childId));
+    }
+
+    @PostMapping("/{hashId}/media")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("ADD_DEVELOPMENT_MEDIA")
+    public ApiResponse<MediaResponse> addMedia(
+            @PathVariable String hashId,
+            @RequestParam("file") MultipartFile file,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId,
+            @RequestParam(required = false) String mediaKind,
+            @RequestParam(required = false) String caption,
+            @RequestParam(required = false) Boolean publicVisible) {
+        return ApiResponse.success("Uploaded",
+                mediaService.add(hashId, ownerType, childId, file, mediaKind, caption, publicVisible));
+    }
+
+    @PostMapping("/{hashId}/media/{mediaId}/primary")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("SET_DEVELOPMENT_COVER")
+    public ApiResponse<MediaResponse> makeCover(
+            @PathVariable String hashId,
+            @PathVariable String mediaId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId) {
+        return ApiResponse.success("Cover set",
+                mediaService.makePrimary(hashId, ownerType, childId, mediaId));
+    }
+
+    @PostMapping("/{hashId}/media/{mediaId}/delete")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("DELETE_DEVELOPMENT_MEDIA")
+    public ApiResponse<Void> deleteMedia(
+            @PathVariable String hashId,
+            @PathVariable String mediaId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId) {
+        mediaService.remove(hashId, ownerType, childId, mediaId);
+        return ApiResponse.success("Removed", null);
     }
 
     // ── collaborators ─────────────────────────────────────────────────────────

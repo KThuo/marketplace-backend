@@ -66,6 +66,26 @@ public class StorageService {
         return storeAt(file, file == null ? null : buildKey(folder, file.getOriginalFilename()));
     }
 
+    /**
+     * Stores a file under a named organisation's prefix rather than the bound one.
+     *
+     * <p>{@link #store} reads {@code TenantContext}, which is empty for platform staff by design — so an
+     * administrator uploading a photograph on a seller's behalf is refused by it, and so is any write from a
+     * scheduled job. This takes the organisation as an argument instead.
+     *
+     * <p>Refuses a null id rather than falling back to the bound tenant. That fallback is precisely how one
+     * organisation's file ends up under another's prefix, and the guard in {@link #store} exists to stop it.
+     * The caller is responsible for having checked that this tenant is theirs to write for.
+     */
+    public Stored storeFor(MultipartFile file, String folder, Long tenantId) {
+        if (tenantId == null) {
+            throw new HodiException("Say which organisation this file belongs to.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return storeAt(file, file == null ? null
+                : keyFor(tenantId, folder, file.getOriginalFilename()));
+    }
+
     /** The common half: validate, write, and report. The key is the caller's decision. */
     private Stored storeAt(MultipartFile file, String key) {
         if (file == null || file.isEmpty()) {
@@ -234,6 +254,11 @@ public class StorageService {
                     "Media belongs to a merchant. Sign in to a merchant account to upload it.",
                     HttpStatus.CONFLICT);
         }
+        return keyFor(tenantId, folder, originalName);
+    }
+
+    /** The same shape, for a tenant named by the caller rather than read from the request. */
+    private String keyFor(Long tenantId, String folder, String originalName) {
         LocalDate today = LocalDate.now();
         return "t" + tenantId + "/" + sanitiseFolder(folder)
                 + "/" + today.getYear() + "/" + String.format("%02d", today.getMonthValue())

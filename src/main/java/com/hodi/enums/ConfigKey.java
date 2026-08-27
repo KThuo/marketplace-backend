@@ -456,6 +456,18 @@ public enum ConfigKey {
             "Local media origin",
             "Host that serves locally-stored files. Empty means this application, which is usually right.",
             false, false),
+    /**
+     * Ceiling for a development's photographs, floor plans and brochures.
+     *
+     * <p>Below {@code StorageService}'s own 10 MB, which is sized for a title document rather than the two
+     * hundredth photograph of a building site. Configurable because the right number depends on whose phones
+     * are taking the pictures, and an operator should not need a deploy to tighten it.
+     */
+    MEDIA_MAX_KB(
+            "storage.media.max.kb", "INTEGER", "STORAGE", "8192",
+            "Max media size (KB)",
+            "Rejected above this before anything is written. Applies to development, phase, unit and "
+                    + "progress files.", false, false),
     STORAGE_AVATAR_MAX_KB(
             "storage.avatar.max.kb", "INTEGER", "STORAGE", "2048",
             "Max avatar size (KB)", "Rejected above this before anything is written.", false, false);
