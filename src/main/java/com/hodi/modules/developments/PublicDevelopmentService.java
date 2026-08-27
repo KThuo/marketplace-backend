@@ -12,18 +12,24 @@ import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
 import com.hodi.modules.media.MediaAsset;
 import com.hodi.modules.media.MediaAssetRepository;
 import com.hodi.modules.properties.Property;
+import com.hodi.modules.properties.ProgressUpdate;
+import com.hodi.modules.properties.ProgressUpdateRepository;
 import com.hodi.modules.properties.PropertyRepository;
 import jakarta.persistence.criteria.Predicate;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,6 +52,7 @@ import java.util.Optional;
 public class PublicDevelopmentService {
 
     private final DevelopmentRepository developments;
+    private final ProgressUpdateRepository progress;
     private final DevelopmentUnitTypeRepository unitTypes;
     private final DevelopmentPhaseRepository phases;
     private final PropertyRepository properties;
@@ -89,6 +96,81 @@ public class PublicDevelopmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
         return toDetail(development);
     }
+
+    /**
+     * The cross-project progress feed behind the marketplace's Progress tab.
+     *
+     * <p>This is the primary channel for progress, not a preview of an email. A buyer following a build reads
+     * it here, which is why it ships before any newsletter: it needs no sending domain, no API key and nobody
+     * else's lead time, and it is the "view in browser" page a newsletter would have needed anyway.
+     *
+     * <h3>Why the live ids are materialised</h3>
+     *
+     * <p>The alternative is an EXISTS subquery over developments inside the progress repository, which would
+     * put the definition of "public" in a second place — and the failure mode of the two drifting is a private
+     * project's build appearing in a feed. One list, from {@link #live()}, at the cost of one extra query.
+     *
+     * <p>That cost is bounded by the number of *live developments*, not by the number of updates, and a
+     * marketplace with more live projects than fit in a list has bigger problems than this query. If it ever
+     * does, the fix is a join and a single owner for the predicate, not a second copy of it.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<PublicProgressItem> progressFeed(PagedDataRequest request) {
+        List<Long> liveIds = developments.findAll(live()).stream().map(Development::getId).toList();
+        if (liveIds.isEmpty()) {
+            // `in ()` is not valid SQL, so nothing-to-search is answered here rather than by the database.
+            var pageable = request.toPageable(Sort.unsorted());
+            return PagedResponse.of(List.of(), pageable.getPageNumber(), pageable.getPageSize(),
+                    0L, 0, true);
+        }
+
+        // The repository orders by reported_on then id, so the sort is not the caller's to choose. A feed
+        // whose order a query parameter could change is a feed whose pages do not line up.
+        Page<ProgressUpdate> page = progress.findPublishedFeed(liveIds,
+                request.toPageable(Sort.unsorted()));
+
+        // One lookup for the whole page rather than one per row: the card carries the project's name and
+        // reference so it can link, and twenty rows from three projects should be three reads, not twenty.
+        Map<Long, Development> byId = developments.findAllById(
+                        page.getContent().stream().map(ProgressUpdate::getDevelopmentId)
+                                .filter(Objects::nonNull).distinct().toList()).stream()
+                .collect(Collectors.toMap(Development::getId, d -> d));
+
+        return PagedResponse.from(page, u -> {
+            Development d = byId.get(u.getDevelopmentId());
+            return new PublicProgressItem(
+                    d == null ? null : d.getReference(),
+                    d == null ? null : d.getName(),
+                    d == null ? null : d.getTown(),
+                    d == null ? null : d.getCounty(),
+                    u.getTitle(), u.getBody(), u.getPercentComplete(), u.getMilestone(),
+                    u.getReportedOn(), storage.urlFor(u.getImageKey()),
+                    u.getImageCount() == null ? 0 : u.getImageCount());
+        });
+    }
+
+    /**
+     * A card on the public progress feed.
+     *
+     * <p>Its own record rather than {@code PublicUpdate} plus a project field, because a feed card needs the
+     * project's identity to link anywhere and a per-project timeline must not repeat it on every row.
+     *
+     * <p>No budgets, no spend, no buyer. The same separate-public-record discipline as
+     * {@code PublicPropertyResponse}: a record with private fields blanked is one refactor away from leaking
+     * them.
+     */
+    public record PublicProgressItem(
+            String developmentReference,
+            String developmentName,
+            String town,
+            String county,
+            String title,
+            String body,
+            Short percentComplete,
+            String milestone,
+            java.time.LocalDate reportedOn,
+            String imageUrl,
+            int imageCount) {}
 
     /** The availability table: what each typology is, what it costs and how many are left. */
     @Transactional(readOnly = true)

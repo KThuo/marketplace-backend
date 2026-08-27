@@ -59,6 +59,6 @@ public class PublicPropertyController {
     @GetMapping("/{reference}/progress")
     public ApiResponse<java.util.List<ProgressUpdateService.PublicUpdate>> progress(
             @PathVariable String reference) {
-        return ApiResponse.success(progressUpdates.published(reference));
+        return ApiResponse.success(progressUpdates.publishedForListing(reference));
     }
 }

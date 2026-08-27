@@ -20,6 +20,12 @@ import java.time.OffsetDateTime;
  *
  * <p>The photograph goes through the ordinary media store, not the vault. This is marketing, and the
  * distinction between the two stores is the point of having two.
+ *
+ * <h2>Two kinds of subject</h2>
+ *
+ * <p>Originally a listing's diary; now also a development's. The table is one because the timeline is one —
+ * see {@link #propertyId}. The class name still says listing, which is now half the truth, and renaming it
+ * would touch every import for no behavioural gain; the column comments carry the rest.
  */
 @Entity
 @Table(name = "listing_progress_updates")
@@ -29,19 +35,51 @@ public class ProgressUpdate {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "property_id", nullable = false) private Long propertyId;
-    @Column(name = "tenant_id", nullable = false) private Long tenantId;
+    /*
+     * Exactly one subject: a listing or a development. The database says so — ck_progress_subject — because a
+     * row with both, or with neither, is a row no timeline knows where to show.
+     *
+     * The columns stayed on this table rather than moving to a second one. A development's build is the thing
+     * buyers actually follow, and a separate table would have made the timeline component a client-side merge
+     * of two arrays sorted by date, with every screen having to know which table its subject lives in.
+     */
+    @Column(name = "property_id") private Long propertyId;
+    @Column(name = "development_id") private Long developmentId;
+
+    /** Narrows a development update to part of the build — "Block B roofed". Usually null. */
+    @Column(name = "phase_id") private Long phaseId;
+    @Column(name = "unit_id") private Long unitId;
+
+    /*
+     * Who may see it, cached from the subject so the access check is one read rather than a walk up the tree.
+     * Not exactly-one: a listing update has a tenant, a bank's own project has an institution, and a
+     * platform-owned project has neither.
+     */
+    @Column(name = "tenant_id") private Long tenantId;
+    @Column(name = "institution_id") private Long institutionId;
 
     @Column(nullable = false, length = 180) private String title;
     @Column(columnDefinition = "TEXT") private String body;
 
     @Column(name = "percent_complete") private Short percentComplete;
+    /*
+     * The stage, twice over, and both are wanted.
+     *
+     * milestone_code is the stable identifier from progress_milestone_configs, which is what lets a screen
+     * group by stage — free text made "Slab", "slab" and "Slab poured" three different milestones. The free
+     * text stays because eight names chosen by us are not the eight every developer uses, and refusing an
+     * unlisted stage would make the field worse than it is today.
+     */
+    @Column(name = "milestone_code", length = 32) private String milestoneCode;
     @Column(length = 64) private String milestone;
 
     @Column(name = "reported_on", nullable = false)
     @Builder.Default private LocalDate reportedOn = LocalDate.now();
 
+    /** Cover photograph: a cache over media_assets, so rows written before that table existed still render. */
     @Column(name = "image_key", length = 512) private String imageKey;
+    /** What lets a feed card say "4 photos" without a query per row. */
+    @Column(name = "image_count", nullable = false) @Builder.Default private Integer imageCount = 0;
 
     @Column(nullable = false) @Builder.Default private boolean published = false;
     @Column(name = "published_at") private OffsetDateTime publishedAt;

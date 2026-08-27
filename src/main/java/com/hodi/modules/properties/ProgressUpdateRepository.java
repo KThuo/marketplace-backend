@@ -1,5 +1,7 @@
 package com.hodi.modules.properties;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -21,4 +23,39 @@ public interface ProgressUpdateRepository extends JpaRepository<ProgressUpdate, 
     @Query("select count(u) from ProgressUpdate u where u.propertyId = :propertyId "
             + "and u.published = true and u.status <> 5")
     long countPublished(@Param("propertyId") Long propertyId);
+
+    // ── the development's timeline ─────────────────────────────────────────────
+    //
+    // Separate queries rather than one with a nullable subject parameter. `where u.propertyId = :p or
+    // u.developmentId = :d` with one of them null reads as "or false" and works, right up to the day somebody
+    // passes both — and then it silently returns another project's updates. Two queries cannot do that.
+
+    /** The owner's own view of a development's timeline: drafts included, newest work first. */
+    @Query("select u from ProgressUpdate u where u.developmentId = :developmentId and u.status <> 5 "
+            + "order by u.reportedOn desc, u.id desc")
+    List<ProgressUpdate> findForDevelopment(@Param("developmentId") Long developmentId);
+
+    /** What the public sees on a development's page. Published only, its own query for the same reason. */
+    @Query("select u from ProgressUpdate u where u.developmentId = :developmentId "
+            + "and u.published = true and u.status <> 5 order by u.reportedOn desc, u.id desc")
+    List<ProgressUpdate> findPublishedForDevelopment(@Param("developmentId") Long developmentId);
+
+    @Query("select count(u) from ProgressUpdate u where u.developmentId = :developmentId "
+            + "and u.published = true and u.status <> 5")
+    long countPublishedForDevelopment(@Param("developmentId") Long developmentId);
+
+    /**
+     * The cross-project feed on the public site.
+     *
+     * <p>Paged, and the ids are supplied by the caller rather than joined here: which developments are live
+     * is {@code PublicDevelopmentService}'s question, and answering it in JPQL would put the visibility rule
+     * in two places. An empty list is the caller's job to short-circuit — {@code in ()} is not valid SQL.
+     *
+     * <p>Ordered by id as well as date so a page boundary between two updates reported on the same day is
+     * stable. Without the tiebreak, page two can repeat a row or skip one.
+     */
+    @Query("select u from ProgressUpdate u where u.developmentId in :developmentIds "
+            + "and u.published = true and u.status <> 5 order by u.reportedOn desc, u.id desc")
+    Page<ProgressUpdate> findPublishedFeed(
+            @Param("developmentIds") List<Long> developmentIds, Pageable pageable);
 }

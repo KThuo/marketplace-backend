@@ -6,6 +6,7 @@ import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicPhaseResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
 import com.hodi.modules.developments.PublicDevelopmentService.PublicDevelopmentSearchRequest;
+import com.hodi.modules.properties.ProgressUpdateService.PublicUpdate;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,7 @@ import java.util.List;
 public class PublicDevelopmentController {
 
     private final PublicDevelopmentService service;
+    private final DevelopmentProgressService progress;
 
     @GetMapping("/search")
     public ApiResponse<PagedResponse<PublicDevelopmentResponse>> search(
@@ -45,5 +47,17 @@ public class PublicDevelopmentController {
     @GetMapping("/{reference}/phases")
     public ApiResponse<List<PublicPhaseResponse>> phases(@PathVariable String reference) {
         return ApiResponse.success(service.phases(reference));
+    }
+
+    /**
+     * One project's published progress, newest work first.
+     *
+     * <p>A tracked project — one a lender is financing and nobody is selling — is not found here at all, and
+     * that is the whole rule: it is not LIVE, so it fails the same predicate that keeps it out of search. No
+     * second flag anybody has to remember.
+     */
+    @GetMapping("/{reference}/progress")
+    public ApiResponse<List<PublicUpdate>> progress(@PathVariable String reference) {
+        return ApiResponse.success(progress.published(reference));
     }
 }

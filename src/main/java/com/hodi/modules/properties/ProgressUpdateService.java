@@ -88,6 +88,7 @@ public class ProgressUpdateService {
     public UpdateResponse create(String propertyHashId, SaveUpdateRequest request) {
         Property property = ownProperty(propertyHashId);
         ProgressUpdate update = ProgressUpdate.builder()
+                // The subject, and only one of the two may be set — ck_progress_subject.
                 .propertyId(property.getId())
                 .tenantId(property.getTenantId())
                 .createdBy(AuthContext.username())
@@ -156,9 +157,14 @@ public class ProgressUpdateService {
      *
      * <p>Its own query rather than {@link #forSeller} filtered, so no code path here can return a draft by
      * forgetting a condition — the same construction the public marketplace uses.
+     *
+     * <p>Named for what it resolves. It used to be {@code published(reference)}, and once developments had
+     * references too, that name invited a development's reference to be looked up against listings — where it
+     * would not be found, and the caller would be told the project does not exist. A development's timeline is
+     * {@code DevelopmentProgressService.published}; there is no one method taking either.
      */
     @Transactional(readOnly = true)
-    public List<PublicUpdate> published(String propertyReference) {
+    public List<PublicUpdate> publishedForListing(String propertyReference) {
         Property property = properties.findLiveByReference(
                         propertyReference == null ? "" : propertyReference.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Listing", propertyReference));
@@ -188,7 +194,15 @@ public class ProgressUpdateService {
     private ProgressUpdate load(String hashId, Property property) {
         ProgressUpdate update = repository.findById(HashIdUtil.decodeId(hashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Update", hashId));
-        if (!update.getPropertyId().equals(property.getId())) {
+        /*
+         * The property's id leads the comparison, and that ordering is the fix rather than a style choice.
+         *
+         * `update.getPropertyId().equals(...)` threw a NullPointerException the moment property_id became
+         * nullable — which is to say for every development-scoped update, on a path reached by an id a caller
+         * supplies. Reversed, a development update simply fails the check and is reported as not found on
+         * this listing, which is exactly what it is.
+         */
+        if (!property.getId().equals(update.getPropertyId())) {
             throw new ResourceNotFoundException("Update", hashId);
         }
         return update;

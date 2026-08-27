@@ -3,6 +3,7 @@ package com.hodi.modules.developments;
 import com.hodi.common.ApiResponse;
 import com.hodi.common.PagedResponse;
 import com.hodi.logging.RequestAction;
+import com.hodi.modules.properties.ProgressUpdateService.UpdateResponse;
 import com.hodi.modules.developments.DevelopmentDtos.DevelopmentListRequest;
 import com.hodi.modules.developments.DevelopmentDtos.DevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
@@ -56,6 +57,7 @@ public class DevelopmentController {
     private final DevelopmentUnitTypeService unitTypes;
     private final DevelopmentUnitService units;
     private final DevelopmentCollaboratorService collaborators;
+    private final DevelopmentProgressService progress;
     private final DevelopmentMediaService mediaService;
 
     // ── the development ───────────────────────────────────────────────────────
@@ -342,6 +344,58 @@ public class DevelopmentController {
             @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
             @RequestParam(required = false) String childId) {
         mediaService.remove(hashId, ownerType, childId, mediaId);
+        return ApiResponse.success("Removed", null);
+    }
+
+    // ── progress ──────────────────────────────────────────────────────────────
+
+    @GetMapping("/{hashId}/progress")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_VIEW')")
+    public ApiResponse<List<UpdateResponse>> progress(@PathVariable String hashId) {
+        return ApiResponse.success(progress.forOwner(hashId));
+    }
+
+    @PostMapping("/{hashId}/progress")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_PROGRESS')")
+    @RequestAction("CREATE_DEVELOPMENT_PROGRESS")
+    public ApiResponse<UpdateResponse> createProgress(
+            @PathVariable String hashId,
+            @Valid @RequestBody DevelopmentProgressService.SaveDevelopmentUpdateRequest request) {
+        return ApiResponse.success("Update saved", progress.create(hashId, request));
+    }
+
+    @PutMapping("/{hashId}/progress/{updateId}")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_PROGRESS')")
+    @RequestAction("UPDATE_DEVELOPMENT_PROGRESS")
+    public ApiResponse<UpdateResponse> updateProgress(
+            @PathVariable String hashId,
+            @PathVariable String updateId,
+            @Valid @RequestBody DevelopmentProgressService.SaveDevelopmentUpdateRequest request) {
+        return ApiResponse.success("Update saved", progress.update(hashId, updateId, request));
+    }
+
+    /**
+     * Publishing and withdrawing are one endpoint with a flag rather than two.
+     *
+     * <p>They are the same decision in two directions and share every check; splitting them would mean two
+     * places to remember that a private project may not publish.
+     */
+    @PostMapping("/{hashId}/progress/{updateId}/published")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_PROGRESS')")
+    @RequestAction("PUBLISH_DEVELOPMENT_PROGRESS")
+    public ApiResponse<UpdateResponse> setProgressPublished(
+            @PathVariable String hashId,
+            @PathVariable String updateId,
+            @RequestParam(defaultValue = "true") boolean publish) {
+        return ApiResponse.success(publish ? "Published" : "Withdrawn",
+                progress.setPublished(hashId, updateId, publish));
+    }
+
+    @PostMapping("/{hashId}/progress/{updateId}/delete")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_PROGRESS')")
+    @RequestAction("DELETE_DEVELOPMENT_PROGRESS")
+    public ApiResponse<Void> archiveProgress(@PathVariable String hashId, @PathVariable String updateId) {
+        progress.archive(hashId, updateId);
         return ApiResponse.success("Removed", null);
     }
 
