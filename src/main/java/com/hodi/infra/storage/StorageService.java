@@ -49,10 +49,23 @@ public class StorageService {
             "image/jpeg", "image/png", "image/webp", "image/gif", "image/avif");
     private static final Set<String> ALLOWED_DOCUMENT_TYPES = Set.of("application/pdf");
 
-    /** 10 MB. Large enough for a product photograph, small enough that a stray upload cannot fill a disk. */
-    private static final long MAX_BYTES = 10L * 1024 * 1024;
+    /**
+     * The absolute ceiling, and it is a memory guard rather than a policy.
+     *
+     * <p>An oversized *image* is no longer refused — it is compressed, because a phone photograph is eight to
+     * twenty megabytes and telling somebody to shrink it themselves is asking them to go and find a tool. What
+     * this stops is an upload big enough to threaten the process: decoding costs roughly four bytes a pixel,
+     * so a hundred-megapixel file is four hundred megabytes of heap before anything has been written.
+     *
+     * <p>Set far above any real photograph. A 108-megapixel phone produces about twenty megabytes.
+     */
+    private static final long MAX_BYTES = 60L * 1024 * 1024;
+
+    /** The ceiling for anything that is not a compressible image — a PDF has no resize to fall back on. */
+    private static final long MAX_DOCUMENT_BYTES = 10L * 1024 * 1024;
 
     private final ConfigurationService configs;
+    private final ImageCompressor images;
 
     /** Where a stored object lives, and how to reach it now. */
     public record Stored(String key, String url, String contentType, long sizeBytes, String fileName) {}
@@ -86,26 +99,50 @@ public class StorageService {
                 : keyFor(tenantId, folder, file.getOriginalFilename()));
     }
 
-    /** The common half: validate, write, and report. The key is the caller's decision. */
+    /**
+     * The common half: validate, compress if it is a photograph, write, and report.
+     *
+     * <p>The key is the caller's decision. The compression is not — every upload path in the application comes
+     * through here, and a rule applied in eight services is a rule seven of them will eventually miss.
+     */
     private Stored storeAt(MultipartFile file, String key) {
         if (file == null || file.isEmpty()) {
             throw new HodiException("No file was uploaded", HttpStatus.BAD_REQUEST);
         }
-        if (file.getSize() > MAX_BYTES) {
-            throw new HodiException(
-                    "That file is " + humanBytes(file.getSize()) + ". The limit is " + humanBytes(MAX_BYTES) + ".",
-                    HttpStatus.PAYLOAD_TOO_LARGE);
-        }
 
         String contentType = normaliseType(file.getContentType());
         assertAllowed(contentType);
+        assertNotAbsurd(file, contentType);
 
-        try (InputStream in = file.getInputStream()) {
-            String url = bucket().isBlank() ? storeLocally(key, in) : storeToS3(key, in, file.getSize(), contentType);
-            log.info("Stored {} ({}) for tenant {} at {}",
-                    key, humanBytes(file.getSize()), TenantContext.getTenantId(),
-                    bucket().isBlank() ? "local disk" : bucket());
-            return new Stored(key, url, contentType, file.getSize(), safeFileName(file.getOriginalFilename()));
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException e) {
+            throw new HodiException("That file could not be read: " + e.getMessage(),
+                    HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+
+        /*
+         * Compressed before the extension is decided, because the format can change: a photograph uploaded as
+         * PNG is stored as JPEG, and a key ending .png serving JPEG bytes is a file the browser sniffs rather
+         * than trusts. The compressor returns the original untouched for anything it will not handle.
+         */
+        ImageCompressor.Result compressed = images.compress(bytes, contentType,
+                safeFileName(file.getOriginalFilename()));
+        byte[] finalBytes = compressed.bytes();
+        String finalType = compressed.contentType();
+        String finalKey = compressed.changed() ? reExtension(key, finalType) : key;
+
+        try (InputStream in = new java.io.ByteArrayInputStream(finalBytes)) {
+            String url = bucket().isBlank()
+                    ? storeLocally(finalKey, in)
+                    : storeToS3(finalKey, in, finalBytes.length, finalType);
+            log.info("Stored {} ({}{}) for tenant {} at {}",
+                    finalKey, humanBytes(finalBytes.length),
+                    compressed.changed() ? " from " + humanBytes(bytes.length) : "",
+                    TenantContext.getTenantId(), bucket().isBlank() ? "local disk" : bucket());
+            return new Stored(finalKey, url, finalType, finalBytes.length,
+                    safeFileName(file.getOriginalFilename()));
         } catch (IOException e) {
             throw new HodiException("That file could not be stored: " + e.getMessage(),
                     HttpStatus.INTERNAL_SERVER_ERROR, e);
@@ -271,6 +308,48 @@ public class StorageService {
         return "shared/" + sanitiseFolder(folder)
                 + "/" + today.getYear() + "/" + String.format("%02d", today.getMonthValue())
                 + "/" + UUID.randomUUID().toString().replace("-", "") + extensionOf(originalName);
+    }
+
+    /**
+     * Refuses only what could take the process down with it.
+     *
+     * <p>Not a size policy. A photograph over the target is compressed, not turned away — this is the point at
+     * which decoding one would cost more memory than the JVM has to spare, and the message says what it is
+     * rather than quoting a limit nobody could have known.
+     *
+     * <p>Documents keep the old tighter ceiling: there is no resize to fall back on for a PDF.
+     */
+    private static void assertNotAbsurd(MultipartFile file, String contentType) {
+        boolean document = ALLOWED_DOCUMENT_TYPES.contains(contentType);
+        long ceiling = document ? MAX_DOCUMENT_BYTES : MAX_BYTES;
+        if (file.getSize() <= ceiling) return;
+
+        throw new HodiException(document
+                ? "That document is " + humanBytes(file.getSize()) + ", which is over the "
+                        + humanBytes(ceiling) + " limit for a PDF."
+                : "That image is " + humanBytes(file.getSize())
+                        + " — larger than this can handle at once. Anything up to "
+                        + humanBytes(ceiling) + " is fine and will be compressed for you.",
+                HttpStatus.PAYLOAD_TOO_LARGE);
+    }
+
+    /**
+     * Puts the right extension on a key whose format changed under it.
+     *
+     * <p>A PNG photograph comes out as JPEG, and a key ending {@code .png} holding JPEG bytes is a file every
+     * consumer has to sniff instead of trust — and one that {@code nosniff} makes a browser refuse outright.
+     */
+    private static String reExtension(String key, String contentType) {
+        String want = switch (contentType) {
+            case "image/jpeg" -> ".jpg";
+            case "image/png" -> ".png";
+            default -> null;
+        };
+        if (want == null || key == null || key.toLowerCase().endsWith(want)) return key;
+        int dot = key.lastIndexOf('.');
+        int slash = key.lastIndexOf('/');
+        // Only strip an extension that is actually one: a dot in a folder name is not.
+        return (dot > slash ? key.substring(0, dot) : key) + want;
     }
 
     private static void assertAllowed(String contentType) {

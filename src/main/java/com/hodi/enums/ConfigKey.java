@@ -473,6 +473,50 @@ public enum ConfigKey {
             "Max avatar size (KB)", "Rejected above this before anything is written.", false, false),
 
     /**
+     * What an uploaded photograph is compressed towards, in KB.
+     *
+     * <p>A target rather than a limit. An image over it is resized and re-encoded; one that will not reach it
+     * at acceptable quality is stored slightly over. Nothing is refused for being too big — a phone
+     * photograph is eight to twenty megabytes and the person uploading it has no way to shrink it.
+     */
+    IMAGE_TARGET_KB(
+            "image.target.kb", "INTEGER", "STORAGE", "900",
+            "Compress photographs towards (KB)",
+            "Images above this are resized and re-encoded rather than refused. Not a hard limit.",
+            false, false),
+
+    /**
+     * The longest edge a stored photograph keeps, in pixels.
+     *
+     * <p>Where most of the saving comes from, and the reason the encoder rarely has to work hard. 2560 is
+     * sharp on every screen these are viewed on, including a retina laptop at full width.
+     */
+    IMAGE_MAX_EDGE(
+            "image.max.edge", "INTEGER", "STORAGE", "2560",
+            "Longest edge kept (pixels)",
+            "A photograph larger than this is scaled down. Most of the size saving is here rather than in "
+                    + "the encoder.", false, false),
+
+    /** Where JPEG encoding starts. 85 is the usual point at which re-encoding stops being visible. */
+    IMAGE_JPEG_QUALITY(
+            "image.jpeg.quality", "INTEGER", "STORAGE", "85",
+            "JPEG quality (%)",
+            "Where compression starts. Steps down towards the floor only if the target is not met.",
+            false, false),
+
+    /**
+     * How far JPEG quality may fall before we accept a file over target.
+     *
+     * <p>The point of the floor: an image that cannot reach the target without going below this is stored
+     * larger instead. A visibly mushy photograph of somebody's building is worse than half a megabyte.
+     */
+    IMAGE_JPEG_QUALITY_FLOOR(
+            "image.jpeg.quality.floor", "INTEGER", "STORAGE", "65",
+            "Lowest JPEG quality (%)",
+            "Compression stops here. An image that still exceeds the target is stored over it rather than "
+                    + "degraded further.", false, false),
+
+    /**
      * The shared secret an inbound Pesi notification must carry.
      *
      * <p>Blank by default, and what that means is deliberate: the endpoint still accepts and stores every

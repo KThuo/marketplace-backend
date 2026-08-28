@@ -123,6 +123,33 @@ class DevelopmentMediaIT {
         return com.hodi.security.hashid.HashIdUtil.encodeId(d.getId());
     }
 
+    /**
+     * A photograph the size a phone actually produces.
+     *
+     * <p>Encoded as PNG at four thousand by three thousand with noise in it, which lands around twenty-five
+     * megabytes — over the ten-megabyte store ceiling and the eight-megabyte media ceiling that both used to
+     * refuse it. Noise matters: a flat colour compresses to nothing and the fixture would prove nothing.
+     */
+    private MultipartFile hugePhotograph(String name) throws java.io.IOException {
+        java.awt.image.BufferedImage image =
+                new java.awt.image.BufferedImage(4000, 3000, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.util.Random random = new java.util.Random(11);
+        for (int y = 0; y < 3000; y++) {
+            for (int x = 0; x < 4000; x++) {
+                int base = 90 + (int) (40 * Math.sin(x / 200.0));
+                image.setRGB(x, y, (clamp(base + random.nextInt(50)) << 16)
+                        | (clamp(base + random.nextInt(50)) << 8) | clamp(base + random.nextInt(50)));
+            }
+        }
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(image, "png", out);
+        return new MockMultipartFile("file", name, "image/png", out.toByteArray());
+    }
+
+    private int clamp(int v) {
+        return Math.max(0, Math.min(255, v));
+    }
+
     private MultipartFile jpeg(String name) {
         // A real two-byte JPEG signature, because StorageService checks the declared type and the store
         // should be handed something that is at least shaped like what it is called.
@@ -239,5 +266,30 @@ class DevelopmentMediaIT {
                 com.hodi.common.exception.HodiException.class,
                 () -> media.add(id(development), "PROPERTY", null, jpeg("x.jpg"), null, null, null));
         assertTrue(thrown.getMessage().contains("cannot be attached"), thrown.getMessage());
+    }
+
+    @Test
+    @DisplayName("a twenty-five megabyte photograph is accepted and stored small")
+    void oversizedPhotographIsCompressedNotRefused() throws Exception {
+        /*
+         * The behaviour this exists for. Both ceilings used to refuse this file — the store's ten megabytes
+         * and the media module's eight — with "compress it and try again", which asks somebody holding a phone
+         * photograph to go and find a tool.
+         */
+        MultipartFile huge = hugePhotograph("site-visit.png");
+        assertTrue(huge.getSize() > 10L * 1024 * 1024,
+                "the fixture must exceed the old ceiling or this proves nothing: " + huge.getSize());
+
+        MediaResponse saved = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                huge, AppConstant.MEDIA_KIND_PHOTO, "From the site visit", true);
+
+        assertNotNull(saved.id(), "accepted");
+        assertTrue(saved.sizeBytes() < huge.getSize() / 5,
+                "stored far smaller: " + saved.sizeBytes() + " from " + huge.getSize());
+        assertEquals("image/jpeg", saved.contentType(),
+                "a photograph uploaded as PNG is stored as JPEG — several times smaller for no visible gain");
+        assertTrue(saved.url() != null && saved.url().endsWith(".jpg"),
+                "and the key's extension follows the format, or a browser refuses the mismatch under "
+                        + "nosniff: " + saved.url());
     }
 }

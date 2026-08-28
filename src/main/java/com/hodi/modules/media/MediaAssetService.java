@@ -112,7 +112,6 @@ public class MediaAssetService {
                     "That is the most files this can carry (%d). Remove one first.".formatted(cap),
                     HttpStatus.CONFLICT);
         }
-        assertWithinSize(file);
 
         /*
          * A folder per owner type, so the object store is browsable by somebody answering a support question.
@@ -240,22 +239,20 @@ public class MediaAssetService {
         return kind;
     }
 
-    /**
-     * A size ceiling of this module's own, below the store's.
+    /*
+     * There is no size check here any more, and that is the change rather than an omission.
      *
-     * <p>{@code StorageService} caps everything at 10 MB, which is sized for a title document. A site
-     * photograph does not need it, and two hundred of them at that size is a storage bill nobody chose. Read
-     * from configuration so an operator can tighten it without a deploy.
+     * This module used to refuse anything over a configured ceiling with "compress it and try again", which
+     * asked somebody holding a twelve-megabyte phone photograph to go and find a tool. StorageService now
+     * resizes and re-encodes on the way in, so the storage bill this check was protecting is handled by making
+     * the file smaller instead of by turning the person away.
+     *
+     * What remains is a ceiling in StorageService far above any real photograph, and it exists to stop a
+     * decode large enough to exhaust the heap — not to enforce a policy.
+     *
+     * The per-owner count caps are untouched: two hundred photographs on a development is a different question
+     * from how big each one is, and it is still worth answering.
      */
-    private void assertWithinSize(MultipartFile file) {
-        if (file == null) return;
-        int ceilingKb = configs.getInt(ConfigKey.MEDIA_MAX_KB, 8192);
-        if (file.getSize() > (long) ceilingKb * 1024) {
-            throw new HodiException(
-                    "That file is larger than %d KB. Compress it and try again.".formatted(ceilingKb),
-                    HttpStatus.PAYLOAD_TOO_LARGE);
-        }
-    }
 
     private int capFor(String ownerType) {
         return switch (ownerType) {
