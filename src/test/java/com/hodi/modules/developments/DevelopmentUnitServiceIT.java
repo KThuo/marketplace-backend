@@ -105,7 +105,16 @@ class DevelopmentUnitServiceIT {
         var page = units.list(developmentId, new UnitListRequest());
         assertEquals(70, page.getTotalElements());
 
+        /*
+         * Scoped to this test's own development, not every unit in the database.
+         *
+         * This read findAll() filtered on a "B-" label prefix, which passed only for as long as nothing else
+         * in the database used that prefix — and the moment a demo project had a Block B, the count came back
+         * 94 instead of 70. A test that inspects every row is coupled to whatever else happens to exist.
+         */
         var all = unitRepository.findAll().stream()
+                .filter(u -> com.hodi.security.hashid.HashIdUtil.decodeId(developmentId)
+                        .equals(u.getDevelopmentId()))
                 .filter(u -> u.getUnitLabel().startsWith("B-")).toList();
         assertEquals(70, all.size());
         assertEquals(70, all.stream().map(DevelopmentUnit::getPayReference).distinct().count(),

@@ -4,6 +4,7 @@ import com.hodi.common.ApiResponse;
 import com.hodi.common.PagedResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
+import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitAvailability;
 import com.hodi.modules.developments.PublicDevelopmentService.PublicDevelopmentSearchRequest;
 import com.hodi.modules.developments.DevelopmentDtos.PublicPost;
 import lombok.RequiredArgsConstructor;
@@ -52,6 +53,21 @@ public class PublicDevelopmentController {
      * now a headline on the detail response instead, and the phases themselves are in the workspace where the
      * permission to see them lives.
      */
+
+    /**
+     * Every unit of one kind, with its floor, its price and whether it is still going.
+     *
+     * <p>The drill-down from the availability list. Sold units are included and their buyers are not — what
+     * has gone is half of what an off-plan buyer is reading for, and who took it is none of their business.
+     *
+     * <p>Under the development in the path, so a typology reference from another project cannot be read by
+     * guessing at this endpoint.
+     */
+    @GetMapping("/{reference}/unit-types/{unitTypeReference}/units")
+    public ApiResponse<List<PublicUnitAvailability>> units(@PathVariable String reference,
+                                                            @PathVariable String unitTypeReference) {
+        return ApiResponse.success(service.unitsFor(reference, unitTypeReference));
+    }
 
     /**
      * A project's public posts — the blog and newsletter kind, newest first.

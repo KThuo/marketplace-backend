@@ -18,6 +18,17 @@ public interface DevelopmentUnitTypeRepository extends JpaRepository<Development
             + "order by t.sortOrder, t.id")
     List<DevelopmentUnitType> findForDevelopment(@Param("developmentId") Long developmentId);
 
+    /**
+     * The typologies of several developments, for a page of search cards.
+     *
+     * <p>One query rather than one per card. Ordered so each project's breakdown reads smallest home first,
+     * which is how somebody scans for the one they can afford.
+     */
+    @Query("select t from DevelopmentUnitType t where t.developmentId in :developmentIds "
+            + "and t.status <> 5 order by t.developmentId, t.bedrooms nulls first, t.sortOrder, t.id")
+    List<DevelopmentUnitType> findForDevelopments(
+            @Param("developmentIds") java.util.Collection<Long> developmentIds);
+
     @Query("select count(t) from DevelopmentUnitType t where t.developmentId = :developmentId "
             + "and upper(t.code) = upper(:code) and t.status <> 5 and t.id <> :exceptId")
     long countWithCode(@Param("developmentId") Long developmentId,

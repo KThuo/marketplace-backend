@@ -94,8 +94,28 @@ public final class DevelopmentUnitDtos {
             String bookingReference,
             String bookingState) {}
 
-    /** What a buyer may see of one unit: that it exists and whether it is free. */
-    public record PublicUnitAvailability(String unitLabel, Short floorNo, String saleState) {}
+    /**
+     * What a buyer may see of one unit.
+     *
+     * <h3>Sold units are shown, and their buyers are not</h3>
+     *
+     * <p>Showing what has gone is the point of an availability list on an off-plan scheme: "four of the six
+     * third-floor two-beds are taken" is what makes somebody decide this week rather than next month. What
+     * must never appear is who took them — no name, no phone, no price they paid. This record has no field for
+     * any of it, which is a stronger guarantee than remembering not to populate one.
+     *
+     * <p>{@code saleState} is narrowed on the way out too: the six internal states collapse to three a buyer
+     * can act on, because "retained by the developer" and "not for sale" are the same answer from outside.
+     */
+    public record PublicUnitAvailability(
+            String unitLabel,
+            String block,
+            Short floorNo,
+            /** The unit's own price where it has one, otherwise the typology's. What a buyer is quoted. */
+            BigDecimal price,
+            String currency,
+            /** AVAILABLE, TAKEN or UNAVAILABLE. Never the internal six. */
+            String state) {}
 
     public record ReserveUnitRequest(
             @NotBlank @Size(max = 160) String buyerName,

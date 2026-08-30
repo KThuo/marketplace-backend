@@ -149,7 +149,23 @@ public final class DevelopmentDtos {
              * happening and what it looked like; the history is for the people with a stake. Null on a search
              * card and on a project that has posted nothing, which is most of them at first.
              */
-            PublicPost latestPost) {}
+            PublicPost latestPost,
+            /*
+             * What each kind of home is called and how many are left.
+             *
+             * On the card as well as the detail, because a two-hundred-unit project is only interesting to
+             * somebody who can see whether the kind they want is still there — "Studio, 5 left" is the whole
+             * decision for one buyer and irrelevant to another.
+             */
+            List<PublicTypeCount> unitTypeCounts) {}
+
+/** One line of a card's breakdown: the kind, and how many of it remain. */
+    public record PublicTypeCount(
+            String reference,
+            String name,
+            Short bedrooms,
+            int unitsAvailable,
+            int unitsTotal) {}
 
     /**
      * A post as the public reads it: a title, words, and photographs.

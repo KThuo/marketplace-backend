@@ -7,7 +7,9 @@ import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
+import com.hodi.modules.developments.DevelopmentDtos.PublicTypeCount;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
+import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitAvailability;
 import com.hodi.modules.media.MediaAsset;
 import com.hodi.modules.media.MediaAssetRepository;
 import com.hodi.modules.properties.Property;
@@ -53,6 +55,7 @@ public class PublicDevelopmentService {
     private final DevelopmentRepository developments;
     private final ProgressUpdateRepository progress;
     private final DevelopmentUnitTypeRepository unitTypes;
+    private final DevelopmentUnitRepository units;
     private final DevelopmentPhaseRepository phases;
     private final PropertyRepository properties;
     private final MediaAssetRepository media;
@@ -89,9 +92,11 @@ public class PublicDevelopmentService {
          * otherwise be twenty extra queries for panels nobody has opened. The bedroom span it does need, and
          * that is one query for the whole page rather than one per card.
          */
-        Map<Long, short[]> ranges = bedroomRanges(
-                page.getContent().stream().map(Development::getId).toList());
-        return PagedResponse.from(page, d -> toCard(d, ranges.get(d.getId())));
+        List<Long> ids = page.getContent().stream().map(Development::getId).toList();
+        Map<Long, short[]> ranges = bedroomRanges(ids);
+        Map<Long, List<PublicTypeCount>> counts = typeCounts(ids);
+        return PagedResponse.from(page, d -> toCard(d, ranges.get(d.getId()),
+                counts.getOrDefault(d.getId(), List.of())));
     }
 
     @Transactional(readOnly = true)
@@ -223,6 +228,57 @@ public class PublicDevelopmentService {
         return typologies(development);
     }
 
+    /**
+     * Every unit of one typology, with what a buyer may know about each.
+     *
+     * <p>Sold units included. On an off-plan scheme what has gone is half the information — "four of the six
+     * third-floor two-beds are taken" is what makes somebody decide this week rather than next month — and a
+     * list showing only what is left cannot say that.
+     *
+     * <p>Buyer identity is absent from the response record entirely, rather than nulled on the way out. A
+     * field that exists is one somebody populates later.
+     *
+     * <p>The typology is resolved through the development in the path, so a reference from another project
+     * cannot be read by guessing at this endpoint.
+     */
+    @Transactional(readOnly = true)
+    public List<PublicUnitAvailability> unitsFor(String reference, String unitTypeReference) {
+        Development development = developments.findLiveByReference(reference)
+                .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
+
+        DevelopmentUnitType type = unitTypes.findForDevelopment(development.getId()).stream()
+                .filter(t -> t.getReference().equals(unitTypeReference))
+                .findFirst()
+                .orElseThrow(() -> new ResourceNotFoundException("Unit type", unitTypeReference));
+
+        BigDecimal fallbackPrice = type.getListPrice();
+        return units.findPublicForUnitType(type.getId()).stream()
+                .map(u -> new PublicUnitAvailability(
+                        u.getUnitLabel(),
+                        u.getBlock(),
+                        u.getFloorNo(),
+                        u.getListPrice() != null ? u.getListPrice() : fallbackPrice,
+                        u.getCurrency() == null ? type.getCurrency() : u.getCurrency(),
+                        publicState(u.getSaleState())))
+                .toList();
+    }
+
+    /**
+     * The six internal sale states as the three a buyer can act on.
+     *
+     * <p>HELD and RESERVED are both "somebody else is buying it", and the difference between them is our
+     * paperwork rather than their opportunity. NOT_FOR_SALE and RETAINED are both "not on offer" — publishing
+     * which is which would tell a competitor how much stock the developer is keeping back.
+     */
+    private String publicState(String saleState) {
+        if (saleState == null) return "UNAVAILABLE";
+        return switch (saleState) {
+            case AppConstant.UNIT_AVAILABLE -> "AVAILABLE";
+            case AppConstant.UNIT_HELD, AppConstant.UNIT_RESERVED, AppConstant.UNIT_SOLD -> "TAKEN";
+            default -> "UNAVAILABLE";
+        };
+    }
+
     /*
      * There is no public phases method any more.
      *
@@ -349,9 +405,31 @@ public class PublicDevelopmentService {
         return ranges;
     }
 
-    private PublicDevelopmentResponse toCard(Development d, short[] bedrooms) {
+    private PublicDevelopmentResponse toCard(Development d, short[] bedrooms,
+                                             List<PublicTypeCount> typeCounts) {
         // No post on a card: twenty cards would be twenty queries for a paragraph nobody has opened yet.
-        return build(d, List.of(), List.of(), bedrooms, null);
+        return build(d, List.of(), List.of(), bedrooms, null, typeCounts);
+    }
+
+    /**
+     * What each typology is called and how many are left, for a page of cards.
+     *
+     * <p>"Studio · 5 left · 2 bed · 12 left" on the card itself, because a project of two hundred units is
+     * only interesting to somebody who can see whether the kind they want is still there. One query for the
+     * page; the counts are already maintained on the typology row by the inventory service, so this reads
+     * them rather than counting units.
+     *
+     * <p>Sold-out typologies are kept and marked rather than dropped: a card showing three of four kinds,
+     * silently, reads as a project with three kinds.
+     */
+    private Map<Long, List<PublicTypeCount>> typeCounts(List<Long> developmentIds) {
+        if (developmentIds.isEmpty()) return Map.of();
+        return unitTypes.findForDevelopments(developmentIds).stream()
+                .collect(Collectors.groupingBy(DevelopmentUnitType::getDevelopmentId,
+                        java.util.LinkedHashMap::new,
+                        Collectors.mapping(t -> new PublicTypeCount(
+                                t.getReference(), t.getName(), t.getBedrooms(),
+                                t.getUnitsAvailable(), t.getUnitsTotal()), Collectors.toList())));
     }
 
     private PublicDevelopmentResponse toDetail(Development d) {
@@ -362,13 +440,15 @@ public class PublicDevelopmentService {
                 .toList();
         return build(d, images, typologies(d),
                 bedroomRanges(List.of(d.getId())).get(d.getId()),
-                latestPost(d));
+                latestPost(d),
+                typeCounts(List.of(d.getId())).getOrDefault(d.getId(), List.of()));
     }
 
     private PublicDevelopmentResponse build(Development d, List<String> imageUrls,
                                             List<PublicUnitTypeResponse> typologies,
                                             short[] bedrooms,
-                                            DevelopmentDtos.PublicPost latestPost) {
+                                            DevelopmentDtos.PublicPost latestPost,
+                                            List<PublicTypeCount> typeCounts) {
         return new PublicDevelopmentResponse(
                 d.getReference(),
                 d.getName(),
@@ -394,7 +474,8 @@ public class PublicDevelopmentService {
                 bedrooms == null ? null : bedrooms[0],
                 bedrooms == null ? null : bedrooms[1],
                 typologies,
-                latestPost);
+                latestPost,
+                typeCounts);
     }
 
     private static String blankToNull(String value) {

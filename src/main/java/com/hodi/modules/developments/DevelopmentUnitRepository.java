@@ -85,6 +85,28 @@ public interface DevelopmentUnitRepository
             + "order by u.soldAt desc nulls last, u.id desc")
     List<DevelopmentUnit> findForBuyer(@Param("userId") Long userId);
 
+    /**
+     * Every live unit of one typology, in the order somebody reads a building: block, then floor, then label.
+     *
+     * <p>For the public availability list. Archived units are excluded; sold ones are not, because what has
+     * gone is half of what the list is for.
+     */
+    @Query("select u from DevelopmentUnit u where u.unitTypeId = :unitTypeId and u.status <> 5 "
+            + "order by u.block nulls first, u.floorNo nulls first, u.unitLabel")
+    List<DevelopmentUnit> findPublicForUnitType(@Param("unitTypeId") Long unitTypeId);
+
+    /**
+     * How many of each typology are still available, for a page of developments.
+     *
+     * <p>Returns {@code [unitTypeId, available]}. The counts already live on the typology row, maintained by
+     * the inventory service — this exists for the cases where a caller has ids and wants the figures without
+     * loading the rows.
+     */
+    @Query("select u.unitTypeId, count(u) from DevelopmentUnit u "
+            + "where u.unitTypeId in :unitTypeIds and u.saleState = 'AVAILABLE' and u.status <> 5 "
+            + "group by u.unitTypeId")
+    List<Object[]> availableCounts(@Param("unitTypeIds") java.util.Collection<Long> unitTypeIds);
+
     @Query("select count(u) from DevelopmentUnit u where u.unitTypeId = :unitTypeId and u.status <> 5")
     long countForUnitType(@Param("unitTypeId") Long unitTypeId);
 

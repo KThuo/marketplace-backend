@@ -8,6 +8,7 @@ import com.hodi.modules.media.MediaAssetRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
 import com.hodi.modules.properties.PropertyService;
+import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.modules.properties.PublicPropertyService;
 import com.hodi.modules.properties.PropertyDtos.PublicSearchRequest;
 import com.hodi.modules.profiles.UserProfile;
@@ -53,6 +54,8 @@ class DevelopmentListingBridgeIT {
 
     @Autowired PropertyService propertyService;
     @Autowired PublicPropertyService publicProperties;
+    @Autowired PublicDevelopmentService publicDevelopments;
+    @Autowired DevelopmentUnitRepository units;
     @Autowired PropertyRepository properties;
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
@@ -204,5 +207,104 @@ class DevelopmentListingBridgeIT {
 
         assertEquals(before, after,
                 "a count that included typologies could not be reconciled with the page");
+    }
+
+    // ── what a buyer may see of the units ────────────────────────────────────
+
+    @Test
+    @DisplayName("the public unit list shows what is left and what has gone, and no buyer")
+    void publicUnitListShowsBothAndNoBuyer() {
+        development.setListingState(AppConstant.LISTING_LIVE);
+        development.setPublishedAt(OffsetDateTime.now());
+        developments.save(development);
+
+        units.save(DevelopmentUnit.builder()
+                .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
+                .unitTypeId(typology.getId()).unitLabel("B-3-01").block("B").floorNo((short) 3)
+                .listPrice(new BigDecimal("9500000"))
+                .saleState(AppConstant.UNIT_AVAILABLE)
+                .constructionStatus(AppConstant.BUILD_PLANNED).build());
+        units.save(DevelopmentUnit.builder()
+                .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
+                .unitTypeId(typology.getId()).unitLabel("B-3-02").block("B").floorNo((short) 3)
+                .saleState(AppConstant.UNIT_SOLD)
+                .soldPrice(new BigDecimal("9750000")).soldAt(OffsetDateTime.now())
+                .buyerName("Asha Mwangi").buyerPhone("+254712345678")
+                .constructionStatus(AppConstant.BUILD_PLANNED).build());
+        units.save(DevelopmentUnit.builder()
+                .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
+                .unitTypeId(typology.getId()).unitLabel("B-3-03").block("B").floorNo((short) 3)
+                .saleState(AppConstant.UNIT_RETAINED)
+                .constructionStatus(AppConstant.BUILD_PLANNED).build());
+
+        var list = publicDevelopments.unitsFor(development.getReference(), typology.getReference());
+        assertEquals(3, list.size(), "sold units are shown — what has gone is half of what this is for");
+
+        var available = list.stream().filter(u -> "AVAILABLE".equals(u.state())).toList();
+        var taken = list.stream().filter(u -> "TAKEN".equals(u.state())).toList();
+        assertEquals(1, available.size());
+        assertEquals(1, taken.size());
+
+        assertEquals("B-3-01", available.getFirst().unitLabel());
+        assertEquals((short) 3, available.getFirst().floorNo());
+        assertEquals(0, available.getFirst().price().compareTo(new BigDecimal("9500000")),
+                "its own price, which is what a buyer is quoted");
+
+        /*
+         * The privacy boundary, and the reason this is a separate record rather than the internal one with
+         * fields blanked: there is nowhere on PublicUnitAvailability to put a buyer's name, a phone number or
+         * what they paid. A record with those fields nulled is one refactor away from populating them.
+         *
+         * The sold unit went for 9,750,000 and that figure is not on the wire either — what a neighbour paid
+         * is not something the next buyer gets to negotiate against.
+         */
+        assertTrue(taken.getFirst().price() == null
+                        || taken.getFirst().price().compareTo(new BigDecimal("9750000")) != 0,
+                "the price somebody actually paid is not published");
+
+        var retained = list.stream().filter(u -> "UNAVAILABLE".equals(u.state())).toList();
+        assertEquals(1, retained.size(),
+                "retained and not-for-sale collapse to one answer: publishing which is which tells a "
+                        + "competitor how much stock the developer is holding back");
+    }
+
+    @Test
+    @DisplayName("a typology reference from another project cannot be read through this development")
+    void unitsAreScopedToTheirDevelopment() {
+        development.setListingState(AppConstant.LISTING_LIVE);
+        development.setPublishedAt(OffsetDateTime.now());
+        developments.save(development);
+
+        Development other = developments.save(Development.builder()
+                .reference(RrnGenerator.generate("DV")).tenantId(tenantId).sellingTenantId(tenantId)
+                .name("Somewhere Else").developmentType("APARTMENT").build());
+        DevelopmentUnitType elsewhere = unitTypes.save(DevelopmentUnitType.builder()
+                .reference(RrnGenerator.generate("UT")).developmentId(other.getId())
+                .code("1B").name("One bedroom").propertyType("APARTMENT").bedrooms((short) 1).build());
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> publicDevelopments.unitsFor(development.getReference(), elsewhere.getReference()));
+    }
+
+    @Test
+    @DisplayName("a search card carries the breakdown, so a buyer sees whether their kind is left")
+    void cardCarriesTheTypeBreakdown() {
+        development.setListingState(AppConstant.LISTING_LIVE);
+        development.setPublishedAt(OffsetDateTime.now());
+        developments.save(development);
+        typology.setUnitsTotal(70);
+        typology.setUnitsAvailable(5);
+        unitTypes.save(typology);
+
+        var page = publicDevelopments.search(new PublicDevelopmentService.PublicDevelopmentSearchRequest());
+        var card = page.getContent().stream()
+                .filter(c -> development.getReference().equals(c.reference())).findFirst().orElseThrow();
+
+        assertEquals(1, card.unitTypeCounts().size());
+        assertEquals("Two bedroom", card.unitTypeCounts().getFirst().name());
+        assertEquals(5, card.unitTypeCounts().getFirst().unitsAvailable());
+        assertEquals(70, card.unitTypeCounts().getFirst().unitsTotal());
+        assertTrue(card.unitTypes().isEmpty(),
+                "and the full typology detail stays off the card — twenty cards would be twenty queries");
     }
 }
