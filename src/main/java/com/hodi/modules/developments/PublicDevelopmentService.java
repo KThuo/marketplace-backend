@@ -9,7 +9,9 @@ import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicTypeCount;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
+import com.hodi.modules.developments.DevelopmentUnitDtos.PublicFeature;
 import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitAvailability;
+import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitDetail;
 import com.hodi.modules.media.MediaAsset;
 import com.hodi.modules.media.MediaAssetRepository;
 import com.hodi.modules.properties.Property;
@@ -56,6 +58,8 @@ public class PublicDevelopmentService {
     private final ProgressUpdateRepository progress;
     private final DevelopmentUnitTypeRepository unitTypes;
     private final DevelopmentUnitRepository units;
+    private final UnitFeatureRepository features;
+    private final UnitFeatureConfigRepository featureConfigs;
     private final DevelopmentPhaseRepository phases;
     private final PropertyRepository properties;
     private final MediaAssetRepository media;
@@ -259,8 +263,76 @@ public class PublicDevelopmentService {
                         u.getFloorNo(),
                         u.getListPrice() != null ? u.getListPrice() : fallbackPrice,
                         u.getCurrency() == null ? type.getCurrency() : u.getCurrency(),
-                        publicState(u.getSaleState())))
+                        publicState(u.getSaleState()),
+                        u.getReference()))
                 .toList();
+    }
+
+    /**
+     * One specific home.
+     *
+     * <p>Its own answers where it gave them and its kind's where it did not — resolved by {@link UnitSpec},
+     * which is the only place that rule lives. A buyer is choosing a flat, not auditing our data model, so
+     * what comes back is final figures rather than two sets to reconcile.
+     *
+     * <p>Resolved through the development in the path, so a reference from another project cannot be read by
+     * guessing at this endpoint. Only a live project answers at all.
+     */
+    @Transactional(readOnly = true)
+    public PublicUnitDetail unitDetail(String reference, String unitReference) {
+        Development development = developments.findLiveByReference(reference)
+                .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
+
+        DevelopmentUnit unit = units.findByReference(unitReference)
+                .filter(u -> development.getId().equals(u.getDevelopmentId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Unit", unitReference));
+
+        DevelopmentUnitType type = unit.getUnitTypeId() == null ? null
+                : unitTypes.findById(unit.getUnitTypeId()).orElse(null);
+
+        List<String> own = features.findForUnit(unit.getId()).stream()
+                .map(UnitFeature::getFeatureCode).toList();
+        List<String> fromType = type == null ? List.of()
+                : features.findForUnitType(type.getId()).stream()
+                        .map(UnitFeature::getFeatureCode).toList();
+
+        UnitSpec spec = UnitSpec.of(unit, type, own, fromType);
+
+        // The catalogue turns codes into the words a buyer reads, in the order a screen shows them.
+        Map<String, UnitFeatureConfig> catalogue = featureConfigs.findLive().stream()
+                .collect(Collectors.toMap(UnitFeatureConfig::getCode, c -> c, (a, b) -> a,
+                        java.util.LinkedHashMap::new));
+        List<PublicFeature> resolved = catalogue.values().stream()
+                .filter(c -> spec.featureCodes().contains(c.getCode()))
+                .map(c -> new PublicFeature(c.getCode(), c.getName(), c.getCategory()))
+                .toList();
+
+        /*
+         * A unit's own photographs, and its kind's when it has none.
+         *
+         * The same inheritance the figures follow, and for the same reason: eight units in a block of two
+         * hundred are photographed individually and the rest are represented by the show flat.
+         */
+        List<String> images = media.findPublicForOwner(
+                        AppConstant.MEDIA_OWNER_DEVELOPMENT_UNIT, unit.getId()).stream()
+                .map(MediaAsset::getStorageKey).map(storage::urlFor)
+                .filter(java.util.Objects::nonNull).toList();
+        if (images.isEmpty() && type != null) {
+            images = media.findPublicForOwner(AppConstant.MEDIA_OWNER_UNIT_TYPE, type.getId()).stream()
+                    .map(MediaAsset::getStorageKey).map(storage::urlFor)
+                    .filter(java.util.Objects::nonNull).toList();
+        }
+
+        return new PublicUnitDetail(
+                unit.getReference(), unit.getUnitLabel(), unit.getBlock(), unit.getFloorNo(),
+                unit.getDoorNo(), spec.aspect(), spec.description(),
+                spec.bedrooms(), spec.bathrooms(), spec.balconies(), spec.parkingSpaces(),
+                spec.floorAreaSqm(), spec.balconyAreaSqm(), spec.price(), spec.currency(),
+                publicState(unit.getSaleState()), unit.getConstructionStatus(),
+                resolved, images, spec.inherited(),
+                development.getReference(), development.getName(),
+                type == null ? null : type.getReference(),
+                type == null ? null : type.getName());
     }
 
     /**

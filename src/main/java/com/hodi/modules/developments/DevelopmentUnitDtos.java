@@ -115,7 +115,50 @@ public final class DevelopmentUnitDtos {
             BigDecimal price,
             String currency,
             /** AVAILABLE, TAKEN or UNAVAILABLE. Never the internal six. */
-            String state) {}
+            String state,
+            /** So the list can link to each one. */
+            String reference) {}
+
+    /**
+     * One specific home, as a buyer sees it.
+     *
+     * <p>Everything resolved: its own answers where it gave them, its kind's where it did not. A buyer reading
+     * this should not have to know which is which — they are choosing a flat, not auditing our data model —
+     * so the figures are final and {@code inheritedFields} is there only for a screen that wants to be
+     * scrupulous about it.
+     *
+     * <p>No buyer, no sold price, no internal state. Same discipline as everywhere else on the public side.
+     */
+    public record PublicUnitDetail(
+            String reference,
+            String unitLabel,
+            String block,
+            Short floorNo,
+            String doorNo,
+            String aspect,
+            String description,
+            Short bedrooms,
+            Short bathrooms,
+            Short balconies,
+            Short parkingSpaces,
+            BigDecimal floorAreaSqm,
+            BigDecimal balconyAreaSqm,
+            BigDecimal price,
+            String currency,
+            String state,
+            String constructionStatus,
+            List<PublicFeature> features,
+            List<String> imageUrls,
+            /** Which figures came from the kind rather than from this home. */
+            List<String> inheritedFields,
+            /** Where it sits, so the page can offer its way back up. */
+            String developmentReference,
+            String developmentName,
+            String unitTypeReference,
+            String unitTypeName) {}
+
+    /** A feature, in words a buyer reads rather than the code we store. */
+    public record PublicFeature(String code, String name, String category) {}
 
     public record ReserveUnitRequest(
             @NotBlank @Size(max = 160) String buyerName,

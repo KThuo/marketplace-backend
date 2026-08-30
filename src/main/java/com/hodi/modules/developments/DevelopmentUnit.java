@@ -56,6 +56,25 @@ public class DevelopmentUnit {
 
     /** Overrides the typology's price where this one differs, which a top-floor corner usually does. */
     @Column(name = "list_price", precision = 15, scale = 2) private BigDecimal listPrice;
+
+    /*
+     * What is different about this one. Null means "as the typology says".
+     *
+     * Two two-beds in the same block are not the same home: one has two balconies, one has an open-plan
+     * kitchen, one has a third bath. Storing the typology's figures on every unit at generation time would
+     * have made these true and then made correcting the typology fix nothing — so a unit says only where it
+     * disagrees, and a hundred and ninety-two of two hundred say nothing at all.
+     */
+    private Short bedrooms;
+    private Short bathrooms;
+    private Short balconies;
+    @Column(name = "parking_spaces") private Short parkingSpaces;
+    @Column(name = "floor_area_sqm", precision = 10, scale = 2) private BigDecimal floorAreaSqm;
+    @Column(name = "balcony_area_sqm", precision = 10, scale = 2) private BigDecimal balconyAreaSqm;
+    /** Which way it looks, in the words a buyer uses: "north-east", "over the pool", "street". */
+    @Column(length = 64) private String aspect;
+    /** Why pick this one. Not a copy of the typology's blurb. */
+    @Column(columnDefinition = "TEXT") private String description;
     @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
 
     @Column(name = "sale_state", nullable = false, length = 16)

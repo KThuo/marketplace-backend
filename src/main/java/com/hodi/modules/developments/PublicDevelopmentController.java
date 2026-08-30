@@ -5,6 +5,7 @@ import com.hodi.common.PagedResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicDevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.PublicUnitTypeResponse;
 import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitAvailability;
+import com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitDetail;
 import com.hodi.modules.developments.PublicDevelopmentService.PublicDevelopmentSearchRequest;
 import com.hodi.modules.developments.DevelopmentDtos.PublicPost;
 import lombok.RequiredArgsConstructor;
@@ -67,6 +68,18 @@ public class PublicDevelopmentController {
     public ApiResponse<List<PublicUnitAvailability>> units(@PathVariable String reference,
                                                             @PathVariable String unitTypeReference) {
         return ApiResponse.success(service.unitsFor(reference, unitTypeReference));
+    }
+
+    /**
+     * One specific home.
+     *
+     * <p>Two flats of the same kind are not the same home — one has two balconies, one an open-plan kitchen,
+     * one a third bath — so each has a page of its own. What it does not say for itself comes from its kind.
+     */
+    @GetMapping("/{reference}/units/{unitReference}")
+    public ApiResponse<PublicUnitDetail> unit(@PathVariable String reference,
+                                               @PathVariable String unitReference) {
+        return ApiResponse.success(service.unitDetail(reference, unitReference));
     }
 
     /**
