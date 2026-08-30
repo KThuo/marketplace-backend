@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -161,14 +162,57 @@ class DevelopmentListingBridgeIT {
     // ── the search list ──────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("a typology's listing is not a card of its own in search")
-    void typologyListingIsNotInTheSearchList() {
+    @DisplayName("a typology is one row in search, standing for all its homes")
+    void typologyListingIsOneRowInSearch() {
+        typology.setUnitsTotal(30);
+        typology.setUnitsAvailable(25);
+        unitTypes.save(typology);
         Property listing = typologyListing(AppConstant.LISTING_LIVE);
+        listing.setDevelopmentName(development.getName());
+        listing.setDevelopmentReference(development.getReference());
+        listing.setUnitTypeReference(typology.getReference());
+        listing.setUnitsAvailable(25);
+        listing.setUnitsTotal(30);
+        properties.save(listing);
 
-        var page = publicProperties.search(new PublicSearchRequest());
-        assertTrue(page.getContent().stream()
-                        .noneMatch(c -> listing.getReference().equals(c.reference())),
-                "the project has one card, not one per typology");
+        var card = publicProperties.search(new PublicSearchRequest()).getContent().stream()
+                .filter(c -> listing.getReference().equals(c.reference())).findFirst().orElseThrow();
+
+        /*
+         * The shape of the row: what it is, which project, what it starts at, how many are left. Thirty
+         * identical homes are one result, not thirty — which is the duplication this exists to avoid — and
+         * the count is what turns a group into something somebody can act on.
+         */
+        assertEquals("Highrise Apartments", card.developmentName());
+        assertEquals(development.getReference(), card.developmentReference(),
+                "the project's name is a link, so the card carries what the link needs");
+        assertEquals(typology.getReference(), card.unitTypeReference(),
+                "and the drill-down to the individual homes");
+        assertEquals(25, card.unitsAvailable());
+        assertEquals(30, card.unitsTotal());
+    }
+
+    @Test
+    @DisplayName("an ordinary listing carries no group fields at all")
+    void ordinaryListingHasNoGroupFields() {
+        Property ordinary = properties.save(Property.builder()
+                .reference(RrnGenerator.generate("PR")).tenantId(tenantId)
+                .title("A resale house in Karen").description("Four bedrooms on half an acre.")
+                .propertyType("HOUSE").listingType(AppConstant.LISTING_TYPE_SALE)
+                .price(new BigDecimal("28000000")).bedrooms((short) 4)
+                .county("Nairobi").town("Nairobi")
+                .listingState(AppConstant.LISTING_LIVE).publishedAt(OffsetDateTime.now()).build());
+
+        var card = publicProperties.search(new PublicSearchRequest()).getContent().stream()
+                .filter(c -> ordinary.getReference().equals(c.reference())).findFirst().orElseThrow();
+
+        /*
+         * Null rather than 1. A house showing "1 remaining" reads as one that is nearly gone, and the card
+         * uses the absence of these to decide whether it is rendering a group at all.
+         */
+        assertNull(card.unitsTotal());
+        assertNull(card.unitsAvailable());
+        assertNull(card.developmentName());
     }
 
     @Test
@@ -199,14 +243,18 @@ class DevelopmentListingBridgeIT {
     }
 
     @Test
-    @DisplayName("the totals on the filter bar count the cards the page will show")
+    @DisplayName("the totals on the filter bar count the rows the page will show")
     void facetsCountWhatTheListShows() {
         long before = publicProperties.facets().liveCount();
         typologyListing(AppConstant.LISTING_LIVE);
         long after = publicProperties.facets().liveCount();
 
-        assertEquals(before, after,
-                "a count that included typologies could not be reconciled with the page");
+        /*
+         * Counted now, because the list shows them now. The bug is a filter promising a count the page cannot
+         * produce — it does not matter which way the two agree, only that they do.
+         */
+        assertEquals(before + 1, after,
+                "a typology listing is a row in the results, so it is a row in the count");
     }
 
     // ── what a buyer may see of the units ────────────────────────────────────

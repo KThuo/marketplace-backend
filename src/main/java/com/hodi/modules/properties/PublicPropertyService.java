@@ -88,31 +88,26 @@ public class PublicPropertyService {
                 SearchSpecs.eq("town", blankToNull(request.getTown())),
                 priceBetween(request.getMinPrice(), request.getMaxPrice()),
                 bedroomsBetween(request.getMinBedrooms(), request.getMaxBedrooms()),
-                greenOnly(request.getGreenOnly()),
-                standsOnItsOwn());
+                greenOnly(request.getGreenOnly()));
     }
 
-    /**
-     * Excludes the listing that stands for a typology inside a development.
+    /*
+     * Typology listings are in the results, and this is the second time that decision has moved.
      *
-     * <p>A two-hundred-unit project appears in search as one development card, so its four typologies must not
-     * also appear as four listings — four cards for one project among twenty resale houses is noise, and it
-     * splits the project's identity across the results.
+     * They were excluded so that a two-hundred-unit project appeared once as a development card rather than
+     * four times. The trouble is that a development card answers the wrong question: "Highrise Apartments,
+     * 60 of 200 available" does not tell somebody whether the studio they can afford is still there, and it
+     * takes two clicks to find out.
      *
-     * <p>Those rows still exist and are still LIVE on purpose: enquiries, offers, site visits, valuations,
-     * promotions and commissions all reach a listing through {@code properties(id)}, and a buyer clicking a
-     * typology lands on one. What this hides is the *list*, not the page — {@code findByReference} has its own
-     * query and is untouched.
+     * One row per *kind* is the shape that works for both — four rows for a project of two hundred, each
+     * saying what it is, what it starts at and how many are left, with the project's name as a link. A
+     * hundred and twenty-five identical bungalows are still four rows, not a hundred and twenty-five, which
+     * is the duplication worth avoiding. The individual homes are a drill-down.
      *
-     * <p>Being inside {@code criteria} rather than {@code live} is the deliberate part: {@code criteria} is
-     * also the saved-search dispatcher's query, so a standing search means exactly what the same filters mean
-     * on the marketplace today. The cost is stated rather than hidden — a saved search does not yet fire for a
-     * new typology, and fixing that means extending the criteria and {@code search_alerts} together, because
-     * doing one without the other makes every existing saved search broader than the search that created it.
+     * A saved search now matches these too, which is the right answer and was previously called out as a gap:
+     * `criteria` is shared with the alert dispatcher on purpose, so a standing search means exactly what the
+     * same filters mean on the marketplace today.
      */
-    private Specification<Property> standsOnItsOwn() {
-        return (root, query, cb) -> cb.isNull(root.get("unitTypeId"));
-    }
 
     /**
      * One listing, by its reference rather than by an id.
@@ -139,20 +134,20 @@ public class PublicPropertyService {
     public FacetsResponse facets() {
         List<Facet> types = countBy("property_type");
         List<Facet> counties = countBy("county");
-        List<String> towns = repository.liveTownsOnMarketplace();
+        List<String> towns = repository.liveTowns();
 
-        // Every facet counts what the list shows, which is not every live row: a typology's listing is
-        // represented by its development's card. Counting them would offer a filter promising two hundred
-        // results that returns four, and quote a total nobody can reconcile with the page.
+        // Every facet counts what the list shows, and the list now shows typology listings too — so these
+        // count every live row again. A filter promising a count the page cannot produce is the bug either
+        // way; the fix is that both sides agree, not which side they agree on.
         Object[] range = (Object[]) entityManager.createNativeQuery(
                         "select min(price), max(price) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5 and unit_type_id is null")
+                                + "where listing_state = 'LIVE' and status <> 5")
                 .getSingleResult();
 
         return new FacetsResponse(types, counties, towns,
                 range[0] == null ? null : new BigDecimal(range[0].toString()),
                 range[1] == null ? null : new BigDecimal(range[1].toString()),
-                repository.countLiveOnMarketplace());
+                repository.countLive());
     }
 
     // ── specifications ────────────────────────────────────────────────────────
@@ -228,10 +223,9 @@ public class PublicPropertyService {
         List<Object[]> rows = entityManager.createNativeQuery(
                         // The column name is spliced because a GROUP BY target cannot be a bind parameter.
                         // It is a literal from this class and never request input, and the two callers above
-                        // are the only ones; `unit_type_id is null` is likewise fixed text, not a filter.
+                        // are the only ones.
                         "select " + column + ", count(*) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5 and unit_type_id is null "
-                                + "and " + column
+                                + "where listing_state = 'LIVE' and status <> 5 and " + column
                                 + " is not null group by 1 order by 2 desc, 1 asc")
                 .getResultList();
         List<Facet> out = new ArrayList<>(rows.size());
@@ -291,7 +285,17 @@ public class PublicPropertyService {
                 storage.urlFor(p.getPrimaryImageKey()),
                 images,
                 p.getPromotionBoost() != null && p.getPromotionBoost() > 0,
-                p.getPublishedAt());
+                p.getPublishedAt(),
+                /*
+                 * Only on a listing that stands for a group. An ordinary house has one of itself, and a card
+                 * showing "1 remaining" beside a bungalow would read as though it were nearly gone.
+                 */
+                p.isUnitTypeListing() ? p.getDevelopmentName() : null,
+                p.isUnitTypeListing() ? p.getDevelopmentReference() : null,
+                p.isUnitTypeListing() ? p.getUnitTypeReference() : null,
+                p.isUnitTypeListing() ? p.getUnitsAvailable() : null,
+                p.isUnitTypeListing() ? p.getUnitsTotal() : null,
+                p.isUnitTypeListing() ? p.getConstructionStatus() : null);
     }
 
     private static String blankToNull(String value) {

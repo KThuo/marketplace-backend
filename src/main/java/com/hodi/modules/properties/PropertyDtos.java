@@ -205,7 +205,24 @@ public final class PropertyDtos {
              * the card carries a badge rather than quietly reordering itself.
              */
             boolean promoted,
-            OffsetDateTime publishedAt) {}
+            OffsetDateTime publishedAt,
+            /*
+             * What makes this one row stand for many homes.
+             *
+             * Present only on a typology listing. `unitsTotal` above one is what tells a card to render "25
+             * remaining" and to price itself "from" rather than "at" — one row for thirty identical bungalows
+             * instead of thirty rows, which is the duplication worth avoiding.
+             *
+             * The references are for links: the project's page, and the drill-down to the individual homes.
+             * Cached on the listing row, so a page of twelve cards needs no joins to build twelve links.
+             */
+            String developmentName,
+            String developmentReference,
+            String unitTypeReference,
+            Integer unitsAvailable,
+            Integer unitsTotal,
+            /** PLANNED, UNDER_CONSTRUCTION, COMPLETE or HANDED_OVER. A group can be either. */
+            String constructionStatus) {}
 
     /**
      * The marketplace's filters — the BRD's facets.

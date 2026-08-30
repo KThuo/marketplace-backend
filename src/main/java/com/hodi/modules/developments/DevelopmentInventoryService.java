@@ -149,8 +149,26 @@ public class DevelopmentInventoryService {
         property.setUnitsAvailable(type.getUnitsAvailable());
         property.setUnitsTotal(type.getUnitsTotal());
         property.setConstructionStatus(type.getConstructionStatus());
-        developments.findById(type.getDevelopmentId())
-                .ifPresent(d -> property.setDevelopmentName(d.getName()));
+        property.setUnitTypeReference(type.getReference());
+        developments.findById(type.getDevelopmentId()).ifPresent(d -> {
+            property.setDevelopmentName(d.getName());
+            // The reference too, so the card's link to the project needs no join.
+            property.setDevelopmentReference(d.getReference());
+        });
+
+        /*
+         * The price becomes what the cheapest available one actually costs.
+         *
+         * A typology listing is a group, and "from 9.5M" has to mean something a buyer can still buy. Units
+         * are priced individually — a third-floor two-bed costs more than a first-floor one — so the
+         * typology's own list price is a starting figure that stops being true as the cheap ones sell.
+         *
+         * Only when there is a from-price to use: a typology whose units carry no prices of their own keeps
+         * whatever was set on the listing, which is the seller's figure and not ours to overwrite.
+         */
+        if (type.getFromPrice() != null) {
+            property.setPrice(type.getFromPrice());
+        }
         properties.save(property);
     }
 

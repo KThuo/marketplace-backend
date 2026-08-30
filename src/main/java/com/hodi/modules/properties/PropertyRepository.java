@@ -63,19 +63,12 @@ public interface PropertyRepository
     List<String> liveTowns();
 
     /*
-     * The two above count every live row. The two below count the rows the marketplace list actually shows,
-     * which excludes the listing standing for a typology inside a development — that project appears as one
-     * development card. Kept as separate methods rather than a flag, because "how many listings exist" and
-     * "how many cards will this page show" are different questions and both are asked.
+     * The marketplace-only variants are gone.
+     *
+     * They excluded typology listings, because a development used to appear in search as one card rather than
+     * as its kinds. It appears as its kinds now — one row per typology, each with what is left — so the list
+     * and the counts are over the same rows again and there is nothing to keep apart.
      */
-
-    @Query("select distinct p.town from Property p where p.listingState = 'LIVE' and p.status <> 5 "
-            + "and p.unitTypeId is null and p.town is not null order by p.town")
-    List<String> liveTownsOnMarketplace();
-
-    @Query("select count(p) from Property p where p.listingState = 'LIVE' and p.status <> 5 "
-            + "and p.unitTypeId is null")
-    long countLiveOnMarketplace();
 
     /**
      * The listing standing for one typology, if it has one.

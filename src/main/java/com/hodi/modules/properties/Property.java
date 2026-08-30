@@ -147,6 +147,21 @@ public class Property {
     @Column(name = "construction_status", length = 24) private String constructionStatus;
 
     /** Part of a development — a typology listing rather than a single house. */
+    /*
+     * The project and the typology, by reference, cached for the card's links.
+     *
+     * Maintained by DevelopmentInventoryService with the counts beside them — one writer, which is what keeps
+     * a cache honest.
+     */
+    @Column(name = "development_reference", length = 16) private String developmentReference;
+    @Column(name = "unit_type_reference", length = 16) private String unitTypeReference;
+
+    /**
+     * Whether this listing stands for many identical homes rather than one.
+     *
+     * <p>A typology listing is one row on the marketplace representing thirty bungalows — what it is, what it
+     * starts at, and how many are left. The individual homes are a drill-down.
+     */
     public boolean isUnitTypeListing() { return unitTypeId != null; }
 
     public boolean isDraft() {
