@@ -181,3 +181,15 @@ checked). A unit's hold without money stays as it was — a name taken over the 
 home, house or unit, becomes SOLD by exactly one route, and every sale is a booking the dashboard can add up.
 
 Remaining from §7: leads naming a unit (stage 3) and the marketplace unit pages reading `properties` (stage 4).
+
+## 11. Stages 3 and 4 delivered (9 September 2026): one read path, and leads that name the home
+
+The public listing endpoint now serves a unit: `PublicPropertyResponse` carries a `unit` block — label, floor,
+figures resolved against the kind, features, state, project and typology — built by
+`PublicDevelopmentService.unitDetail(Property)`, and only while the project is live. The development-scoped
+unit endpoint is gone; the marketplace unit page asks for the unit's reference the way a house's page does.
+
+Leads needed no schema: an enquiry, viewing or offer resolves its listing by reference, and a unit's
+reference now names a live property row whose title reads "Highrise Apartments · B-3-04". The unit page mounts
+the same interest panel a house's page has, so a buyer asks about, arranges to view, or offers on this flat
+rather than "a two-bed". Every stage in §7 is done.

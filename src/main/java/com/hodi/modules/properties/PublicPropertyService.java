@@ -50,6 +50,7 @@ public class PublicPropertyService {
     private final PropertyMediaRepository media;
     private final StorageService storage;
     private final EntityManager entityManager;
+    private final com.hodi.modules.developments.PublicDevelopmentService publicDevelopments;
 
     @Transactional(readOnly = true)
     public PagedResponse<PublicPropertyResponse> search(PublicSearchRequest request) {
@@ -298,7 +299,8 @@ public class PublicPropertyService {
                 p.isUnitTypeListing() ? p.getUnitTypeReference() : null,
                 p.isUnitTypeListing() ? p.getUnitsAvailable() : null,
                 p.isUnitTypeListing() ? p.getUnitsTotal() : null,
-                p.isUnitTypeListing() ? p.getConstructionStatus() : null);
+                p.isUnitTypeListing() ? p.getConstructionStatus() : null,
+                p.isUnit() ? publicDevelopments.unitDetail(p) : null);
     }
 
     private static String blankToNull(String value) {

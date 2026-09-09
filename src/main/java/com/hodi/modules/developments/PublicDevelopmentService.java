@@ -275,17 +275,19 @@ public class PublicDevelopmentService {
      * which is the only place that rule lives. A buyer is choosing a flat, not auditing our data model, so
      * what comes back is final figures rather than two sets to reconcile.
      *
-     * <p>Resolved through the development in the path, so a reference from another project cannot be read by
-     * guessing at this endpoint. Only a live project answers at all.
+     * <p>Served by the public listing endpoint, {@code PublicPropertyService}, which is where every home is read.
      */
     @Transactional(readOnly = true)
-    public PublicUnitDetail unitDetail(String reference, String unitReference) {
-        Development development = developments.findLiveByReference(reference)
-                .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
-
-        Property unit = units.findByReference(unitReference)
-                .filter(u -> development.getId().equals(u.getDevelopmentId()))
-                .orElseThrow(() -> new ResourceNotFoundException("Unit", unitReference));
+    public PublicUnitDetail unitDetail(Property unit) {
+        /*
+         * Read through the property, not the development path. A unit is a row of properties, and the public
+         * listing endpoint is where a home is read — so the unit's page asks for its reference there and gets
+         * the listing's own fields with this block beside them. One read path for every kind of home. Only a
+         * live project's unit answers: the property is LIVE only while its project is.
+         */
+        Development development = developments.findById(unit.getDevelopmentId())
+                .filter(d -> AppConstant.LISTING_LIVE.equals(d.getListingState()))
+                .orElseThrow(() -> new ResourceNotFoundException("Unit", unit.getReference()));
 
         DevelopmentUnitType type = unit.getUnitTypeId() == null ? null
                 : unitTypes.findById(unit.getUnitTypeId()).orElse(null);

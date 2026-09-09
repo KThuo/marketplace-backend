@@ -222,7 +222,13 @@ public final class PropertyDtos {
             Integer unitsAvailable,
             Integer unitsTotal,
             /** PLANNED, UNDER_CONSTRUCTION, COMPLETE or HANDED_OVER. A group can be either. */
-            String constructionStatus) {}
+            String constructionStatus,
+            /**
+             * Present on a UNIT: the specific home's own detail — label, floor, its figures resolved against its
+             * kind, its features and its state. Null on a house and on a typology card. The unit's page reads
+             * this endpoint like any other listing's, which is the point.
+             */
+            com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitDetail unit) {}
 
     /**
      * The marketplace's filters — the BRD's facets.

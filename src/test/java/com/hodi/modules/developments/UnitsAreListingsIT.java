@@ -11,6 +11,7 @@ import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyDtos.PropertyListRequest;
 import com.hodi.modules.properties.PropertyService;
+import com.hodi.modules.properties.PublicPropertyService;
 import com.hodi.modules.users.User;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.UserPrincipal;
@@ -50,6 +51,7 @@ class UnitsAreListingsIT {
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentInventoryService inventory;
     @Autowired PropertyService properties;
+    @Autowired PublicPropertyService publicProperties;
     @Autowired JdbcTemplate jdbc;
 
     private Long tenantId;
@@ -145,6 +147,35 @@ class UnitsAreListingsIT {
         assertEquals(AppConstant.LISTING_SOLD, unitRows.findById(sold.getId()).orElseThrow().getListingState());
         assertTrue(rows().stream().filter(p -> !p.getId().equals(sold.getId()))
                 .allMatch(p -> AppConstant.LISTING_WITHDRAWN.equals(p.getListingState())));
+    }
+
+    @Test
+    @DisplayName("a unit is read through the public listing endpoint, with its own detail beside the listing's")
+    void unitIsReadAsAListing() {
+        units.generate(developmentId, new GenerateUnitsRequest(typeId, null, 1, "D", (short) 2, (short) 1, null,
+                new BigDecimal("15500000")));
+        Development development = developments.findById(HashIdUtil.decodeId(developmentId)).orElseThrow();
+        development.setListingState(AppConstant.LISTING_LIVE);
+        development.setPublishedAt(java.time.OffsetDateTime.now());
+        developments.save(development);
+        inventory.syncUnitRows(development);
+        Property unit = rows().getFirst();
+
+        var listing = publicProperties.findByReference(unit.getReference());
+        assertEquals(unit.getReference(), listing.reference(), "the same reference a lead or a payment quotes");
+        assertNotNull(listing.unit(), "a unit's page reads the listing endpoint and finds its own block");
+        assertEquals(unit.getUnitLabel(), listing.unit().unitLabel());
+        assertEquals("AVAILABLE", listing.unit().state());
+        assertEquals(0, new BigDecimal("15500000").compareTo(listing.unit().price()));
+        assertEquals("Rowhouse Gardens", listing.unit().developmentName());
+        assertEquals((short) 3, listing.unit().bedrooms(), "inherited from its kind");
+
+        // A house has no unit block, and a unit of a project that is not live is not found.
+        development.setListingState(AppConstant.LISTING_WITHDRAWN);
+        developments.save(development);
+        inventory.syncUnitRows(development);
+        assertThrows(com.hodi.common.exception.ResourceNotFoundException.class,
+                () -> publicProperties.findByReference(unit.getReference()));
     }
 
     @Test
