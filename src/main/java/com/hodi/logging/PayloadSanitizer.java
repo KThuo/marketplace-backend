@@ -72,6 +72,21 @@ public class PayloadSanitizer {
     private static final String REDACTED = "***";
 
     /**
+     * Lists that are long, all alike, and answer nothing.
+     *
+     * <p>A sign-in or a refresh response carries the caller's every permission — eighty-odd codes in one line
+     * that dwarfs the rest of the day's log and tells a reader only that the user has a lot of them. The
+     * count is the fact worth keeping; the codes are in the database for anyone who needs them. So an array
+     * under one of these names is replaced with "[87 items]" rather than printed.
+     */
+    private static final Set<String> SUMMARISED_KEYS = Set.of(
+            "permissions",
+            "authorities",
+            "effectivepermissions",
+            "grantedpermissions"
+    );
+
+    /**
      * Personal data, masked rather than removed (NFR: "logs exclude PII").
      *
      * <h2>Why partial and not total</h2>
@@ -168,7 +183,9 @@ public class PayloadSanitizer {
                 }
                 Mask mask = PII_KEYS.get(field.toLowerCase());
                 JsonNode value = obj.get(field);
-                if (mask != null && value != null && value.isTextual()) {
+                if (value != null && value.isArray() && SUMMARISED_KEYS.contains(field.toLowerCase())) {
+                    obj.put(field, "[" + value.size() + " items]");
+                } else if (mask != null && value != null && value.isTextual()) {
                     obj.put(field, applyMask(mask, value.asText()));
                 } else {
                     redact(value);
