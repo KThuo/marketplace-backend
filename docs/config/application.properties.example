@@ -1,0 +1,162 @@
+# ============================================================================
+#  HODI Marketplace (hodimp) — the deployment configuration. Copy to
+#  config/application.properties beside the jar. One file: there is no dev
+#  overlay and no second template.
+#
+#  Same server and same services as hodi-b: the same Postgres (database `hodi`),
+#  the same Redis. What is ours alone is the schema, `hodimp`, the port, and the
+#  secrets — fill in the three DB lines and the four secrets below. Generate each
+#  secret with: openssl rand -base64 32
+#
+#  Runtime-tunable values — Notify, PESI outbound, storage bucket and local
+#  folder, session windows, theme — live in the `configurations` table and are
+#  set from Settings after first start. They are deliberately not here.
+# ============================================================================
+spring.application.name=hodimp
+spring.profiles.active=${SPRING_PROFILES_ACTIVE:prod}
+
+# ── Datasource: database `hodi`, schema `hodimp` ────────────────────────────
+# currentSchema is required — without it Hibernate and Flyway look in `public`,
+# which on this server is not ours. Flyway creates the schema on first start.
+spring.datasource.url=jdbc:postgresql://HOST:PORT/hodi?currentSchema=hodimp
+spring.datasource.username=
+spring.datasource.password=
+spring.datasource.hikari.minimum-idle=4
+spring.datasource.hikari.maximum-pool-size=20
+spring.datasource.hikari.idle-timeout=30000
+spring.datasource.hikari.max-lifetime=1200000
+spring.datasource.hikari.connection-timeout=20000
+spring.datasource.hikari.leak-detection-threshold=60000
+spring.datasource.hikari.pool-name=hodimp-cp
+spring.datasource.hikari.connection-init-sql=SET search_path TO hodimp
+
+# ── JPA ─────────────────────────────────────────────────────────────────────
+spring.jpa.open-in-view=false
+spring.jpa.hibernate.ddl-auto=validate
+spring.jpa.properties.hibernate.default_schema=hodimp
+# UTC, as every migration and test here was written against — unlike hodi-b.
+spring.jpa.properties.hibernate.jdbc.time_zone=UTC
+spring.jpa.properties.hibernate.jdbc.batch_size=50
+spring.jpa.properties.hibernate.order_inserts=true
+spring.jpa.properties.hibernate.order_updates=true
+spring.jpa.properties.hibernate.query.in_clause_parameter_padding=true
+spring.jpa.properties.hibernate.format_sql=false
+spring.jpa.show-sql=false
+
+# ── Flyway ──────────────────────────────────────────────────────────────────
+# Migrations are named VYYYYMMDDHHmmSS__description.sql, never V1/V2. pg_trgm
+# is created by the first migration and is database-wide, so it is already
+# there from hodi-b; IF NOT EXISTS makes that a no-op.
+spring.flyway.enabled=true
+spring.flyway.locations=classpath:db/migration
+spring.flyway.default-schema=hodimp
+spring.flyway.schemas=hodimp
+spring.flyway.create-schemas=true
+spring.flyway.validate-on-migrate=true
+# false: a restored dump carries its own ledger, and a mismatch should be loud.
+spring.flyway.baseline-on-migrate=false
+
+# ── Redis: shared with hodi-b ───────────────────────────────────────────────
+# The same host, port and password as hodi-b's config (the password is not kept
+# in this example). Every key this application writes is prefixed `hodimp:`
+# (CacheRegions.APP), so the two applications cannot read each other's cache,
+# denylist or OTP entries.
+spring.data.redis.host=209.145.63.21
+spring.data.redis.port=7411
+spring.data.redis.password=
+spring.data.redis.timeout=5000ms
+spring.data.redis.connect-timeout=5000ms
+spring.data.redis.repositories.enabled=false
+spring.cache.type=redis
+spring.cache.redis.time-to-live=1h
+spring.cache.redis.cache-null-values=false
+
+# ── Server ──────────────────────────────────────────────────────────────────
+# hodi-b listens on 8086 on this server; this one takes 8085.
+server.port=8085
+server.servlet.context-path=/
+server.forward-headers-strategy=framework
+server.compression.enabled=true
+server.tomcat.threads.max=50
+server.tomcat.threads.min-spare=5
+server.error.include-message=never
+server.error.include-stacktrace=never
+server.shutdown=graceful
+spring.threads.virtual.enabled=true
+spring.docker.compose.enabled=false
+
+# Photographs are compressed on upload, but a phone photograph arrives large.
+spring.servlet.multipart.max-file-size=15MB
+spring.servlet.multipart.max-request-size=60MB
+spring.servlet.multipart.file-size-threshold=1MB
+
+# ── Security ────────────────────────────────────────────────────────────────
+# Four secrets, each `openssl rand -base64 32`. Do not reuse hodi-b's: the two
+# applications must not accept each other's tokens or decrypt each other's rows.
+hodi.jwt.secret=
+hodi.jwt.issuer=hodimp
+hodi.encryption.key=
+hodi.hashids.salt=
+# 12 here and in every environment: a hash id is a stable public identifier, and
+# a different length would make every link in a sent email stop resolving.
+hodi.hashids.min-length=12
+hodi.password.bcrypt-strength=12
+
+# Access-token TTL is not here: it is the idle window per session class, read from
+# the configurations table at issue time.
+# Refresh cookies. Two names so a buyer session and a staff session coexist in one
+# browser. Secure and Lax: the API and the site are served from one origin over TLS.
+hodi.auth.cookie.staff=hodimp_rt
+hodi.auth.cookie.buyer=hodimp_brt
+hodi.auth.cookie.secure=true
+hodi.auth.cookie.same-site=Lax
+hodi.auth.refresh-reaper-cron=0 15 3 * * *
+
+# ── Scheduled work ──────────────────────────────────────────────────────────
+# The reservation sweep and the saved-search alert dispatch. Cron, server time.
+hodi.bookings.expiry-cron=0 */10 * * * *
+hodi.alerts.dispatch-cron=0 0 7 * * *
+
+# ── CORS ────────────────────────────────────────────────────────────────────
+# The site's real origin, once known. Credentials are enabled for the refresh
+# cookie, so a wildcard would let any page the browser can reach issue
+# credentialed requests against this API. Comma-separated for more than one.
+hodi.cors.allowed-origins=https://CHANGE-ME
+
+# ── Seeder ──────────────────────────────────────────────────────────────────
+# Idempotent and code-driven: it reconciles user types, modules, permissions and
+# configuration keys on every start. The bootstrap account is created only when
+# no user exists — set a real password before first start, then change it.
+hodi.seed.enabled=true
+hodi.seed.bootstrap-username=superadmin
+hodi.seed.bootstrap-email=admin@CHANGE-ME
+hodi.seed.bootstrap-password=
+
+# ── Storage ─────────────────────────────────────────────────────────────────
+# Nothing here: bucket, endpoint, credentials and the local fallback directory
+# live in the configurations table (secrets encrypted) — Settings › Storage.
+# The local directory defaults relative to the working directory the jar is
+# launched from; give it its own folder, not hodi-b's.
+
+# ── Logging ─────────────────────────────────────────────────────────────────
+# config/logback-spring.xml beside the jar, not the one inside it. Under the prod
+# profile it writes JSON to stdout for the journal; nothing is written to disk.
+logging.config=file:config/logback-spring.xml
+logging.level.root=INFO
+logging.level.com.hodi=INFO
+logging.level.org.springframework.security=WARN
+logging.level.org.hibernate.SQL=WARN
+logging.level.org.flywaydb=INFO
+
+# ── OpenAPI ─────────────────────────────────────────────────────────────────
+springdoc.api-docs.path=/api/v1/docs
+springdoc.swagger-ui.path=/api/v1/swagger-ui.html
+
+# ── Actuator ────────────────────────────────────────────────────────────────
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.probes.enabled=true
+management.endpoint.health.show-details=never
+# Probe this, not /actuator/health: that reports DOWN on a Redis blip. Note a
+# Redis outage means the refresh-token denylist cannot be checked.
+management.endpoint.health.group.readiness.include=db,ping
+management.endpoint.health.group.readiness.show-details=never
