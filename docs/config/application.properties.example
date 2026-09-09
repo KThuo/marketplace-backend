@@ -17,8 +17,11 @@ spring.profiles.active=${SPRING_PROFILES_ACTIVE:prod}
 
 # ── Datasource: database `hodi`, schema `hodimp` ────────────────────────────
 # currentSchema is required — without it Hibernate and Flyway look in `public`,
-# which on this server is not ours. Flyway creates the schema on first start.
-spring.datasource.url=jdbc:postgresql://HOST:PORT/hodi?currentSchema=hodimp
+# which on this server is not ours. `public` stays on the path, second: pg_trgm is
+# installed there by hodi-b, an extension exists once per database, and the
+# nineteen trigram indexes name gin_trgm_ops unqualified. Our tables are only ever
+# in hodimp; public is searched for the operator class alone.
+spring.datasource.url=jdbc:postgresql://HOST:PORT/hodi?currentSchema=hodimp,public
 spring.datasource.username=
 spring.datasource.password=
 spring.datasource.hikari.minimum-idle=4
@@ -28,7 +31,7 @@ spring.datasource.hikari.max-lifetime=1200000
 spring.datasource.hikari.connection-timeout=20000
 spring.datasource.hikari.leak-detection-threshold=60000
 spring.datasource.hikari.pool-name=hodimp-cp
-spring.datasource.hikari.connection-init-sql=SET search_path TO hodimp
+spring.datasource.hikari.connection-init-sql=SET search_path TO hodimp, public
 
 # ── JPA ─────────────────────────────────────────────────────────────────────
 spring.jpa.open-in-view=false
@@ -50,7 +53,9 @@ spring.jpa.show-sql=false
 spring.flyway.enabled=true
 spring.flyway.locations=classpath:db/migration
 spring.flyway.default-schema=hodimp
-spring.flyway.schemas=hodimp
+# Both, in this order: the history table and every object go in hodimp (the
+# default), and public is on Flyway's search_path so gin_trgm_ops resolves.
+spring.flyway.schemas=hodimp,public
 spring.flyway.create-schemas=true
 spring.flyway.validate-on-migrate=true
 # false: a restored dump carries its own ledger, and a mismatch should be loud.
