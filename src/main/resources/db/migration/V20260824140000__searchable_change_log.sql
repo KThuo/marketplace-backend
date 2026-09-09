@@ -17,7 +17,7 @@ ALTER TABLE configuration_logs ADD COLUMN search_text text
               coalesce(reason, '') || ' ' || coalesce(tenant_name, '') || ' ' || coalesce(scope, ''))
     ) STORED;
 
-CREATE INDEX idx_config_logs_search_trgm ON configuration_logs USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_config_logs_search_trgm ON configuration_logs USING gin (search_text public.gin_trgm_ops);
 
 -- The date filter this list already offers had no index behind it, so narrowing to a month still scanned.
 CREATE INDEX idx_config_logs_created ON configuration_logs (created_at DESC);

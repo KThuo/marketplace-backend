@@ -83,7 +83,7 @@ ALTER TABLE ticket_assignment_rules ADD COLUMN search_text text
               coalesce(property_type, '') || ' ' || coalesce(assignee_name, '') || ' ' ||
               coalesce(assignee_group_name, ''))
     ) STORED;
-CREATE INDEX idx_rule_search_trgm ON ticket_assignment_rules USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_rule_search_trgm ON ticket_assignment_rules USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The diary.
@@ -155,4 +155,4 @@ ALTER TABLE event_calendar_entries ADD COLUMN search_text text
               coalesce(detail, '') || ' ' || coalesce(location, '') || ' ' ||
               coalesce(tenant_name, '') || ' ' || coalesce(owner_name, ''))
     ) STORED;
-CREATE INDEX idx_entry_search_trgm ON event_calendar_entries USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_entry_search_trgm ON event_calendar_entries USING gin (search_text public.gin_trgm_ops);

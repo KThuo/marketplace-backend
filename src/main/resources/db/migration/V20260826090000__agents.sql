@@ -160,7 +160,7 @@ ALTER TABLE agent_profiles ADD COLUMN search_text text
               coalesce(phone, '') || ' ' || coalesce(licence_number, '') || ' ' ||
               coalesce(counties, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_agent_search_trgm ON agent_profiles USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_agent_search_trgm ON agent_profiles USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The agreement.

@@ -86,7 +86,7 @@ ALTER TABLE enquiry_tickets ADD COLUMN search_text text
               coalesce(property_reference, '') || ' ' || coalesce(property_title, '') || ' ' ||
               coalesce(buyer_name, '') || ' ' || coalesce(buyer_email, ''))
     ) STORED;
-CREATE INDEX idx_enquiry_search_trgm ON enquiry_tickets USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_enquiry_search_trgm ON enquiry_tickets USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The conversation.
@@ -176,7 +176,7 @@ ALTER TABLE site_visits ADD COLUMN search_text text
               coalesce(property_title, '') || ' ' || coalesce(buyer_name, '') || ' ' ||
               coalesce(buyer_email, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_visit_search_trgm ON site_visits USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_visit_search_trgm ON site_visits USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Purchase requests.
@@ -250,4 +250,4 @@ ALTER TABLE purchase_requests ADD COLUMN search_text text
               coalesce(property_title, '') || ' ' || coalesce(buyer_name, '') || ' ' ||
               coalesce(buyer_email, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_purchase_search_trgm ON purchase_requests USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_purchase_search_trgm ON purchase_requests USING gin (search_text public.gin_trgm_ops);

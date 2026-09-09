@@ -171,7 +171,7 @@ ALTER TABLE developments ADD COLUMN search_text text
               coalesce(developer_name, '') || ' ' || coalesce(tenant_name, '') || ' ' ||
               coalesce(institution_name, ''))
     ) STORED;
-CREATE INDEX idx_dev_search_trgm ON developments USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_dev_search_trgm ON developments USING gin (search_text public.gin_trgm_ops);
 
 -- ── Delegated rights ─────────────────────────────────────────────────────────────────────────────
 -- The bank owns a financed project; the developer building it posts the progress.

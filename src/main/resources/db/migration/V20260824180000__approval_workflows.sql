@@ -92,7 +92,7 @@ ALTER TABLE approval_workflows ADD COLUMN search_text text
               coalesce(action, '') || ' ' || coalesce(submitted_by_username, '') || ' ' ||
               coalesce(checked_by_username, '') || ' ' || coalesce(submission_note, ''))
     ) STORED;
-CREATE INDEX idx_approval_search_trgm ON approval_workflows USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_approval_search_trgm ON approval_workflows USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Backfill: every partnership that is currently pending or already decided gets the row it would have had.

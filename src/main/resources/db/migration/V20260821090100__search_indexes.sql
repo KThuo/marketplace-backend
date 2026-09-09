@@ -7,10 +7,11 @@
 -- because Postgres maintains it. SearchSpecs.fuzzy() splits the term on whitespace and ANDs substring
 -- matches against this column, which is what makes "nairobi cash" find "Cashier — Nairobi Branch".
 --
--- The extension goes in `public`, which is where everything in this application lives — there is no
--- per-tenant search_path to keep gin_trgm_ops resolvable from, which is one fewer thing to get wrong
--- than under schema-per-tenant.
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- The extension goes in `public`, by name, and its operator class is named there on every trigram index in
+-- this application. An extension exists once per database, and on a server where this schema shares the
+-- database with another application it is already installed there; qualifying the operator class means no
+-- search_path has to include public for these scripts to run, wherever our own schema is.
+CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- users
@@ -31,7 +32,7 @@ ALTER TABLE users ADD COLUMN search_text text
 
 -- NOTE at production scale: rebuild these as CREATE INDEX CONCURRENTLY in a separate,
 -- non-transactional migration — the form below takes an ACCESS EXCLUSIVE lock on the table.
-CREATE INDEX idx_users_search_trgm ON users USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_users_search_trgm ON users USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- user_groups
@@ -42,7 +43,7 @@ ALTER TABLE user_groups ADD COLUMN search_text text
               coalesce(user_type_code, '') || ' ' || coalesce(user_type_name, ''))
     ) STORED;
 
-CREATE INDEX idx_user_groups_search_trgm ON user_groups USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_user_groups_search_trgm ON user_groups USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- user_types
@@ -53,7 +54,7 @@ ALTER TABLE user_types ADD COLUMN search_text text
               coalesce(description, '') || ' ' || coalesce(actor_class, ''))
     ) STORED;
 
-CREATE INDEX idx_user_types_search_trgm ON user_types USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_user_types_search_trgm ON user_types USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- app_modules
@@ -68,7 +69,7 @@ ALTER TABLE app_modules ADD COLUMN search_text text
               coalesce(description, '') || ' ' || coalesce(allowed_user_types, ''))
     ) STORED;
 
-CREATE INDEX idx_app_modules_search_trgm ON app_modules USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_app_modules_search_trgm ON app_modules USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- tenants and lending_institutions — both searched by name, reference and contact
@@ -81,7 +82,7 @@ ALTER TABLE tenants ADD COLUMN search_text text
               coalesce(onboarding_status, ''))
     ) STORED;
 
-CREATE INDEX idx_tenants_search_trgm ON tenants USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_tenants_search_trgm ON tenants USING gin (search_text public.gin_trgm_ops);
 
 ALTER TABLE lending_institutions ADD COLUMN search_text text
     GENERATED ALWAYS AS (
@@ -92,7 +93,7 @@ ALTER TABLE lending_institutions ADD COLUMN search_text text
     ) STORED;
 
 CREATE INDEX idx_institutions_search_trgm
-    ON lending_institutions USING gin (search_text gin_trgm_ops);
+    ON lending_institutions USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- tenant_lender_partnerships — searched from all three sides, by the other side's name
@@ -104,7 +105,7 @@ ALTER TABLE tenant_lender_partnerships ADD COLUMN search_text text
     ) STORED;
 
 CREATE INDEX idx_partnerships_search_trgm
-    ON tenant_lender_partnerships USING gin (search_text gin_trgm_ops);
+    ON tenant_lender_partnerships USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- configurations
@@ -119,7 +120,7 @@ ALTER TABLE configurations ADD COLUMN search_text text
     ) STORED;
 
 CREATE INDEX idx_configurations_search_trgm
-    ON configurations USING gin (search_text gin_trgm_ops);
+    ON configurations USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- audit_logs
@@ -135,4 +136,4 @@ ALTER TABLE audit_logs ADD COLUMN search_text text
               coalesce(actor_user_type, '') || ' ' || coalesce(ip_address, ''))
     ) STORED;
 
-CREATE INDEX idx_audit_search_trgm ON audit_logs USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_audit_search_trgm ON audit_logs USING gin (search_text public.gin_trgm_ops);

@@ -127,7 +127,7 @@ ALTER TABLE properties ADD COLUMN search_text text
               coalesce(county, '') || ' ' || coalesce(town, '') || ' ' || coalesce(estate, '') || ' ' ||
               coalesce(tenant_name, ''))
     ) STORED;
-CREATE INDEX idx_properties_search_trgm ON properties USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_properties_search_trgm ON properties USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Photographs.

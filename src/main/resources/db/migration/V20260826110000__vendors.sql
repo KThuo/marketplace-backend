@@ -133,7 +133,7 @@ ALTER TABLE vendor_profiles ADD COLUMN search_text text
               coalesce(phone, '') || ' ' || coalesce(category_name, '') || ' ' ||
               coalesce(counties, '') || ' ' || coalesce(about, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_vendor_search_trgm ON vendor_profiles USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_vendor_search_trgm ON vendor_profiles USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- One thing a vendor offers.
@@ -200,7 +200,7 @@ ALTER TABLE catalogue_items ADD COLUMN search_text text
               coalesce(category_name, '') || ' ' || coalesce(counties, '') || ' ' ||
               coalesce(price_note, ''))
     ) STORED;
-CREATE INDEX idx_item_search_trgm ON catalogue_items USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_item_search_trgm ON catalogue_items USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The modules an approved vendor works in. Appended, token-precise, and only where the row is untouched —

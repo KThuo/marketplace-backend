@@ -199,7 +199,7 @@ ALTER TABLE kyc_submissions ADD COLUMN search_text text
         lower(coalesce(reference, '') || ' ' || coalesce(tenant_name, '') || ' ' ||
               coalesce(entity_type, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_kyc_sub_search_trgm ON kyc_submissions USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_kyc_sub_search_trgm ON kyc_submissions USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The documents in a pack, and what Compliance made of each one.

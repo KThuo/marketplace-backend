@@ -114,7 +114,7 @@ CREATE INDEX idx_expenditure_development ON development_expenditures (developmen
     WHERE status <> 5;
 CREATE INDEX idx_expenditure_phase ON development_expenditures (phase_id) WHERE phase_id IS NOT NULL;
 CREATE INDEX idx_expenditure_category ON development_expenditures (category_id);
-CREATE INDEX idx_expenditure_search ON development_expenditures USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_expenditure_search ON development_expenditures USING gin (search_text public.gin_trgm_ops);
 
 -- ── the facility, drawn ──────────────────────────────────────────────────────────────────────────
 

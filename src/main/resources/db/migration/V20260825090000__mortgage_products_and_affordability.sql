@@ -100,7 +100,7 @@ ALTER TABLE mortgage_products ADD COLUMN search_text text
               coalesce(institution_name, ''))
     ) STORED;
 CREATE INDEX idx_mortgage_products_search_trgm
-    ON mortgage_products USING gin (search_text gin_trgm_ops);
+    ON mortgage_products USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- What a household can carry.
@@ -181,4 +181,4 @@ ALTER TABLE affordability_checks ADD COLUMN search_text text
               coalesce(decision, '') || ' ' || coalesce(provider, ''))
     ) STORED;
 CREATE INDEX idx_affordability_search_trgm
-    ON affordability_checks USING gin (search_text gin_trgm_ops);
+    ON affordability_checks USING gin (search_text public.gin_trgm_ops);

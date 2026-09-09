@@ -80,7 +80,7 @@ ALTER TABLE valuer_profiles ADD COLUMN search_text text
               coalesce(firm_name, '') || ' ' || coalesce(registration_number, '') || ' ' ||
               coalesce(counties, ''))
     ) STORED;
-CREATE INDEX idx_valuer_search_trgm ON valuer_profiles USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_valuer_search_trgm ON valuer_profiles USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A job.
@@ -168,7 +168,7 @@ ALTER TABLE valuation_requests ADD COLUMN search_text text
               coalesce(institution_name, '') || ' ' || coalesce(valuer_name, '') || ' ' ||
               coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_valuation_search_trgm ON valuation_requests USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_valuation_search_trgm ON valuation_requests USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The valuer's answer.

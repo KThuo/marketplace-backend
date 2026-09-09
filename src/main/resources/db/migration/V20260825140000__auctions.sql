@@ -49,7 +49,7 @@ ALTER TABLE auctioneers ADD COLUMN search_text text
         lower(coalesce(reference, '') || ' ' || coalesce(name, '') || ' ' ||
               coalesce(firm_name, '') || ' ' || coalesce(licence_number, ''))
     ) STORED;
-CREATE INDEX idx_auctioneer_search_trgm ON auctioneers USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_auctioneer_search_trgm ON auctioneers USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A lot.
@@ -149,7 +149,7 @@ ALTER TABLE auction_lots ADD COLUMN search_text text
               coalesce(county, '') || ' ' || coalesce(town, '') || ' ' || coalesce(estate, '') || ' ' ||
               coalesce(title_number, '') || ' ' || coalesce(auctioneer_name, ''))
     ) STORED;
-CREATE INDEX idx_lot_search_trgm ON auction_lots USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_lot_search_trgm ON auction_lots USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Bidder registration.
@@ -209,4 +209,4 @@ ALTER TABLE auction_registrations ADD COLUMN search_text text
               coalesce(state, ''))
     ) STORED;
 CREATE INDEX idx_registration_search_trgm
-    ON auction_registrations USING gin (search_text gin_trgm_ops);
+    ON auction_registrations USING gin (search_text public.gin_trgm_ops);

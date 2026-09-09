@@ -123,4 +123,4 @@ ALTER TABLE search_alerts ADD COLUMN search_text text
         lower(coalesce(name, '') || ' ' || coalesce(search_term, '') || ' ' ||
               coalesce(property_type, '') || ' ' || coalesce(county, '') || ' ' || coalesce(town, ''))
     ) STORED;
-CREATE INDEX idx_search_alerts_search_trgm ON search_alerts USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_search_alerts_search_trgm ON search_alerts USING gin (search_text public.gin_trgm_ops);

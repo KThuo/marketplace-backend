@@ -173,7 +173,7 @@ ALTER TABLE listing_promotions ADD COLUMN search_text text
               coalesce(property_title, '') || ' ' || coalesce(tenant_name, '') || ' ' ||
               coalesce(package_name, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_promotion_search_trgm ON listing_promotions USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_promotion_search_trgm ON listing_promotions USING gin (search_text public.gin_trgm_ops);
 
 -- The boost a listing currently carries, denormalised so marketplace search sorts without a join. Written
 -- by PromotionService and by nothing else.
@@ -241,4 +241,4 @@ ALTER TABLE commission_records ADD COLUMN search_text text
               coalesce(property_title, '') || ' ' || coalesce(tenant_name, '') || ' ' ||
               coalesce(invoice_ref, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_commission_search_trgm ON commission_records USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_commission_search_trgm ON commission_records USING gin (search_text public.gin_trgm_ops);

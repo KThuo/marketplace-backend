@@ -131,7 +131,7 @@ ALTER TABLE users ADD COLUMN search_text text
               coalesce(username, '') || ' ' || coalesce(email, '') || ' ' ||
               coalesce(phone, ''))
     ) STORED;
-CREATE INDEX idx_users_search_trgm ON users USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_users_search_trgm ON users USING gin (search_text public.gin_trgm_ops);
 
 -- The labels, searchable on the profile that owns them.
 ALTER TABLE user_profiles ADD COLUMN search_text text
@@ -140,7 +140,7 @@ ALTER TABLE user_profiles ADD COLUMN search_text text
               coalesce(tenant_name, '') || ' ' || coalesce(institution_name, '') || ' ' ||
               coalesce(profile_type, ''))
     ) STORED;
-CREATE INDEX idx_user_profiles_search_trgm ON user_profiles USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_user_profiles_search_trgm ON user_profiles USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A session belongs to a profile, not just to a person.

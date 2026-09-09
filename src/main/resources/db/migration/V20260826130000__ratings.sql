@@ -95,7 +95,7 @@ ALTER TABLE ratings ADD COLUMN search_text text
               coalesce(subject_ref, '') || ' ' || coalesce(rater_name, '') || ' ' ||
               coalesce(title, '') || ' ' || coalesce(body, ''))
     ) STORED;
-CREATE INDEX idx_rating_search_trgm ON ratings USING gin (search_text gin_trgm_ops);
+CREATE INDEX idx_rating_search_trgm ON ratings USING gin (search_text public.gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A complaint about a rating.
