@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 4 / M10 — the vendor marketplace (BRD FR170, plan §3.6)
 --
@@ -133,7 +151,7 @@ ALTER TABLE vendor_profiles ADD COLUMN search_text text
               coalesce(phone, '') || ' ' || coalesce(category_name, '') || ' ' ||
               coalesce(counties, '') || ' ' || coalesce(about, '') || ' ' || coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_vendor_search_trgm ON vendor_profiles USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_vendor_search_trgm ON vendor_profiles USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- One thing a vendor offers.
@@ -200,7 +218,7 @@ ALTER TABLE catalogue_items ADD COLUMN search_text text
               coalesce(category_name, '') || ' ' || coalesce(counties, '') || ' ' ||
               coalesce(price_note, ''))
     ) STORED;
-CREATE INDEX idx_item_search_trgm ON catalogue_items USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_item_search_trgm ON catalogue_items USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The modules an approved vendor works in. Appended, token-precise, and only where the row is untouched —

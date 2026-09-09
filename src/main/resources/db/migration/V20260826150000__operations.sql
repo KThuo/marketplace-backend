@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 5 / M12 — internal management, buyer side (plan §4)
 --
@@ -83,7 +101,7 @@ ALTER TABLE ticket_assignment_rules ADD COLUMN search_text text
               coalesce(property_type, '') || ' ' || coalesce(assignee_name, '') || ' ' ||
               coalesce(assignee_group_name, ''))
     ) STORED;
-CREATE INDEX idx_rule_search_trgm ON ticket_assignment_rules USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_rule_search_trgm ON ticket_assignment_rules USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The diary.
@@ -155,4 +173,4 @@ ALTER TABLE event_calendar_entries ADD COLUMN search_text text
               coalesce(detail, '') || ' ' || coalesce(location, '') || ' ' ||
               coalesce(tenant_name, '') || ' ' || coalesce(owner_name, ''))
     ) STORED;
-CREATE INDEX idx_entry_search_trgm ON event_calendar_entries USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_entry_search_trgm ON event_calendar_entries USING gin (search_text gin_trgm_ops);

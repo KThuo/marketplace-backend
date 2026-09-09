@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Payment types, payment accounts, and payments
 --
@@ -93,7 +111,7 @@ CREATE TABLE payment_types (
 CREATE UNIQUE INDEX uk_payment_type_pesi ON payment_types (pesi_provider_type)
     WHERE pesi_provider_type IS NOT NULL;
 CREATE INDEX idx_payment_types_order ON payment_types (sort_order) WHERE status <> 5;
-CREATE INDEX idx_payment_types_search ON payment_types USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_payment_types_search ON payment_types USING gin (search_text gin_trgm_ops);
 
 /*
  * The channels. Cash and cheque are on, because they need nothing configured to work. Everything with a
@@ -225,7 +243,7 @@ CREATE INDEX idx_payment_account_tenant ON payment_accounts (tenant_id) WHERE te
 CREATE INDEX idx_payment_account_institution ON payment_accounts (institution_id)
     WHERE institution_id IS NOT NULL;
 CREATE INDEX idx_payment_account_type ON payment_accounts (payment_type_id, status);
-CREATE INDEX idx_payment_account_search ON payment_accounts USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_payment_account_search ON payment_accounts USING gin (search_text gin_trgm_ops);
 
 /*
  * The tills already registered move across with their ids, so the statements that point at them keep
@@ -356,7 +374,7 @@ ALTER TABLE payments ADD COLUMN search_text TEXT GENERATED ALWAYS AS (
           coalesce(payment_type_name, ''))
 ) STORED;
 
-CREATE INDEX idx_payments_search ON payments USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_payments_search ON payments USING gin (search_text gin_trgm_ops);
 CREATE INDEX idx_payments_development ON payments (development_id, paid_on DESC) WHERE status <> 5;
 CREATE INDEX idx_payments_institution ON payments (institution_id, paid_on DESC)
     WHERE institution_id IS NOT NULL;
@@ -371,7 +389,7 @@ ALTER TABLE unit_bookings ADD COLUMN search_text TEXT GENERATED ALWAYS AS (
     lower(coalesce(reference, '') || ' ' || coalesce(buyer_name, '') || ' ' ||
           coalesce(buyer_phone, '') || ' ' || coalesce(buyer_email, ''))
 ) STORED;
-CREATE INDEX idx_booking_search ON unit_bookings USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_booking_search ON unit_bookings USING gin (search_text gin_trgm_ops);
 
 -- ── 4. The views: received money only ────────────────────────────────────────────────────────────
 

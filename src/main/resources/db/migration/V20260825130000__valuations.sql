@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 3 / M5 — valuation (BRD FR035–FR048, plan §3.5)
 --
@@ -80,7 +98,7 @@ ALTER TABLE valuer_profiles ADD COLUMN search_text text
               coalesce(firm_name, '') || ' ' || coalesce(registration_number, '') || ' ' ||
               coalesce(counties, ''))
     ) STORED;
-CREATE INDEX idx_valuer_search_trgm ON valuer_profiles USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_valuer_search_trgm ON valuer_profiles USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A job.
@@ -168,7 +186,7 @@ ALTER TABLE valuation_requests ADD COLUMN search_text text
               coalesce(institution_name, '') || ' ' || coalesce(valuer_name, '') || ' ' ||
               coalesce(state, ''))
     ) STORED;
-CREATE INDEX idx_valuation_search_trgm ON valuation_requests USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_valuation_search_trgm ON valuation_requests USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- The valuer's answer.

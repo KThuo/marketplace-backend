@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 3 / M6 — auction (BRD UC006, plan §4)
 --
@@ -49,7 +67,7 @@ ALTER TABLE auctioneers ADD COLUMN search_text text
         lower(coalesce(reference, '') || ' ' || coalesce(name, '') || ' ' ||
               coalesce(firm_name, '') || ' ' || coalesce(licence_number, ''))
     ) STORED;
-CREATE INDEX idx_auctioneer_search_trgm ON auctioneers USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_auctioneer_search_trgm ON auctioneers USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A lot.
@@ -149,7 +167,7 @@ ALTER TABLE auction_lots ADD COLUMN search_text text
               coalesce(county, '') || ' ' || coalesce(town, '') || ' ' || coalesce(estate, '') || ' ' ||
               coalesce(title_number, '') || ' ' || coalesce(auctioneer_name, ''))
     ) STORED;
-CREATE INDEX idx_lot_search_trgm ON auction_lots USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_lot_search_trgm ON auction_lots USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Bidder registration.
@@ -209,4 +227,4 @@ ALTER TABLE auction_registrations ADD COLUMN search_text text
               coalesce(state, ''))
     ) STORED;
 CREATE INDEX idx_registration_search_trgm
-    ON auction_registrations USING gin (search_text public.gin_trgm_ops);
+    ON auction_registrations USING gin (search_text gin_trgm_ops);

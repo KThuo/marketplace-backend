@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Developments — a project with many units, sold off-plan or never sold at all
 --
@@ -171,7 +189,7 @@ ALTER TABLE developments ADD COLUMN search_text text
               coalesce(developer_name, '') || ' ' || coalesce(tenant_name, '') || ' ' ||
               coalesce(institution_name, ''))
     ) STORED;
-CREATE INDEX idx_dev_search_trgm ON developments USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_dev_search_trgm ON developments USING gin (search_text gin_trgm_ops);
 
 -- ── Delegated rights ─────────────────────────────────────────────────────────────────────────────
 -- The bank owns a financed project; the developer building it posts the progress.

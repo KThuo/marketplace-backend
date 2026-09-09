@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 0b — Maker/Checker, once, for everything (BRD FR070, FR122, FR126, FR128)
 --
@@ -92,7 +110,7 @@ ALTER TABLE approval_workflows ADD COLUMN search_text text
               coalesce(action, '') || ' ' || coalesce(submitted_by_username, '') || ' ' ||
               coalesce(checked_by_username, '') || ' ' || coalesce(submission_note, ''))
     ) STORED;
-CREATE INDEX idx_approval_search_trgm ON approval_workflows USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_approval_search_trgm ON approval_workflows USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- Backfill: every partnership that is currently pending or already decided gets the row it would have had.

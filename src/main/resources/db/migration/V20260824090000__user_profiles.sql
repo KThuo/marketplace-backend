@@ -1,3 +1,21 @@
+-- pg_trgm's operator class, wherever the extension lives.
+-- An extension exists once per database, in one schema, and on a shared server that schema is whichever
+-- application installed it first — public on one machine, another application's schema on the next. Rather
+-- than guess, look it up and put it on this transaction's search path; Flyway runs the whole script in one
+-- transaction, so every gin_trgm_ops below resolves. Installs it into our own schema if nobody has yet.
+DO $$
+DECLARE ext_schema text;
+BEGIN
+    SELECT n.nspname INTO ext_schema
+      FROM pg_extension e JOIN pg_namespace n ON n.oid = e.extnamespace
+     WHERE e.extname = 'pg_trgm';
+    IF ext_schema IS NULL THEN
+        EXECUTE 'CREATE EXTENSION pg_trgm';
+        ext_schema := current_schema();
+    END IF;
+    EXECUTE format('SET LOCAL search_path TO %I, %I', current_schema(), ext_schema);
+END $$;
+
 -- ═════════════════════════════════════════════════════════════════════════════════════════════════
 -- Phase 0a — one login, many profiles (BRD FR073)
 --
@@ -131,7 +149,7 @@ ALTER TABLE users ADD COLUMN search_text text
               coalesce(username, '') || ' ' || coalesce(email, '') || ' ' ||
               coalesce(phone, ''))
     ) STORED;
-CREATE INDEX idx_users_search_trgm ON users USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_users_search_trgm ON users USING gin (search_text gin_trgm_ops);
 
 -- The labels, searchable on the profile that owns them.
 ALTER TABLE user_profiles ADD COLUMN search_text text
@@ -140,7 +158,7 @@ ALTER TABLE user_profiles ADD COLUMN search_text text
               coalesce(tenant_name, '') || ' ' || coalesce(institution_name, '') || ' ' ||
               coalesce(profile_type, ''))
     ) STORED;
-CREATE INDEX idx_user_profiles_search_trgm ON user_profiles USING gin (search_text public.gin_trgm_ops);
+CREATE INDEX idx_user_profiles_search_trgm ON user_profiles USING gin (search_text gin_trgm_ops);
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────────
 -- A session belongs to a profile, not just to a person.
