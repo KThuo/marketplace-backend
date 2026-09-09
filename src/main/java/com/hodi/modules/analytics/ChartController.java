@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -37,9 +38,11 @@ public class ChartController {
         return ApiResponse.success(service.available());
     }
 
+    /** @param developmentId narrows the chart to one development, where the chart has a subject */
     @GetMapping("/{key}")
     @PreAuthorize("isAuthenticated()")
-    public ApiResponse<ChartData> chart(@PathVariable String key) {
-        return ApiResponse.success(service.draw(key));
+    public ApiResponse<ChartData> chart(@PathVariable String key,
+                                        @RequestParam(required = false) String developmentId) {
+        return ApiResponse.success(service.draw(key, developmentId));
     }
 }

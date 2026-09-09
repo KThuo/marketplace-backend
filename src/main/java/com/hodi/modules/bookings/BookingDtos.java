@@ -27,7 +27,8 @@ public final class BookingDtos {
     // ── requests ─────────────────────────────────────────────────────────────
 
     public record CreateBookingRequest(
-            @NotBlank(message = "Say which unit") String unitHashId,
+            /** Required on the development route, where the body names the unit; absent on a property's own. */
+            String unitHashId,
             @NotBlank(message = "The buyer's name is required")
             @Size(max = 160) String buyerName,
             /**
@@ -59,20 +60,6 @@ public final class BookingDtos {
     public record RescheduleRequest(
             @NotNull @Valid List<InstalmentLine> instalments,
             @NotBlank(message = "Say why the schedule is changing") String reason) {}
-
-    public record RecordPaymentRequest(
-            @NotNull(message = "How much was received?") @DecimalMin("0.01") BigDecimal amount,
-            LocalDate paidOn,
-            @Size(max = 24) String method,
-            /** What the payer quoted, if they quoted anything. */
-            @Size(max = 16) String quotedReference,
-            @Size(max = 64) String externalReference,
-            @Size(max = 160) String payerName,
-            @Size(max = 32) String payerPhone,
-            String notes) {}
-
-    public record ReversePaymentRequest(
-            @NotBlank(message = "Say why this payment is being reversed") String reason) {}
 
     public record CloseBookingRequest(
             @NotBlank(message = "Say why — it stays on the record") String reason) {}
@@ -113,7 +100,24 @@ public final class BookingDtos {
             int instalmentCount,
             int paymentCount,
             OffsetDateTime createdAt,
-            String createdBy) {}
+            String createdBy,
+            /** The home. A UNIT of a development or a HOUSE; the title reads right for either. */
+            String propertyId,
+            String propertyTitle,
+            String listingKind) {}
+
+    /**
+     * A sale made off the platform, or a booking completed by hand.
+     *
+     * <p>Marks a home sold by writing a completed booking for it, so the sale has a buyer, a price and a place
+     * for money to land later — rather than a flag on the row that a report cannot add up.
+     */
+    public record MarkSoldRequest(
+            @Size(max = 160) String buyerName,
+            @Size(max = 32) String buyerPhone,
+            @Size(max = 128) String buyerEmail,
+            @DecimalMin("0") BigDecimal price,
+            String note) {}
 
     public record InstalmentResponse(
             String id,
@@ -123,26 +127,6 @@ public final class BookingDtos {
             LocalDate dueOn,
             BigDecimal amount,
             String currency) {}
-
-    public record PaymentResponse(
-            String id,
-            String reference,
-            LocalDate paidOn,
-            BigDecimal amount,
-            String currency,
-            String source,
-            String method,
-            String quotedReference,
-            String externalReference,
-            String payerName,
-            String payerPhone,
-            boolean reversal,
-            String reversalReason,
-            /** Whether a later row has already reversed this one, so the button can be hidden. */
-            boolean reversed,
-            String notes,
-            OffsetDateTime createdAt,
-            String createdBy) {}
 
     /**
      * A booking's money, worked out in one place.

@@ -52,6 +52,8 @@ public class OtpChallengeService {
     public static final String PURPOSE_LOGIN = "LOGIN";
     public static final String PURPOSE_EMAIL_VERIFY = "EMAIL_VERIFY";
     public static final String PURPOSE_PHONE_VERIFY = "PHONE_VERIFY";
+    /** Changing where an organisation's money lands. The code goes to the organisation, not the caller. */
+    public static final String PURPOSE_PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT";
 
     public static final String CHANNEL_TOTP = "TOTP";
     public static final String CHANNEL_SMS = "SMS";
@@ -136,6 +138,79 @@ public class OtpChallengeService {
         notify.sendSensitiveSms(user.getPhone(),
                 "Your Hodi confirmation code is " + code + ".", user.fullName());
         return new Challenge(saved.getChallengeToken(), CHANNEL_SMS, masked);
+    }
+
+    /**
+     * A code sent somewhere other than the caller's own handset.
+     *
+     * @param challengeToken the handle the caller carries back with the code
+     * @param sentToMasked   where it went, masked for display
+     */
+    public record IssuedCode(String challengeToken, String sentToMasked, OffsetDateTime expiresAt,
+                             int validForMinutes) {}
+
+    /**
+     * Issue a code to a phone that is not the caller's — an organisation's contact number.
+     *
+     * <p>Bound to the caller's user id so the same person cannot hold two live challenges of one purpose and
+     * so {@link #consumeCode} can insist the code is redeemed by whoever asked for it. The point of sending it
+     * elsewhere is the point of the control: somebody holding a staff login does not hold the office phone.
+     *
+     * @param about one sentence saying what the code confirms, put in front of it in the text
+     */
+    @Transactional
+    public IssuedCode issueToPhone(Long userId, String purpose, String phone, String recipientName,
+                                   String about) {
+        if (phone == null || phone.isBlank()) {
+            throw new HodiException("There is no phone number to send the code to", HttpStatus.BAD_REQUEST);
+        }
+        retireOutstanding(userId, purpose);
+        String code = numericCode();
+        String masked = maskPhone(phone);
+        OffsetDateTime expires = OffsetDateTime.now().plusMinutes(ttlMinutes());
+        OtpChallenge saved = repository.save(OtpChallenge.builder()
+                .challengeToken(freshToken())
+                .userId(userId)
+                .purpose(purpose)
+                .channel(CHANNEL_SMS)
+                .codeHash(hash(code))
+                .sentToMasked(masked)
+                .expiresAt(expires)
+                .build());
+        notify.sendSensitiveSms(phone,
+                about + " Your Hodi confirmation code is " + code + ". It expires in " + ttlMinutes()
+                        + " minutes.",
+                recipientName);
+        return new IssuedCode(saved.getChallengeToken(), masked, expires, ttlMinutes());
+    }
+
+    /**
+     * Check and consume a code issued by {@link #issueToPhone}.
+     *
+     * <p>Refused as a bad request rather than as unauthorised: the caller <em>is</em> signed in, and a 401
+     * here would send the client into its token-refresh path and end the session over a mistyped digit. The
+     * message always says "code", so a form can put it under the boxes.
+     */
+    @Transactional
+    public void consumeCode(String challengeToken, String code, String purpose, Long userId) {
+        OtpChallenge challenge = challengeToken == null || challengeToken.isBlank() ? null
+                : repository.findByChallengeToken(challengeToken).orElse(null);
+        if (challenge == null || !challenge.isUsable() || !purpose.equals(challenge.getPurpose())
+                || !challenge.getUserId().equals(userId) || CHANNEL_TOTP.equals(challenge.getChannel())) {
+            throw new HodiException("That code has expired — ask for a new one.", HttpStatus.BAD_REQUEST);
+        }
+
+        int maxAttempts = Math.max(1, configs.getInt(ConfigKey.AUTH_OTP_MAX_ATTEMPTS));
+        if (challenge.getAttempts() >= maxAttempts) {
+            consume(challenge);
+            throw new HodiException("Too many incorrect codes — ask for a new one.", HttpStatus.BAD_REQUEST);
+        }
+        if (!constantTimeEquals(challenge.getCodeHash(), hash(normalise(code)))) {
+            challenge.setAttempts(challenge.getAttempts() + 1);
+            repository.save(challenge);
+            throw new HodiException("That code is not right.", HttpStatus.BAD_REQUEST);
+        }
+        consume(challenge);
     }
 
     // ── consuming ─────────────────────────────────────────────────────────────

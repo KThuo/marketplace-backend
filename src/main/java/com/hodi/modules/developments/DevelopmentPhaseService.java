@@ -181,8 +181,8 @@ public class DevelopmentPhaseService {
         phase.setActualCompletionOn(request.actualCompletionOn());
         phase.setBudgetAmount(request.budgetAmount());
         phase.setPlannedSpend(request.plannedSpend());
-        phase.setCommittedAmount(request.committedAmount());
-        phase.setSpentAmount(request.spentAmount());
+        // Committed and spent are not taken from the request. They are the sum of the phase's lines in the
+        // cost ledger, recounted by DevelopmentInventoryService; a typed figure here would be a second writer.
         phase.setWeightPct(request.weightPct());
         phase.setMilestoneCode(blankToNull(request.milestoneCode()));
         phase.setPlannedUnitCount(request.plannedUnitCount());

@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
@@ -285,7 +286,7 @@ public class DevelopmentProgressService {
             update.setUnitId(null);
             return;
         }
-        DevelopmentUnit unit = units.findById(HashIdUtil.decodeId(unitHashId))
+        Property unit = units.findById(HashIdUtil.decodeId(unitHashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Unit", unitHashId));
         if (!development.getId().equals(unit.getDevelopmentId())) {
             throw new ResourceNotFoundException("Unit", unitHashId);

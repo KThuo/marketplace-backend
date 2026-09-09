@@ -532,6 +532,18 @@ public enum ConfigKey {
      * key, held by the platform. A tenant able to set this could authorise notifications against everybody's
      * tills.
      */
+    /**
+     * Where a one-time code goes when the platform's own payment account is being changed.
+     *
+     * <p>An organisation's accounts are confirmed by a code to that organisation's contact number; the
+     * platform has no organisation record, so this is its equivalent. While blank, the platform's own
+     * accounts cannot be set up — refused plainly rather than silently skipping the code.
+     */
+    PLATFORM_SUPPORT_PHONE(
+            "platform.support.phone", "STRING", "GENERAL", "",
+            "Platform support phone",
+            "The number a one-time code is texted to when the platform's own payment accounts are changed.",
+            false, false),
     PESI_IPN_SECRET(
             "pesi.ipn.secret", "STRING", "INTEGRATION", "",
             "Pesi notification secret",

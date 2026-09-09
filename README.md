@@ -129,10 +129,31 @@ security/     TenantScope, EffectivePermissionResolver, JWT, principal, password
 seed/         SeederService — reconciles the database against the enums on every boot
 tenant/       TenantContext + the filter that binds it from the principal
 modules/      auth, users, usergroups, usertypes, permissions, appmodules, tenants, institutions,
-              partnerships, tenantmodules, configurations, buyers, dashboard, audit, publicapi
+              partnerships, tenantmodules, configurations, buyers, dashboard, audit, publicapi,
+              developments (incl. the cost ledger, facility drawdowns and cost categories),
+              bookings (on a property: a house or a development's unit), payments
 ```
 
+## Figures
+
+Nothing on the dashboard or the analytics page is stored, generated overnight or cached. Every figure is a sum
+over bookings, payments, the development cost ledger, the drawdowns and the units at the moment the page asks,
+through `security/OwnerScopeSql` — the one place a caller's scope becomes SQL for a JDBC read. See
+`claudedocs/DASHBOARD_AND_ANALYTICS_PLAN.md` and `claudedocs/DEVELOPMENT_FINANCE_AND_PROGRAMME_PLAN.md`.
+
+## One row per home
+
+Every home the platform knows about is a row in `properties`: an ordinary listing (`HOUSE`), the card for one
+kind of home in a development (`TYPOLOGY`), and each home in a development (`UNIT`). Bookings, payments, leads
+and media all point at that row, whichever kind it is, so a sale is one row updated. A unit is written through
+its development's inventory and its booking, never through the listing screens. See
+`claudedocs/UNITS_AS_PROPERTIES_PLAN.md`.
+
 ## Known gaps
+
+- **STK push is not wired.** The payment-type catalogue carries the M-Pesa, KCB and Co-op prompt channels,
+  switched off, because there is no outbound Pesi client yet. Inbound credits (IPN) and hand-recorded
+  payments work; see `claudedocs/PAYMENTS_AND_PAYMENT_TYPES_PLAN.md`.
 
 - **Notifications** are not built. SMS and email go out through `NotifyClient`, but there is no
   in-app inbox or template catalogue yet.

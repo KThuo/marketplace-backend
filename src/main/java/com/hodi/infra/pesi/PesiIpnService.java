@@ -3,14 +3,16 @@ package com.hodi.infra.pesi;
 import com.hodi.common.AppConstant;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.infra.pesi.PesiIpnDtos.IpnPayload;
-import com.hodi.modules.bookings.BookingPayment;
-import com.hodi.modules.bookings.BookingPaymentRepository;
 import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.enums.ConfigKey;
-import com.hodi.modules.developments.DevelopmentUnit;
+import com.hodi.modules.properties.Property;
 import com.hodi.modules.developments.DevelopmentUnitRepository;
+import com.hodi.modules.payments.Payment;
+import com.hodi.modules.payments.PaymentAccount;
+import com.hodi.modules.payments.PaymentAccountRepository;
+import com.hodi.modules.payments.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -20,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -63,10 +64,11 @@ import java.util.Optional;
 public class PesiIpnService {
 
     private final PesiStatementRepository statements;
-    private final PesiPaymentMethodRepository methods;
+    private final PaymentAccountRepository accounts;
     private final UnitBookingRepository bookings;
     private final DevelopmentUnitRepository units;
-    private final BookingPaymentRepository payments;
+    /** The one writer of a payment row, so a gateway credit is stamped exactly as a hand-keyed one is. */
+    private final PaymentService payments;
     private final ConfigurationService configs;
     private final ObjectMapper mapper;
 
@@ -98,15 +100,14 @@ public class PesiIpnService {
             return seen.get();
         }
 
-        PesiPaymentMethod method = payload.accountIdentifier() == null ? null
-                : methods.findByAccountNumber(trim(payload.accountIdentifier())).orElse(null);
+        PaymentAccount account = resolveAccount(trim(payload.accountIdentifier()));
 
         PesiStatement statement = PesiStatement.builder()
                 .refNo(refNo == null ? "UNKNOWN-" + RrnGenerator.generate("RX") : refNo)
                 .traceId(trim(payload.traceId()))
                 .ourReference(RrnGenerator.generate("PS"))
                 .transType(trim(payload.transType()) == null ? "UNKNOWN" : trim(payload.transType()))
-                .paymentMethodId(method == null ? null : method.getId())
+                .paymentAccountId(account == null ? null : account.getId())
                 .accountIdentifier(trim(payload.accountIdentifier()))
                 .reference(trim(payload.reference()))
                 .amount(parseAmount(payload.amount()))
@@ -117,8 +118,8 @@ public class PesiIpnService {
                 .rawPayload(toJson(payload))
                 // Whose money it is, from the till it landed in. Null when we do not recognise the account,
                 // which is itself a reason it cannot be placed.
-                .tenantId(method == null ? null : method.getTenantId())
-                .institutionId(method == null ? null : method.getInstitutionId())
+                .tenantId(account == null ? null : account.getTenantId())
+                .institutionId(account == null ? null : account.getInstitutionId())
                 .state(AppConstant.STATEMENT_UNMAPPED)
                 .createdBy(AppConstant.USERNAME_SYSTEM)
                 .updatedBy(AppConstant.USERNAME_SYSTEM)
@@ -137,8 +138,22 @@ public class PesiIpnService {
         }
 
         // Matching is deliberately after the flush, so nothing below can lose the row above.
-        tryToPlace(stored, method, trusted);
+        tryToPlace(stored, account, trusted);
         return stored;
+    }
+
+    /**
+     * Which of our accounts a notification landed in.
+     *
+     * <p>The account number first, because that is what the Pesi contract carries; the short code as a
+     * fallback for a bank that quotes that instead. Live accounts only — a withdrawn account is exactly the
+     * one a credit must not be matched to.
+     */
+    private PaymentAccount resolveAccount(String accountIdentifier) {
+        if (accountIdentifier == null) return null;
+        return accounts.findLiveByAccountNo(accountIdentifier)
+                .or(() -> accounts.findLiveByShortCode(accountIdentifier))
+                .orElse(null);
     }
 
     /**
@@ -148,7 +163,7 @@ public class PesiIpnService {
      * nobody can work through, and the reason is usually the whole answer — a reference nobody recognises, an
      * amount that does not correspond to anything owed.
      */
-    private void tryToPlace(PesiStatement statement, PesiPaymentMethod method, boolean trusted) {
+    private void tryToPlace(PesiStatement statement, PaymentAccount account, boolean trusted) {
         if (!trusted) {
             /*
              * No shared secret configured, so this notification is unauthenticated.
@@ -161,7 +176,7 @@ public class PesiIpnService {
                     + "hand. Set the Pesi notification secret to allow automatic matching.");
             return;
         }
-        if (method == null) {
+        if (account == null) {
             unplaced(statement, "The account " + statement.getAccountIdentifier()
                     + " is not one of ours, or has not been registered here yet.");
             return;
@@ -171,7 +186,7 @@ public class PesiIpnService {
             return;
         }
 
-        Optional<DevelopmentUnit> unit = units.findByPayReference(payCode(statement.getReference()));
+        Optional<Property> unit = units.findByPayReference(payCode(statement.getReference()));
         if (unit.isEmpty()) {
             unplaced(statement, "No unit has the code \"" + payCode(statement.getReference())
                     + "\". The payer may have mistyped it.");
@@ -200,24 +215,9 @@ public class PesiIpnService {
             return;
         }
 
-        BookingPayment payment = payments.save(BookingPayment.builder()
-                .reference(RrnGenerator.generate("PY"))
-                .bookingId(target.getId())
-                .tenantId(target.getTenantId())
-                .institutionId(target.getInstitutionId())
-                .paidOn(statement.getPaidAt() == null ? LocalDate.now()
-                        : statement.getPaidAt().toLocalDate())
-                .amount(statement.getAmount())
-                .currency(statement.getCurrency())
-                .source(AppConstant.PAY_GATEWAY)
-                .method(AppConstant.PAY_MOBILE_MONEY)
-                .quotedReference(statement.getReference())
-                .externalReference(statement.getRefNo())
-                .payerName(statement.getCustomerName())
-                .payerPhone(statement.getPhoneNo())
-                .createdBy(AppConstant.USERNAME_SYSTEM)
-                .updatedBy(AppConstant.USERNAME_SYSTEM)
-                .build());
+        // Through the payments module, so a gateway credit carries the same names, snapshots and channel a
+        // hand-keyed payment does — and so there is exactly one place a payment row is written.
+        Payment payment = payments.recordFromGateway(target, statement, account);
 
         statement.setState(AppConstant.STATEMENT_MAPPED);
         statement.setMappedPaymentId(payment.getId());

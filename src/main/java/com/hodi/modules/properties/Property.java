@@ -7,6 +7,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 
 /**
@@ -39,7 +40,8 @@ public class Property {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "tenant_id", nullable = false) private Long tenantId;
+    /** Null only on a UNIT of a project with no selling organisation yet — a bank's, before it is marketed. */
+    @Column(name = "tenant_id") private Long tenantId;
     @Column(name = "tenant_name", length = 255) private String tenantName;
 
     /** Human-quotable, and what a buyer reads down the phone. Twelve characters, from RrnGenerator. */
@@ -53,7 +55,8 @@ public class Property {
     @Builder.Default private String listingType = AppConstant.LISTING_TYPE_SALE;
     @Column(length = 16) private String tenure;
 
-    @Column(nullable = false, precision = 15, scale = 2) private BigDecimal price;
+    /** Null only on a UNIT, meaning "its typology's price". See {@link #effectivePrice}. */
+    @Column(precision = 15, scale = 2) private BigDecimal price;
     @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
     @Column(name = "service_charge", precision = 15, scale = 2) private BigDecimal serviceCharge;
     @Column(name = "price_negotiable", nullable = false)
@@ -162,7 +165,67 @@ public class Property {
      * <p>A typology listing is one row on the marketplace representing thirty bungalows — what it is, what it
      * starts at, and how many are left. The individual homes are a drill-down.
      */
-    public boolean isUnitTypeListing() { return unitTypeId != null; }
+    // ── which kind of row this is ─────────────────────────────────────────────
+
+    /**
+     * HOUSE, TYPOLOGY or UNIT.
+     *
+     * <p>A HOUSE is an ordinary listing. A TYPOLOGY is the card for one kind of home in a development — one row
+     * per kind, carrying "sixty of seventy left". A UNIT is one home in a development: the row that is booked,
+     * paid for and sold. The development is a project grouping its UNIT rows; its typologies are the categories
+     * within it. Sold is one row updated, not two.
+     */
+    @Column(name = "listing_kind", nullable = false, length = 12)
+    @Builder.Default private String listingKind = AppConstant.LISTING_KIND_HOUSE;
+
+    public boolean isUnitTypeListing() { return AppConstant.LISTING_KIND_TYPOLOGY.equals(listingKind); }
+    public boolean isUnit() { return AppConstant.LISTING_KIND_UNIT.equals(listingKind); }
+    public boolean isHouse() { return AppConstant.LISTING_KIND_HOUSE.equals(listingKind); }
+
+    // ── a unit's own columns (null on every other kind) ───────────────────────
+
+    /** The lender that owns the project, where a bank rather than a seller does. */
+    @Column(name = "institution_id") private Long institutionId;
+    @Column(name = "phase_id") private Long phaseId;
+    @Column(name = "unit_label", length = 32) private String unitLabel;
+    @Column(length = 32) private String block;
+    @Column(name = "floor_no") private Short floorNo;
+    @Column(name = "door_no", length = 16) private String doorNo;
+    /** Short code a buyer quotes when paying for this unit. Unique across every unit ever. */
+    @Column(name = "pay_reference", length = 8) private String payReference;
+    @Column(name = "sale_state", length = 16) private String saleState;
+    @Column(name = "completed_on") private LocalDate completedOn;
+    @Column(name = "handed_over_on") private LocalDate handedOverOn;
+    @Column(name = "buyer_user_id") private Long buyerUserId;
+    @Column(name = "buyer_name", length = 160) private String buyerName;
+    @Column(name = "buyer_phone", length = 32) private String buyerPhone;
+    @Column(name = "buyer_email", length = 128) private String buyerEmail;
+    @Column(name = "purchase_request_id") private Long purchaseRequestId;
+    @Column(name = "reserved_at") private OffsetDateTime reservedAt;
+    @Column(name = "reserved_until") private OffsetDateTime reservedUntil;
+    @Column(name = "sold_price", precision = 15, scale = 2) private BigDecimal soldPrice;
+    private Short balconies;
+    @Column(name = "balcony_area_sqm", precision = 10, scale = 2) private BigDecimal balconyAreaSqm;
+    @Column(length = 64) private String aspect;
+    @Column(columnDefinition = "TEXT") private String notes;
+
+    // ── the three questions the inventory grid asks ───────────────────────────
+
+    public boolean isAvailable() { return AppConstant.UNIT_AVAILABLE.equals(saleState); }
+    public boolean isSoldUnit() { return AppConstant.UNIT_SOLD.equals(saleState); }
+
+    public boolean isOnHold() {
+        return AppConstant.UNIT_HELD.equals(saleState) || AppConstant.UNIT_RESERVED.equals(saleState);
+    }
+
+    public boolean isHoldExpired() {
+        return isOnHold() && reservedUntil != null && reservedUntil.isBefore(OffsetDateTime.now());
+    }
+
+    /** The unit's own price, else its typology's. */
+    public BigDecimal effectivePrice(BigDecimal typologyPrice) {
+        return price != null ? price : typologyPrice;
+    }
 
     public boolean isDraft() {
         return AppConstant.LISTING_DRAFT.equals(listingState);

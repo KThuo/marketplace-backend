@@ -137,6 +137,8 @@ public class DevelopmentUnitTypeService {
         }
 
         Property listing = Property.builder()
+                // The card for this kind of home: one row, whatever the number of units behind it.
+                .listingKind(AppConstant.LISTING_KIND_TYPOLOGY)
                 .tenantId(development.getSellingTenantId())
                 .tenantName(development.getSellingTenantName())
                 .reference(nextListingReference())

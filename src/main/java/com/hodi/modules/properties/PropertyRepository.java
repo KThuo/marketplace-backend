@@ -54,12 +54,13 @@ public interface PropertyRepository
             + "and p.listingState = :state and p.status <> 5")
     long countForTenantInState(@Param("tenantId") Long tenantId, @Param("state") String state);
 
-    @Query("select count(p) from Property p where p.listingState = 'LIVE' and p.status <> 5")
+    @Query("select count(p) from Property p where p.listingState = 'LIVE' and p.listingKind <> 'UNIT' "
+            + "and p.status <> 5")
     long countLive();
 
     /** The distinct towns with live listings, for the marketplace's location filter. */
     @Query("select distinct p.town from Property p where p.listingState = 'LIVE' and p.status <> 5 "
-            + "and p.town is not null order by p.town")
+            + "and p.listingKind <> 'UNIT' and p.town is not null order by p.town")
     List<String> liveTowns();
 
     /*
@@ -76,7 +77,9 @@ public interface PropertyRepository
      * <p>At most one ever, enforced by a partial unique index rather than by this method hoping: "sixty of
      * seventy available" has to have exactly one place a buyer can read it.
      */
-    @Query("select p from Property p where p.unitTypeId = :unitTypeId and p.status <> 5")
+    /** The typology's card. Its units share the unit type id, so the kind is what makes this one row. */
+    @Query("select p from Property p where p.unitTypeId = :unitTypeId and p.listingKind = 'TYPOLOGY' "
+            + "and p.status <> 5")
     Optional<Property> findByUnitTypeId(@Param("unitTypeId") Long unitTypeId);
 
     /** Every listing belonging to one development, archived ones excluded. */

@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
@@ -117,7 +118,7 @@ class DevelopmentUnitServiceIT {
                         .equals(u.getDevelopmentId()))
                 .filter(u -> u.getUnitLabel().startsWith("B-")).toList();
         assertEquals(70, all.size());
-        assertEquals(70, all.stream().map(DevelopmentUnit::getPayReference).distinct().count(),
+        assertEquals(70, all.stream().map(Property::getPayReference).distinct().count(),
                 "a batch of pay codes must not repeat — the unique index would refuse the second");
         assertTrue(all.stream().allMatch(u -> u.getPayReference().length() == 4));
 

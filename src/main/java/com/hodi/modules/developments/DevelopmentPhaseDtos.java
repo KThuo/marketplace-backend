@@ -26,8 +26,6 @@ public final class DevelopmentPhaseDtos {
             LocalDate actualCompletionOn,
             @DecimalMin("0") BigDecimal budgetAmount,
             @DecimalMin("0") BigDecimal plannedSpend,
-            @DecimalMin("0") BigDecimal committedAmount,
-            @DecimalMin("0") BigDecimal spentAmount,
             @Min(1) @Max(100) Short weightPct,
             @Min(0) @Max(100) Short percentComplete,
             @Size(max = 32) String milestoneCode,

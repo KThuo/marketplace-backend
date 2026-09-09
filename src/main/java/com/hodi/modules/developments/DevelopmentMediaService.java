@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
@@ -161,7 +162,7 @@ public class DevelopmentMediaService {
                     .orElseThrow(() -> new ResourceNotFoundException("Unit type", childHashId));
             case AppConstant.MEDIA_OWNER_DEVELOPMENT_UNIT -> units.findById(id)
                     .filter(u -> u.getDevelopmentId().equals(development.getId()))
-                    .map(DevelopmentUnit::getId)
+                    .map(Property::getId)
                     .orElseThrow(() -> new ResourceNotFoundException("Unit", childHashId));
             // Unreachable: the set above has already refused anything not listed here. Kept because the
             // switch must be exhaustive, and a default that throws is better than one that returns null.

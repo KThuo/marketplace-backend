@@ -261,7 +261,7 @@ public class PublicDevelopmentService {
                         u.getUnitLabel(),
                         u.getBlock(),
                         u.getFloorNo(),
-                        u.getListPrice() != null ? u.getListPrice() : fallbackPrice,
+                        u.getPrice() != null ? u.getPrice() : fallbackPrice,
                         u.getCurrency() == null ? type.getCurrency() : u.getCurrency(),
                         publicState(u.getSaleState()),
                         u.getReference()))
@@ -283,7 +283,7 @@ public class PublicDevelopmentService {
         Development development = developments.findLiveByReference(reference)
                 .orElseThrow(() -> new ResourceNotFoundException("Development", reference));
 
-        DevelopmentUnit unit = units.findByReference(unitReference)
+        Property unit = units.findByReference(unitReference)
                 .filter(u -> development.getId().equals(u.getDevelopmentId()))
                 .orElseThrow(() -> new ResourceNotFoundException("Unit", unitReference));
 

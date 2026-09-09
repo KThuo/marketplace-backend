@@ -129,6 +129,8 @@ public class DevelopmentService {
         apply(development, request, caller);
         development.setCreatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
 
         audit.record(AppConstant.ACTION_CREATE, "Development", saved.getId(), null, snapshot(saved));
         log.info("Development {} drafted by {}", saved.getReference(), AuthContext.username());
@@ -160,6 +162,8 @@ public class DevelopmentService {
             development.setPublishedAt(null);
         }
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
         if (wasLive) {
             approvals.submit(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
                     AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(saved), null,
@@ -198,6 +202,8 @@ public class DevelopmentService {
         development.setListingState(AppConstant.LISTING_PENDING);
         development.setUpdatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
 
         approvals.submit(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
                 AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(saved), null,
@@ -249,6 +255,8 @@ public class DevelopmentService {
         development.setWithdrawnReason(null);
         development.setUpdatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
         audit.record(AppConstant.ACTION_APPROVE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} is live", saved.getReference());
     }
@@ -262,6 +270,8 @@ public class DevelopmentService {
         development.setListingState(AppConstant.LISTING_DRAFT);
         development.setUpdatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
         audit.record(AppConstant.ACTION_UPDATE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} sent back: {}", saved.getReference(), reason);
     }
@@ -283,6 +293,8 @@ public class DevelopmentService {
         development.setWithdrawnReason(request.reason().trim());
         development.setUpdatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
         audit.record(AppConstant.ACTION_DEACTIVATE, "Development", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
@@ -312,6 +324,8 @@ public class DevelopmentService {
         development.setPublishedAt(null);
         development.setUpdatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
         audit.record(AppConstant.ACTION_UPDATE, "Development", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
@@ -351,6 +365,8 @@ public class DevelopmentService {
         development.setStatusFlag(AppConstant.FLAG_DELETED);
         development.setUpdatedBy(who);
         Development saved = repository.save(development);
+        // Its unit rows are properties too, and they carry the project's state, name and place.
+        inventory.syncUnitRows(saved);
 
         audit.record(AppConstant.ACTION_DELETE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} archived with its phases and unit types", saved.getReference());
@@ -386,9 +402,18 @@ public class DevelopmentService {
         development.setPlannedUnitCount(request.plannedUnitCount());
         development.setStartedOn(request.startedOn());
         development.setProjectedCompletionOn(request.projectedCompletionOn());
-        development.setBudgetAmount(request.budgetAmount());
-        development.setFacilityReference(blankToNull(request.facilityReference()));
-        development.setFacilityAmount(request.facilityAmount());
+        /*
+         * The money is written only by somebody who can see it.
+         *
+         * The form hides budget and facility from anyone without DEVELOPMENTS_FINANCE_VIEW, so a save from
+         * them arrives with those fields empty — and applying the empties would wipe the bank's facility
+         * every time a listing manager corrected a town name.
+         */
+        if (AuthContext.hasAuthority("DEVELOPMENTS_FINANCE_VIEW")) {
+            development.setBudgetAmount(request.budgetAmount());
+            development.setFacilityReference(blankToNull(request.facilityReference()));
+            development.setFacilityAmount(request.facilityAmount());
+        }
 
         applySellingTenant(development, request, caller);
 
@@ -456,6 +481,9 @@ public class DevelopmentService {
     }
 
     private DevelopmentResponse toResponse(Development d) {
+        // Budget and facility are the finance permission's, not the module's: a contractor granted progress
+        // rights on a bank's project reads the project without reading the bank's exposure.
+        boolean money = AuthContext.hasAuthority("DEVELOPMENTS_FINANCE_VIEW");
         return new DevelopmentResponse(
                 HashIdUtil.encodeId(d.getId()),
                 d.getReference(),
@@ -487,9 +515,9 @@ public class DevelopmentService {
                 d.getStartedOn(),
                 d.getProjectedCompletionOn(),
                 d.getActualCompletionOn(),
-                d.getBudgetAmount(),
-                d.getFacilityReference(),
-                d.getFacilityAmount(),
+                money ? d.getBudgetAmount() : null,
+                money ? d.getFacilityReference() : null,
+                money ? d.getFacilityAmount() : null,
                 d.getListingState(),
                 d.getPublishedAt(),
                 d.getWithdrawnAt(),

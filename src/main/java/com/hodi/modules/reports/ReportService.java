@@ -386,8 +386,21 @@ public class ReportService {
      * filter values, the search term — arrives as a {@code ?}. A request can choose which declared column
      * to narrow by; it cannot contribute a character of SQL.
      */
+    /**
+     * The predicate deciding whose rows this report may add up.
+     *
+     * <p>Tenant-scoped for every report whose rows belong to a seller; owner-scoped where a lending
+     * institution may own a row outright, because the tenant predicate alone would hide a bank's own projects
+     * from the bank.
+     */
+    private static String scopeOf(ReportCatalogue.Report report) {
+        return report.ownerScoped()
+                ? com.hodi.security.OwnerScopeSql.predicate("tenant_id", "institution_id", "development_id")
+                : TenantScope.sqlPredicate("tenant_id");
+    }
+
     private Where where(ReportCatalogue.Report report, ReportQuery q) {
-        StringBuilder sql = new StringBuilder(TenantScope.sqlPredicate("tenant_id"));
+        StringBuilder sql = new StringBuilder(scopeOf(report));
         List<Object> params = new ArrayList<>();
 
         if (q.from() != null) {
@@ -484,7 +497,7 @@ public class ReportService {
     @Transactional(readOnly = true)
     public List<FilterOption> filters(String code) {
         ReportCatalogue.Report report = require(code);
-        String scope = TenantScope.sqlPredicate("tenant_id");
+        String scope = scopeOf(report);
         List<FilterOption> out = new ArrayList<>();
         for (ReportCatalogue.Filter f : report.filters()) {
             List<String> options = List.of();

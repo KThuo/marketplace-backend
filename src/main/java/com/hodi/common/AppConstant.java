@@ -177,6 +177,11 @@ public final class AppConstant {
      * unit that was never inventory, RETAINED is one the developer kept — the last two count in the total
      * and in none of the available/reserved/sold figures, which is why those three do not sum to it.
      */
+    /** Which kind of row a property is. See Property.listingKind. */
+    public static final String LISTING_KIND_HOUSE    = "HOUSE";
+    public static final String LISTING_KIND_TYPOLOGY = "TYPOLOGY";
+    public static final String LISTING_KIND_UNIT     = "UNIT";
+
     public static final String UNIT_AVAILABLE    = "AVAILABLE";
     public static final String UNIT_HELD         = "HELD";
     public static final String UNIT_RESERVED     = "RESERVED";
@@ -188,6 +193,14 @@ public final class AppConstant {
     public static final String COLLAB_PROGRESS_WRITE = "PROGRESS_WRITE";
     public static final String COLLAB_UNITS_WRITE    = "UNITS_WRITE";
     public static final String COLLAB_FULL           = "FULL";
+
+    /**
+     * A cost line's kind. COMMITTED is a contract or certificate signed — money promised; SPENT is money out.
+     * Both are lines in the same ledger so a phase can say how much of its budget is spoken for as well as
+     * how much has actually gone.
+     */
+    public static final String COST_COMMITTED = "COMMITTED";
+    public static final String COST_SPENT     = "SPENT";
 
     /** The approval queue's name for a development. Needs a handler to be decidable. */
     public static final String APPROVAL_ENTITY_DEVELOPMENT = "DEVELOPMENT";
@@ -238,6 +251,26 @@ public final class AppConstant {
     public static final String STATEMENT_MAPPED   = "MAPPED";
     public static final String STATEMENT_UNMAPPED = "UNMAPPED";
     public static final String STATEMENT_IGNORED  = "IGNORED";
+
+    /*
+     * Where a payment stands. Received or voided, and nothing in between.
+     *
+     * VOIDED is 4, the same number as STATUS_INACTIVE, on purpose: every `status <> 5` guard in the codebase
+     * keeps meaning what it did, and a reader comparing a payment row to any other row is in one numbering.
+     */
+    public static final int PAYMENT_RECEIVED = STATUS_ACTIVE;
+    public static final int PAYMENT_VOIDED   = STATUS_INACTIVE;
+
+    /*
+     * What a payment channel is, and therefore how it behaves. The category decides, never a catalogue id.
+     * CASH and CHEQUE are recorded by staff and carry no account; STK_PUSH prompts a phone; TRANSFER is money
+     * going out; VALIDATE is an inbound credit reconciled by reference.
+     */
+    public static final String CHANNEL_CASH     = "CASH";
+    public static final String CHANNEL_CHEQUE   = "CHEQUE";
+    public static final String CHANNEL_STK_PUSH = "STK_PUSH";
+    public static final String CHANNEL_TRANSFER = "TRANSFER";
+    public static final String CHANNEL_VALIDATE = "VALIDATE";
 
     public static final String PAY_CASH          = "CASH";
     public static final String PAY_CHEQUE        = "CHEQUE";
@@ -478,6 +511,14 @@ public final class AppConstant {
     public static final String AUDIT_VENDOR_REGISTER  = "VENDOR_REGISTERED";
     public static final String AUDIT_VENDOR_DECIDED   = "VENDOR_DECIDED";
     public static final String AUDIT_RATING_MODERATED = "RATING_MODERATED";
+    /** Money arrived and was receipted, or a receipt was voided. The most disputed events in the product. */
+    public static final String AUDIT_PAYMENT_RECEIVED = "PAYMENT_RECEIVED";
+    public static final String AUDIT_PAYMENT_VOIDED   = "PAYMENT_VOIDED";
+    /** A cost line or a facility drawdown written or voided on a development. */
+    public static final String AUDIT_COST_RECORDED    = "COST_RECORDED";
+    public static final String AUDIT_COST_VOIDED      = "COST_VOIDED";
+    public static final String AUDIT_DRAWDOWN_RECORDED = "DRAWDOWN_RECORDED";
+    public static final String AUDIT_DRAWDOWN_VOIDED  = "DRAWDOWN_VOIDED";
 
     // ── Audit outcomes ───────────────────────────────────────────────────────
     public static final String OUTCOME_SUCCESS      = "SUCCESS";

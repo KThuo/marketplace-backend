@@ -20,7 +20,8 @@ import java.util.stream.Collectors;
  *
  * <p>Eleven cached columns across four tables: the four unit tallies and the price on a typology, the four
  * tallies, both prices and the percentage on a development, and the label caches mirrored onto a typology's
- * listing. Nothing else in the codebase writes any of them.
+ * listing — plus, since the cost ledger, a phase's committed and spent figures. Nothing else in the codebase
+ * writes any of them.
  *
  * <p>That rule is the design. A counter with two writers is a counter that disagrees with the rows it counts,
  * and the disagreement surfaces as "the site says sixty available and there are fifty-eight" — which nobody
@@ -55,6 +56,23 @@ public class DevelopmentInventoryService {
     private final DevelopmentUnitRepository units;
     private final DevelopmentPhaseRepository phases;
     private final PropertyRepository properties;
+    private final DevelopmentExpenditureRepository expenditures;
+
+    /**
+     * Recounts every phase's committed and spent figures from the cost ledger.
+     *
+     * <p>The entry point after any write to {@code development_expenditures}. The two columns used to be
+     * typed; now they are the sum of the phase's recorded lines, which is the same arrangement as every unit
+     * tally here — one writer, recomputed rather than adjusted, so a voided line drops out on its own.
+     */
+    @Transactional
+    public void recountPhaseMoney(Long developmentId) {
+        for (DevelopmentPhase phase : phases.findForDevelopment(developmentId)) {
+            phase.setCommittedAmount(expenditures.sumForPhase(phase.getId(), AppConstant.COST_COMMITTED));
+            phase.setSpentAmount(expenditures.sumForPhase(phase.getId(), AppConstant.COST_SPENT));
+            phases.save(phase);
+        }
+    }
 
     /**
      * Recounts one typology, then the development above it.
@@ -170,6 +188,44 @@ public class DevelopmentInventoryService {
             property.setPrice(type.getFromPrice());
         }
         properties.save(property);
+    }
+
+    /**
+     * Copies a development's state and details onto every one of its unit rows.
+     *
+     * <p>A unit is a property, and a property has a listing state; a unit's is its project's — LIVE while the
+     * project is on the marketplace, WITHDRAWN when it is taken down, DRAFT otherwise — except that a sold unit
+     * stays SOLD whatever happens to the project. The name and the place are copied too, so a unit row reads
+     * correctly on its own. Called after any write to the development that changes those; nothing else writes
+     * these columns on a unit row.
+     */
+    @Transactional
+    public void syncUnitRows(Development development) {
+        units.syncDetails(development.getId(), development.getName(), development.getReference(),
+                development.getCounty(), development.getTown(), development.getEstate(),
+                development.getAddressLine(), development.getLatitude(), development.getLongitude());
+        units.syncListingState(development.getId(), unitListingStateFor(development),
+                development.getPublishedAt());
+    }
+
+    /**
+     * A unit row's listing state, given its own sale and its project's state.
+     *
+     * <p>SOLD is the unit's own fact and outlives the project's: a home sold in a project later taken down is
+     * still sold. Everything else follows the project. Called by whoever changes a unit's sale state, in the
+     * same transaction, so the two columns on the row never disagree.
+     */
+    public static void applyListingState(Property unit, Development development) {
+        unit.setListingState(unit.isSoldUnit() ? AppConstant.LISTING_SOLD : unitListingStateFor(development));
+        if (unit.isSoldUnit() && unit.getSoldAt() == null) unit.setSoldAt(java.time.OffsetDateTime.now());
+    }
+
+    /** What a unit row's listing state is, given its project's. */
+    public static String unitListingStateFor(Development development) {
+        String state = development.getListingState();
+        if (AppConstant.LISTING_LIVE.equals(state)) return AppConstant.LISTING_LIVE;
+        if (AppConstant.LISTING_WITHDRAWN.equals(state)) return AppConstant.LISTING_WITHDRAWN;
+        return AppConstant.LISTING_DRAFT;
     }
 
     // ── internals ─────────────────────────────────────────────────────────────

@@ -143,6 +143,27 @@ public class DocumentService {
     }
 
     /**
+     * The bytes, for a caller that has already decided this reader may have them.
+     *
+     * <p>The vault's ACL knows three kinds of grant — a tenant, a person, a permission — and none of them can
+     * say "anyone who may see this development". A development's finance evidence is read by exactly that
+     * set: the owner, the bank that financed it, the developer building it. So {@code DevelopmentFinanceService}
+     * checks the development and then comes here, and this records the read exactly as {@link #read} does.
+     * Nothing is skipped but the ACL, and only because the caller has applied a rule the ACL cannot express.
+     *
+     * @param basis what established the right, for the audit line
+     */
+    @Transactional
+    public Fetched readTrusted(VaultDocument document, String basis) {
+        UserPrincipal caller = AuthContext.require();
+        audit.record(AppConstant.AUDIT_DOCUMENT_READ, "VaultDocument", document.getId(), null,
+                document.getReference() + " " + document.getDocumentCode() + " read by " + caller.getUsername()
+                        + " via " + basis, AppConstant.OUTCOME_SUCCESS);
+        byte[] bytes = vault.read(document.getStorageKey());
+        return new Fetched(bytes, document.getContentType(), document.getOriginalName());
+    }
+
+    /**
      * Whether this caller has a live grant.
      *
      * <p>Deliberately not "or the caller is platform staff". Everywhere else in this codebase the platform

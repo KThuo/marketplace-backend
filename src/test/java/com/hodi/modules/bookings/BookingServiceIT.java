@@ -1,10 +1,14 @@
 package com.hodi.modules.bookings;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.properties.Property;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.bookings.BookingDtos.*;
 import com.hodi.modules.developments.*;
+import com.hodi.modules.payments.PaymentDtos.ReceiveRequest;
+import com.hodi.modules.payments.PaymentRepository;
+import com.hodi.modules.payments.PaymentService;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
 import com.hodi.security.hashid.HashIdUtil;
@@ -37,19 +41,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Booking a unit, and the money against it.
  *
  * <p>What is worth a test rather than a reading: the balance arithmetic, which comes out of a view and is the
- * figure a buyer is told; the reversal rule, because a corrected payment must leave both facts on the record;
- * the boundary with the unit's own hold path, which is the only thing stopping two writers from disagreeing
- * about whether a unit is available; and the state machine, where a wrong transition marks a unit sold with
- * money still owed.
+ * figure a buyer is told; the boundary with the unit's own hold path, which is the only thing stopping two
+ * writers from disagreeing about whether a unit is available; and the state machine, where a wrong transition
+ * marks a unit sold with money still owed. The money itself — receiving and voiding — is
+ * {@code PaymentServiceIT}'s.
  */
 @SpringBootTest
 @Transactional
 class BookingServiceIT {
 
     @Autowired BookingService service;
+    @Autowired PaymentService paymentService;
     @Autowired DevelopmentUnitService unitService;
     @Autowired UnitBookingRepository bookings;
-    @Autowired BookingPaymentRepository payments;
+    @Autowired PaymentRepository payments;
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitRepository units;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
@@ -74,7 +79,7 @@ class BookingServiceIT {
     private Long tenantId;
     private Development development;
     private DevelopmentUnitType typology;
-    private DevelopmentUnit unit;
+    private Property unit;
 
     @BeforeEach
     void signInAndBuild() {
@@ -88,7 +93,7 @@ class BookingServiceIT {
                 .tenantId(tenantId).tenantName("Test Seller")
                 .status(AppConstant.STATUS_ACTIVE).build();
         UserPrincipal principal = UserPrincipal.of(user, profile,
-                Set.of("UNITS_MANAGE", "UNITS_SELL", "BOOKINGS_MANAGE", "BOOKINGS_PAYMENTS"),
+                Set.of("UNITS_MANAGE", "UNITS_SELL", "BOOKINGS_MANAGE", "PAYMENTS_RECEIVE", "PAYMENTS_VOID"),
                 List.of(tenantId), false, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
@@ -100,7 +105,8 @@ class BookingServiceIT {
                 .reference(RrnGenerator.generate("UT")).developmentId(development.getId())
                 .code("2B").name("Two bedroom").propertyType("APARTMENT").bedrooms((short) 2)
                 .listPrice(new BigDecimal("9500000")).build());
-        unit = units.save(DevelopmentUnit.builder()
+        unit = units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-1-01")
                 .payReference("A7K2")
@@ -135,7 +141,7 @@ class BookingServiceIT {
         assertFalse(saved.expired());
         assertEquals("A7K2", saved.payReference(), "the code the buyer quotes, on the response");
 
-        DevelopmentUnit after = units.findById(unit.getId()).orElseThrow();
+        Property after = units.findById(unit.getId()).orElseThrow();
         assertEquals(AppConstant.UNIT_HELD, after.getSaleState(),
                 "a reservation is a hold with a deadline, which is what HELD means here");
         assertEquals("Asha Mwangi", after.getBuyerName(),
@@ -168,7 +174,7 @@ class BookingServiceIT {
          * is how a passing assertion can end up proving nothing.
          */
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                insert into unit_bookings (reference, development_id, unit_id, tenant_id, buyer_name,
+                insert into unit_bookings (reference, development_id, property_id, tenant_id, buyer_name,
                     buyer_phone, state, currency, booked_on, expires_at, created_by)
                 values (?, ?, ?, ?, 'Race Condition', '+254700000000', 'RESERVED', 'KES',
                         current_date, now() + interval '14 days', 'test')
@@ -181,7 +187,7 @@ class BookingServiceIT {
         BookingResponse first = service.create(devId(), booking(null));
         service.cancel(devId(), first.id(), new CloseBookingRequest("The buyer changed their mind."));
 
-        DevelopmentUnit after = units.findById(unit.getId()).orElseThrow();
+        Property after = units.findById(unit.getId()).orElseThrow();
         assertEquals(AppConstant.UNIT_AVAILABLE, after.getSaleState());
         assertNull(after.getBuyerName(), "the previous buyer's name does not stay on a freed unit");
 
@@ -214,8 +220,8 @@ class BookingServiceIT {
                 new InstalmentLine("Second", LocalDate.now().plusDays(30), new BigDecimal("4275000")),
                 new InstalmentLine("Final", LocalDate.now().plusDays(90), new BigDecimal("4275000")))));
 
-        service.recordPayment(devId(), saved.id(), new RecordPaymentRequest(
-                new BigDecimal("950000"), LocalDate.now().minusDays(28), AppConstant.PAY_BANK_TRANSFER,
+        paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("950000"),
+                LocalDate.now().minusDays(28), AppConstant.PAY_BANK_TRANSFER, null,
                 "A7K2", "FT2609281234", "Asha Mwangi", "+254712000111", null));
 
         BookingResponse after = service.find(devId(), saved.id());
@@ -241,38 +247,6 @@ class BookingServiceIT {
     }
 
     @Test
-    @DisplayName("a reversal is a second negative row, and both stay on the record")
-    void reversalLeavesBothFacts() {
-        BookingResponse saved = service.create(devId(), booking(null));
-        PaymentResponse paid = service.recordPayment(devId(), saved.id(), new RecordPaymentRequest(
-                new BigDecimal("500000"), null, AppConstant.PAY_CHEQUE, null, "CHQ001", null, null,
-                "Cheque banked"));
-
-        service.reversePayment(devId(), saved.id(), paid.id(),
-                new ReversePaymentRequest("The cheque bounced."));
-
-        List<PaymentResponse> rows = service.paymentsFor(devId(), saved.id());
-        assertEquals(2, rows.size(), "the original is not edited away");
-        assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(saved.id()))
-                .compareTo(BigDecimal.ZERO), "and they net to nothing");
-        assertTrue(rows.stream().anyMatch(r -> r.reversal()
-                && "The cheque bounced.".equals(r.reversalReason())));
-    }
-
-    @Test
-    @DisplayName("a payment cannot be reversed twice")
-    void doubleReversalRefused() {
-        BookingResponse saved = service.create(devId(), booking(null));
-        PaymentResponse paid = service.recordPayment(devId(), saved.id(), new RecordPaymentRequest(
-                new BigDecimal("100000"), null, null, null, null, null, null, null));
-        service.reversePayment(devId(), saved.id(), paid.id(), new ReversePaymentRequest("Wrong unit."));
-
-        HodiException e = assertThrows(HodiException.class, () -> service.reversePayment(
-                devId(), saved.id(), paid.id(), new ReversePaymentRequest("Again.")));
-        assertTrue(e.getMessage().contains("already been reversed"), e.getMessage());
-    }
-
-    @Test
     @DisplayName("completing is refused while anything is outstanding, and says how much")
     void completingRefusedWithABalance() {
         BookingResponse saved = service.create(devId(), booking(List.of(
@@ -281,7 +255,7 @@ class BookingServiceIT {
         HodiException e = assertThrows(HodiException.class, () -> service.complete(devId(), saved.id()));
         assertTrue(e.getMessage().contains("9500000"), e.getMessage());
 
-        DevelopmentUnit after = units.findById(unit.getId()).orElseThrow();
+        Property after = units.findById(unit.getId()).orElseThrow();
         assertEquals(AppConstant.UNIT_HELD, after.getSaleState(), "and the unit is not marked sold");
     }
 
@@ -290,14 +264,13 @@ class BookingServiceIT {
     void completingSellsTheUnit() {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("All of it", LocalDate.now(), new BigDecimal("9500000")))));
-        service.recordPayment(devId(), saved.id(), new RecordPaymentRequest(
-                new BigDecimal("9500000"), null, AppConstant.PAY_BANK_TRANSFER, "A7K2", null, null,
-                null, null));
+        paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("9500000"), null,
+                AppConstant.PAY_BANK_TRANSFER, null, "A7K2", null, null, null, null));
 
         BookingResponse done = service.complete(devId(), saved.id());
         assertEquals(AppConstant.BOOKING_COMPLETED, done.state());
 
-        DevelopmentUnit after = units.findById(unit.getId()).orElseThrow();
+        Property after = units.findById(unit.getId()).orElseThrow();
         assertEquals(AppConstant.UNIT_SOLD, after.getSaleState());
         assertEquals(0, after.getSoldPrice().compareTo(new BigDecimal("9500000")));
     }

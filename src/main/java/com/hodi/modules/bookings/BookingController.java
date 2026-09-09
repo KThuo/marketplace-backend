@@ -3,6 +3,7 @@ package com.hodi.modules.bookings;
 import com.hodi.common.ApiResponse;
 import com.hodi.logging.RequestAction;
 import com.hodi.modules.bookings.BookingDtos.*;
+import com.hodi.modules.payments.PaymentDtos.PaymentResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,41 +19,109 @@ import java.util.List;
  * units. A flat path would have to re-derive that from the booking on every call, which is one more place to
  * get it wrong.
  *
- * <p>Recording money is gated on {@code BOOKINGS_PAYMENTS} rather than {@code BOOKINGS_MANAGE}. A sales agent
- * books units and should not be able to write down that money arrived; the person reconciling the bank
- * statement does exactly that and books nothing.
+ * <p>Money is not recorded here. A booking's payments are read from this path because the drawer shows them,
+ * but receiving and voiding are the payments module's ({@code /api/v1/payments}), under their own
+ * permissions: a sales agent books units and should not be able to write down that money arrived.
  */
 @RestController
-@RequestMapping("/api/v1/developments")
+@RequestMapping("/api/v1")
 @RequiredArgsConstructor
 public class BookingController {
 
     private final BookingService service;
 
+    // ── a home's bookings, whichever kind of home ─────────────────────────────
+
+    @GetMapping("/properties/{hashId}/bookings")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<List<BookingResponse>> forProperty(@PathVariable String hashId) {
+        return ApiResponse.success(service.forProperty(hashId));
+    }
+
+    @PostMapping("/properties/{hashId}/bookings")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("CREATE_BOOKING")
+    public ApiResponse<BookingResponse> createForProperty(@PathVariable String hashId,
+                                                          @Valid @RequestBody CreateBookingRequest request) {
+        return ApiResponse.success("Booked", service.createForProperty(hashId, request));
+    }
+
+    // ── a booking by its own id ───────────────────────────────────────────────
+
+    @GetMapping("/bookings/{bookingId}")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<BookingResponse> get(@PathVariable String bookingId) {
+        return ApiResponse.success(service.find(bookingId));
+    }
+
+    @GetMapping("/bookings/{bookingId}/schedule")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<List<InstalmentResponse>> scheduleOf(@PathVariable String bookingId) {
+        return ApiResponse.success(service.schedule(bookingId));
+    }
+
+    @GetMapping("/bookings/{bookingId}/payments")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<List<PaymentResponse>> paymentsOf(@PathVariable String bookingId) {
+        return ApiResponse.success(service.paymentsFor(bookingId));
+    }
+
+    @PostMapping("/bookings/{bookingId}/agree")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("AGREE_BOOKING")
+    public ApiResponse<BookingResponse> agreeById(@PathVariable String bookingId) {
+        return ApiResponse.success("Booking agreed", service.agree(bookingId));
+    }
+
+    @PostMapping("/bookings/{bookingId}/complete")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("COMPLETE_BOOKING")
+    public ApiResponse<BookingResponse> completeById(@PathVariable String bookingId) {
+        return ApiResponse.success("Booking completed", service.complete(bookingId));
+    }
+
+    @PostMapping("/bookings/{bookingId}/cancel")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("CANCEL_BOOKING")
+    public ApiResponse<BookingResponse> cancelById(@PathVariable String bookingId,
+                                                   @Valid @RequestBody CloseBookingRequest request) {
+        return ApiResponse.success("Booking cancelled", service.cancel(bookingId, request));
+    }
+
+    @PostMapping("/bookings/{bookingId}/reschedule")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("RESCHEDULE_BOOKING")
+    public ApiResponse<List<InstalmentResponse>> rescheduleById(@PathVariable String bookingId,
+                                                                @Valid @RequestBody RescheduleRequest request) {
+        return ApiResponse.success("Schedule revised", service.reschedule(bookingId, request));
+    }
+
+    // ── the inventory screen's routes, under the development ──────────────────
+
     // ── reading ───────────────────────────────────────────────────────────────
 
-    @GetMapping("/{hashId}/units/{unitId}/bookings")
+    @GetMapping("/developments/{hashId}/units/{unitId}/bookings")
     @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
     public ApiResponse<List<BookingResponse>> forUnit(@PathVariable String hashId,
                                                       @PathVariable String unitId) {
         return ApiResponse.success(service.forUnit(hashId, unitId));
     }
 
-    @GetMapping("/{hashId}/bookings/{bookingId}")
+    @GetMapping("/developments/{hashId}/bookings/{bookingId}")
     @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
     public ApiResponse<BookingResponse> find(@PathVariable String hashId,
                                               @PathVariable String bookingId) {
         return ApiResponse.success(service.find(hashId, bookingId));
     }
 
-    @GetMapping("/{hashId}/bookings/{bookingId}/schedule")
+    @GetMapping("/developments/{hashId}/bookings/{bookingId}/schedule")
     @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
     public ApiResponse<List<InstalmentResponse>> schedule(@PathVariable String hashId,
                                                           @PathVariable String bookingId) {
         return ApiResponse.success(service.schedule(hashId, bookingId));
     }
 
-    @GetMapping("/{hashId}/bookings/{bookingId}/payments")
+    @GetMapping("/developments/{hashId}/bookings/{bookingId}/payments")
     @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
     public ApiResponse<List<PaymentResponse>> payments(@PathVariable String hashId,
                                                         @PathVariable String bookingId) {
@@ -61,7 +130,7 @@ public class BookingController {
 
     // ── the booking's life ────────────────────────────────────────────────────
 
-    @PostMapping("/{hashId}/bookings")
+    @PostMapping("/developments/{hashId}/bookings")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("CREATE_BOOKING")
     public ApiResponse<BookingResponse> create(@PathVariable String hashId,
@@ -69,7 +138,7 @@ public class BookingController {
         return ApiResponse.success("Unit booked", service.create(hashId, request));
     }
 
-    @PostMapping("/{hashId}/bookings/{bookingId}/agree")
+    @PostMapping("/developments/{hashId}/bookings/{bookingId}/agree")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("AGREE_BOOKING")
     public ApiResponse<BookingResponse> agree(@PathVariable String hashId,
@@ -77,7 +146,7 @@ public class BookingController {
         return ApiResponse.success("Booking agreed", service.agree(hashId, bookingId));
     }
 
-    @PostMapping("/{hashId}/bookings/{bookingId}/complete")
+    @PostMapping("/developments/{hashId}/bookings/{bookingId}/complete")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("COMPLETE_BOOKING")
     public ApiResponse<BookingResponse> complete(@PathVariable String hashId,
@@ -85,7 +154,7 @@ public class BookingController {
         return ApiResponse.success("Booking completed", service.complete(hashId, bookingId));
     }
 
-    @PostMapping("/{hashId}/bookings/{bookingId}/cancel")
+    @PostMapping("/developments/{hashId}/bookings/{bookingId}/cancel")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("CANCEL_BOOKING")
     public ApiResponse<BookingResponse> cancel(@PathVariable String hashId,
@@ -94,7 +163,7 @@ public class BookingController {
         return ApiResponse.success("Booking cancelled", service.cancel(hashId, bookingId, request));
     }
 
-    @PostMapping("/{hashId}/bookings/{bookingId}/reschedule")
+    @PostMapping("/developments/{hashId}/bookings/{bookingId}/reschedule")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("RESCHEDULE_BOOKING")
     public ApiResponse<List<InstalmentResponse>> reschedule(
@@ -102,30 +171,5 @@ public class BookingController {
             @PathVariable String bookingId,
             @Valid @RequestBody RescheduleRequest request) {
         return ApiResponse.success("Schedule revised", service.reschedule(hashId, bookingId, request));
-    }
-
-    // ── money ─────────────────────────────────────────────────────────────────
-
-    @PostMapping("/{hashId}/bookings/{bookingId}/payments")
-    @PreAuthorize("hasAuthority('BOOKINGS_PAYMENTS')")
-    @RequestAction("RECORD_BOOKING_PAYMENT")
-    public ApiResponse<PaymentResponse> recordPayment(
-            @PathVariable String hashId,
-            @PathVariable String bookingId,
-            @Valid @RequestBody RecordPaymentRequest request) {
-        return ApiResponse.success("Payment recorded", service.recordPayment(hashId, bookingId, request));
-    }
-
-    /** A reversal, never an edit: the balance changes only by an entry that says why. */
-    @PostMapping("/{hashId}/bookings/{bookingId}/payments/{paymentId}/reverse")
-    @PreAuthorize("hasAuthority('BOOKINGS_PAYMENTS')")
-    @RequestAction("REVERSE_BOOKING_PAYMENT")
-    public ApiResponse<PaymentResponse> reversePayment(
-            @PathVariable String hashId,
-            @PathVariable String bookingId,
-            @PathVariable String paymentId,
-            @Valid @RequestBody ReversePaymentRequest request) {
-        return ApiResponse.success("Payment reversed",
-                service.reversePayment(hashId, bookingId, paymentId, request));
     }
 }

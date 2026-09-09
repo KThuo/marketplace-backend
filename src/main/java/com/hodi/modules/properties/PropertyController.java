@@ -84,8 +84,10 @@ public class PropertyController {
     @PostMapping("/mark-sold/{hashId}")
     @PreAuthorize("hasAuthority('PROPERTIES_MARK_SOLD')")
     @RequestAction("MARK_LISTING_SOLD")
-    public ApiResponse<PropertyResponse> markSold(@PathVariable String hashId) {
-        return ApiResponse.success("Marked sold", service.markSold(hashId));
+    public ApiResponse<PropertyResponse> markSold(
+            @PathVariable String hashId,
+            @RequestBody(required = false) com.hodi.modules.bookings.BookingDtos.MarkSoldRequest request) {
+        return ApiResponse.success("Marked sold", service.markSold(hashId, request));
     }
 
     @PostMapping("/delete/{hashId}")

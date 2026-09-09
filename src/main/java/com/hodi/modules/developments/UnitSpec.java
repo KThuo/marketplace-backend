@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -42,7 +43,7 @@ public record UnitSpec(
      * @param ownFeatures    the unit's own feature codes; empty means it inherits
      * @param typeFeatures   the typology's
      */
-    public static UnitSpec of(DevelopmentUnit unit, DevelopmentUnitType type,
+    public static UnitSpec of(Property unit, DevelopmentUnitType type,
                               List<String> ownFeatures, List<String> typeFeatures) {
         List<String> inherited = new java.util.ArrayList<>();
 
@@ -79,7 +80,7 @@ public record UnitSpec(
             if (!features.isEmpty()) inherited.add("features");
         }
 
-        BigDecimal price = pick(unit.getListPrice(), type == null ? null : type.getListPrice(),
+        BigDecimal price = pick(unit.getPrice(), type == null ? null : type.getListPrice(),
                 "price", inherited);
 
         return new UnitSpec(bedrooms, bathrooms, balconies, parking, floor, balconyArea,

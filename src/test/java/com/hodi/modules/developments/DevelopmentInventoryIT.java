@@ -69,14 +69,15 @@ class DevelopmentInventoryIT {
     }
 
     private void unit(Development d, DevelopmentUnitType t, String label, String state, String ownPrice) {
-        DevelopmentUnit.DevelopmentUnitBuilder b = DevelopmentUnit.builder()
+        Property.PropertyBuilder b = Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .developmentId(d.getId())
                 .unitTypeId(t.getId())
                 .reference(RrnGenerator.generate("UN"))
                 .payReference(payCodes.next())
                 .unitLabel(label)
                 .saleState(state);
-        if (ownPrice != null) b.listPrice(new BigDecimal(ownPrice));
+        if (ownPrice != null) b.price(new BigDecimal(ownPrice));
         // The database insists a sold unit has a buyer, a price and a date — as it should.
         if (AppConstant.UNIT_SOLD.equals(state)) {
             b.soldAt(java.time.OffsetDateTime.now()).soldPrice(new BigDecimal("9500000")).buyerName("Ada");
@@ -170,6 +171,7 @@ class DevelopmentInventoryIT {
         unit(d, twoBed, "C-2", AppConstant.UNIT_SOLD, null);
 
         Property listing = properties.save(Property.builder()
+                .listingKind("TYPOLOGY")
                 .tenantId(tenantId)
                 .reference(RrnGenerator.generate("PR"))
                 .title("Two bedroom at Highrise")

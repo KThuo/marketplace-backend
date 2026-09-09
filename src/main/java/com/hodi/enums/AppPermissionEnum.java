@@ -179,6 +179,20 @@ public enum AppPermissionEnum {
      */
     DEVELOPMENTS_GRANT("Give a developer rights on a project", AppModuleEnum.DEVELOPMENTS),
 
+    /**
+     * The money on a development: budget, facility, the cost ledger, drawdowns and the figures derived from
+     * them. Apart from {@code DEVELOPMENTS_VIEW}, because a contractor granted progress rights on a bank's
+     * project can read the project without reading the bank's facility.
+     */
+    DEVELOPMENTS_FINANCE_VIEW("See a development's budget, spend, facility and receivables",
+            AppModuleEnum.DEVELOPMENTS),
+    /** Writing a cost line or a drawdown. Anyone with this and access to the development may record. */
+    DEVELOPMENTS_FINANCE_RECORD("Record costs and facility drawdowns on a development",
+            AppModuleEnum.DEVELOPMENTS),
+    /** The cost categories every development's ledger is filed under — a platform taxonomy. */
+    COST_CATEGORIES_MANAGE("Add, rename and suspend development cost categories",
+            AppModuleEnum.DEVELOPMENTS, true),
+
     UNITS_VIEW("See the unit inventory", AppModuleEnum.DEVELOPMENTS),
     UNITS_MANAGE("Add, generate and change units", AppModuleEnum.DEVELOPMENTS),
     /** Reserving and selling. Separate from MANAGE: one arranges the inventory, the other commits a unit. */
@@ -186,6 +200,9 @@ public enum AppPermissionEnum {
 
     BOOKINGS_VIEW("See bookings and their balances", AppModuleEnum.DEVELOPMENTS),
     BOOKINGS_MANAGE("Book a unit, agree it, cancel it", AppModuleEnum.DEVELOPMENTS),
+
+    // ── PAYMENTS ──────────────────────────────────────────────────────────────
+    PAYMENTS_VIEW("See payments and receipts", AppModuleEnum.PAYMENTS),
     /*
      * Recording money is its own permission, apart from managing the booking.
      *
@@ -193,7 +210,22 @@ public enum AppPermissionEnum {
      * who reconciles the bank statement does exactly that and books nothing. Folding the two together would
      * mean everybody who can take a name can also move a balance.
      */
-    BOOKINGS_PAYMENTS("Record and reverse payments against a booking", AppModuleEnum.DEVELOPMENTS),
+    PAYMENTS_RECEIVE("Record money received against a booking", AppModuleEnum.PAYMENTS),
+    /** Reversing money already receipted. Separate from recording it: a void changes a balance a buyer has seen. */
+    PAYMENTS_VOID("Void a payment, with a reason", AppModuleEnum.PAYMENTS),
+    PAYMENT_TYPES_VIEW("See payment methods and the accounts money is collected into",
+            AppModuleEnum.PAYMENTS),
+    /**
+     * Where an organisation's money lands. The highest-consequence configuration change in the product,
+     * which is why every write under it also takes a one-time code sent to the organisation itself.
+     */
+    PAYMENT_TYPES_MANAGE("Set up, change and withdraw payment accounts", AppModuleEnum.PAYMENTS),
+    /**
+     * The catalogue is shared by every organisation on the platform, so switching a channel on or off is
+     * the platform's decision and nobody else's.
+     */
+    PAYMENT_CATALOGUE_MANAGE("Switch payment methods on or off for the whole platform",
+            AppModuleEnum.PAYMENTS, true),
 
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),

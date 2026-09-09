@@ -1,7 +1,20 @@
 package com.hodi.modules.dashboard;
 
 import com.hodi.common.AppConstant;
+import com.hodi.common.exception.HodiException;
+import com.hodi.modules.analytics.AnalyticsQueries;
+import com.hodi.modules.analytics.AnalyticsService;
+import com.hodi.modules.analytics.AnalyticsViews.CalendarView;
+import com.hodi.modules.analytics.AnalyticsViews.MonthlyView;
+import com.hodi.modules.analytics.AnalyticsViews.OverallView;
+import com.hodi.modules.analytics.AnalyticsViews.Positions;
+import com.hodi.modules.analytics.AnalyticsWindow;
 import com.hodi.modules.auth.RefreshTokenRepository;
+import org.springframework.http.HttpStatus;
+import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import com.hodi.modules.institutions.LendingInstitutionRepository;
 import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.tenants.TenantRepository;
@@ -24,12 +37,16 @@ import java.util.List;
  * the caller is entitled to, so a card added later cannot leak to an actor who should not see it, and a
  * hidden card is not a figure sitting in the JSON waiting to be read out of dev tools.
  *
- * <h2>What this honestly is right now</h2>
+ * <h2>Two kinds of thing on it</h2>
  *
- * <p>A skeleton over access-management facts, because that is the only data that exists. Every card below
- * counts organisations, staff, partnerships or sessions. The figures that will matter — listings, enquiries,
- * applications, disbursements, conversion — are added as the functional slices land, each one appending to
- * this same endpoint rather than introducing a second dashboard API.
+ * <p>The cards are the facts that need saying in words — a stranded lender, an unconfirmed buyer, projects
+ * running late — and they are assembled per audience here. The figures — overall, the month, the calendar —
+ * are each their own endpoint, because they filter independently: Overall by year or not at all, the summary
+ * by month, the calendar by year. One combined answer would mean stepping the calendar re-read the month.
+ * Only the development is shared, and it genuinely narrows all three.
+ *
+ * <p>Nothing is stored or cached. Every figure is a sum over bookings, payments, the cost ledger and the units
+ * when the page asks, through the same {@code AnalyticsQueries} the analytics page reads.
  */
 @Slf4j
 @Service
@@ -41,6 +58,12 @@ public class DashboardService {
     private final PartnershipRepository partnerships;
     private final UserProfileRepository profiles;
     private final RefreshTokenRepository refreshTokens;
+    private final AnalyticsQueries figures;
+    private final AnalyticsService analytics;
+
+    /** The collections table's page. Ten, like every list in the platform. */
+    private static final int COLLECTIONS = 10;
+    private static final DateTimeFormatter MONTH = DateTimeFormatter.ofPattern("MMMM yyyy", Locale.ENGLISH);
 
     /**
      * One figure on the dashboard.
@@ -64,15 +87,79 @@ public class DashboardService {
         String greeting = "Welcome back, " + firstNameOf(caller);
 
         if (caller.isPlatformStaff()) {
-            return new DashboardResponse("PLATFORM", greeting, platformCards());
+            return new DashboardResponse("PLATFORM", greeting, withProjectCards(platformCards()));
         }
         if (caller.isSellerStaff()) {
-            return new DashboardResponse("SELLER", greeting, sellerCards(caller));
+            return new DashboardResponse("SELLER", greeting, withProjectCards(sellerCards(caller)));
         }
         if (caller.isLenderStaff()) {
-            return new DashboardResponse("LENDER", greeting, lenderCards(caller));
+            return new DashboardResponse("LENDER", greeting, withProjectCards(lenderCards(caller)));
         }
         return new DashboardResponse("BUYER", greeting, buyerCards(caller));
+    }
+
+    // ── the figures ───────────────────────────────────────────────────────────
+
+    /** <b>Overall.</b> Everything, or one year of it. All time by default: the year is a filter, not the frame. */
+    @Transactional(readOnly = true)
+    public OverallView overall(Integer year, String developmentHash) {
+        if (year != null && (year < 2000 || year > 2100)) {
+            throw new HodiException("That is not a year this system has data for.", HttpStatus.BAD_REQUEST);
+        }
+        Long developmentId = analytics.development(developmentHash);
+        return new OverallView(year == null ? "All time" : String.valueOf(year),
+                figures.totals(null, year, developmentId), figures.positions(developmentId));
+    }
+
+    /** <b>The month.</b> Its money, the sales rate today, and its receipts a page at a time. */
+    @Transactional(readOnly = true)
+    public MonthlyView monthly(Integer year, Integer month, String developmentHash, int page, int size) {
+        LocalDate today = LocalDate.now();
+        int y = year == null ? today.getYear() : year;
+        int m = month == null ? today.getMonthValue() : month;
+        AnalyticsWindow window = new AnalyticsWindow(y, m, y, m);
+        Long developmentId = analytics.development(developmentHash);
+        return new MonthlyView(y, m, MONTH.format(YearMonth.of(y, m)),
+                figures.totals(window, developmentId), figures.positions(developmentId),
+                figures.collections(y, m, developmentId, Math.max(0, page),
+                        Math.min(Math.max(1, size), 100)));
+    }
+
+    /** <b>The calendar.</b> Twelve months of receipts and spend, including the empty ones. */
+    @Transactional(readOnly = true)
+    public CalendarView calendar(Integer year, String developmentHash) {
+        int y = year == null ? LocalDate.now().getYear() : year;
+        if (y < 2000 || y > 2100) {
+            throw new HodiException("That is not a year this system has data for.", HttpStatus.BAD_REQUEST);
+        }
+        Long developmentId = analytics.development(developmentHash);
+        return new CalendarView(y, figures.collectionsByMonth(y, developmentId));
+    }
+
+    /**
+     * The project cards, for anyone who may see a development's money.
+     *
+     * <p>Only the ones that ask for something: a permanent "0 late" card is noise, and the same card showing
+     * 2 is something somebody should open today. Gated by the finance permission rather than the audience,
+     * because a collaborator with progress rights on a bank's project holds neither figure.
+     */
+    private List<Card> withProjectCards(List<Card> cards) {
+        if (!AuthContext.hasAuthority("DEVELOPMENTS_FINANCE_VIEW")) return cards;
+        Positions now = figures.positions(null);
+        if (now.developments() == 0) return cards;
+        if (now.developmentsLate() > 0) {
+            cards.add(new Card("projectsLate", "Projects running late", String.valueOf(now.developmentsLate()),
+                    "with a phase past its date", "warning", "/app/developments"));
+        }
+        if (now.developmentsOverBudget() > 0) {
+            cards.add(new Card("projectsOverBudget", "Over budget", String.valueOf(now.developmentsOverBudget()),
+                    "spent more than was allowed", "warning", "/app/developments"));
+        }
+        if (now.overdueBookings() > 0) {
+            cards.add(new Card("overdue", "Buyers behind", String.valueOf(now.overdueBookings()),
+                    "bookings with an instalment overdue", "warning", "/app/analytics"));
+        }
+        return cards;
     }
 
     // ── platform ──────────────────────────────────────────────────────────────

@@ -163,7 +163,7 @@ class ChartServiceIT {
     @DisplayName("an empty chart says so rather than returning bare axes")
     void emptyChartIsMarked() {
         // A tenant with nothing of its own to chart.
-        signInAs(tenant(0), "REPORTS_VIEW", "BOOKINGS_VIEW");
+        signInAs(tenant(0), "REPORTS_VIEW", "PAYMENTS_VIEW");
         ChartData chart = service.draw("payments-by-month");
 
         if (chart.series().isEmpty()) {

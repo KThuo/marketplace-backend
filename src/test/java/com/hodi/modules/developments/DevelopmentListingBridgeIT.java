@@ -101,6 +101,7 @@ class DevelopmentListingBridgeIT {
     /** A listing standing for the typology, in whatever state the test needs. */
     private Property typologyListing(String state) {
         return properties.save(Property.builder()
+                .listingKind("TYPOLOGY")
                 .reference(RrnGenerator.generate("PR")).tenantId(tenantId)
                 .title("Two bedroom at Highrise Apartments")
                 .description("Ninety-two square metres over four blocks.")
@@ -266,20 +267,23 @@ class DevelopmentListingBridgeIT {
         development.setPublishedAt(OffsetDateTime.now());
         developments.save(development);
 
-        units.save(DevelopmentUnit.builder()
+        units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-3-01").block("B").floorNo((short) 3)
-                .listPrice(new BigDecimal("9500000"))
+                .price(new BigDecimal("9500000"))
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
-        units.save(DevelopmentUnit.builder()
+        units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-3-02").block("B").floorNo((short) 3)
                 .saleState(AppConstant.UNIT_SOLD)
                 .soldPrice(new BigDecimal("9750000")).soldAt(OffsetDateTime.now())
                 .buyerName("Asha Mwangi").buyerPhone("+254712345678")
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
-        units.save(DevelopmentUnit.builder()
+        units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-3-03").block("B").floorNo((short) 3)
                 .saleState(AppConstant.UNIT_RETAINED)

@@ -65,6 +65,7 @@ public class PropertyService {
     private final PropertyRepository repository;
     private final AgentProfileRepository agents;
     private final com.hodi.modules.sellerops.CommissionService commissions;
+    private final com.hodi.modules.bookings.BookingService bookings;
     private final PropertyMediaRepository media;
     private final com.hodi.modules.media.MediaAssetRepository mediaAssets;
     private final TenantRepository tenants;
@@ -83,6 +84,9 @@ public class PropertyService {
                 SearchSpecs.eq("listingState", blankToNull(request.getListingState())),
                 SearchSpecs.eq("propertyType", blankToNull(request.getPropertyType())),
                 SearchSpecs.eq("county", blankToNull(request.getCounty())),
+                // Houses and typology cards. A development's individual units are properties too, but two
+                // hundred of them in the listing list would bury the listings; they have the inventory screen.
+                notUnits(),
                 // The isolation. A seller sees their own; a lender sees their partnered sellers'; the
                 // platform sees everything — all of it decided by TenantScope rather than by this method.
                 TenantScope.restrict("tenantId"));
@@ -247,31 +251,24 @@ public class PropertyService {
     }
 
     @Transactional
-    public PropertyResponse markSold(String hashId) {
+    public PropertyResponse markSold(String hashId, com.hodi.modules.bookings.BookingDtos.MarkSoldRequest request) {
         Property property = requireOwn(hashId);
         if (!property.isLive()) {
             throw new HodiException("Only a live listing can be marked sold.", HttpStatus.CONFLICT);
         }
-        String before = snapshot(property);
-        property.setListingState(AppConstant.LISTING_SOLD);
-        property.setSoldAt(OffsetDateTime.now());
         /*
-         * `published_at` is kept, and that is a correction (M15).
+         * Sold is a booking completed, not a flag flipped.
          *
-         * It used to be cleared here as belt-and-braces for "off the marketplace" — but the marketplace
-         * filters on `listing_state`, so clearing it removed the listing from nothing and destroyed the
-         * only record of when it went live. The first report to ask "how long did it take to sell" got a
-         * dash in every row, because the subtraction had nothing to subtract from.
+         * A house used to be marked sold by setting its state, which left the sale with no buyer, no price the
+         * reports could add up and nowhere for money to land. Now it is what a unit's sale is: a booking, here
+         * written already completed (or the live one completed, with its balance checked). The booking writes
+         * SOLD onto the row and raises the commission, so this method no longer does either.
          *
-         * What sold, for how much, and how long it took is the question every report in M15 is built on.
+         * `published_at` is kept: the marketplace filters on `listing_state`, and the date it went live is the
+         * only record of how long the sale took.
          */
-        property.setUpdatedBy(AuthContext.username());
-        Property saved = repository.save(property);
-        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
-        // What the platform earned (M13). Raised from the rate in force now and copied onto the row; it
-        // never throws back into here, because the sale is the fact and the invoice is a consequence.
-        commissions.raiseFor(saved);
-        return toResponse(saved);
+        bookings.recordSale(property, request);
+        return toResponse(repository.findById(property.getId()).orElseThrow());
     }
 
     @Transactional
@@ -316,7 +313,12 @@ public class PropertyService {
             throw new HodiException("That listing belongs to another organisation.",
                     HttpStatus.FORBIDDEN);
         }
+        refuseUnit(property);
         return property;
+    }
+
+    private static Specification<Property> notUnits() {
+        return (root, query, cb) -> cb.notEqual(root.get("listingKind"), AppConstant.LISTING_KIND_UNIT);
     }
 
     /**
@@ -328,6 +330,7 @@ public class PropertyService {
      */
     private Property requireManageable(String hashId) {
         Property property = requireVisible(hashId);
+        refuseUnit(property);
         if (AuthContext.require().isPlatformStaff()) return property;
         Long tenantId = AuthContext.tenantId();
         if (tenantId == null || !tenantId.equals(property.getTenantId())) {
@@ -335,6 +338,20 @@ public class PropertyService {
                     HttpStatus.FORBIDDEN);
         }
         return property;
+    }
+
+    /**
+     * A unit is written through its development and its booking, never here.
+     *
+     * <p>Its state is its project's, its sale is a booking, and its label and price are inventory. Editing one
+     * as a listing would be a second writer for every one of those — which is the thing this whole arrangement
+     * exists to prevent.
+     */
+    private static void refuseUnit(Property property) {
+        if (property.isUnit()) {
+            throw new HodiException("That is a unit of " + property.getDevelopmentName()
+                    + ". Change it from the development's inventory.", HttpStatus.CONFLICT);
+        }
     }
 
     /**

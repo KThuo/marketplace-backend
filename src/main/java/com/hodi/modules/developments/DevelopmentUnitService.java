@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
@@ -73,6 +74,7 @@ public class DevelopmentUnitService {
     private final PayCodeAllocator payCodes;
     private final AuditService audit;
     private final com.hodi.modules.bookings.UnitBookingRepository bookings;
+    private final com.hodi.modules.bookings.BookingService bookingService;
 
     // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -87,8 +89,10 @@ public class DevelopmentUnitService {
 
         // SearchSpecs.allOf skips the nulls that an unsupplied filter leaves; Spring's own allOf throws on
         // them. Field name first in eq() — reversed, it filters on a column named by the value.
-        Specification<DevelopmentUnit> spec = SearchSpecs.allOf(
+        Specification<Property> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
+                // The rows of kind UNIT only: the typology's own card shares the development id.
+                SearchSpecs.eq("listingKind", AppConstant.LISTING_KIND_UNIT),
                 SearchSpecs.eq("developmentId", development.getId()),
                 SearchSpecs.eq("unitTypeId", typeId),
                 SearchSpecs.eq("phaseId", phaseId),
@@ -109,7 +113,7 @@ public class DevelopmentUnitService {
 
         // And the booking holding each unit, one query for the page rather than one per row.
         Map<Long, com.hodi.modules.bookings.UnitBooking> bookingsByUnit = liveBookings(
-                page.getContent().stream().map(DevelopmentUnit::getId).toList());
+                page.getContent().stream().map(Property::getId).toList());
 
         return PagedResponse.from(page, unit -> toResponse(unit, typesById, phaseNames, bookingsByUnit));
     }
@@ -148,9 +152,7 @@ public class DevelopmentUnitService {
         Long phaseId = resolvePhase(development, request.phaseHashId());
         assertLabelFree(development.getId(), request.unitLabel(), -1L);
 
-        DevelopmentUnit unit = DevelopmentUnit.builder()
-                .developmentId(development.getId())
-                .unitTypeId(type.getId())
+        Property unit = unitRow(development, type)
                 .phaseId(phaseId)
                 .reference(nextReference())
                 .payReference(payCodes.next())
@@ -159,9 +161,9 @@ public class DevelopmentUnitService {
                 .build();
         apply(unit, request);
 
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
         inventory.recountUnitType(type.getId());
-        audit.record(AppConstant.ACTION_CREATE, "DevelopmentUnit", saved.getId(), null, snapshot(saved));
+        audit.record(AppConstant.ACTION_CREATE, "Property", saved.getId(), null, snapshot(saved));
         return toResponse(saved);
     }
 
@@ -200,19 +202,18 @@ public class DevelopmentUnitService {
         }
 
         List<String> codes = payCodes.nextBatch(slots.size());
-        List<DevelopmentUnit> batch = new ArrayList<>(slots.size());
+        List<Property> batch = new ArrayList<>(slots.size());
         for (int i = 0; i < slots.size(); i++) {
             UnitLabels.Slot slot = slots.get(i);
-            batch.add(DevelopmentUnit.builder()
-                    .developmentId(development.getId())
-                    .unitTypeId(type.getId())
+            batch.add(unitRow(development, type)
                     .phaseId(phaseId)
                     .reference(nextReference())
                     .payReference(codes.get(i))
                     .unitLabel(slot.label())
+                    .title(development.getName() + " · " + slot.label())
                     .block(slot.block())
                     .floorNo(slot.floorNo())
-                    .listPrice(request.listPrice())
+                    .price(request.listPrice())
                     .currency(type.getCurrency())
                     .saleState(AppConstant.UNIT_AVAILABLE)
                     .constructionStatus(AppConstant.BUILD_PLANNED)
@@ -222,7 +223,7 @@ public class DevelopmentUnitService {
         repository.saveAll(batch);
         inventory.recountUnitType(type.getId());
 
-        audit.record(AppConstant.ACTION_CREATE, "DevelopmentUnit", type.getId(), null,
+        audit.record(AppConstant.ACTION_CREATE, "Property", type.getId(), null,
                 "generated " + batch.size() + " units for " + type.getCode()
                         + " of " + development.getReference());
         log.info("Generated {} units for unit type {} of {}", batch.size(), type.getCode(),
@@ -236,7 +237,7 @@ public class DevelopmentUnitService {
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
 
-        DevelopmentUnit unit = require(development, unitHashId);
+        Property unit = require(development, unitHashId);
         DevelopmentUnitType type = requireType(development, request.unitTypeHashId());
         assertLabelFree(development.getId(), request.unitLabel(), unit.getId());
 
@@ -249,12 +250,12 @@ public class DevelopmentUnitService {
         unit.setStatusFlag(AppConstant.FLAG_EDITED);
         unit.setUpdatedBy(AuthContext.username());
 
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
         // Both typologies are recounted when a unit moves between them, or the one it left keeps its figure.
         inventory.recountUnitType(type.getId());
         if (!previousType.equals(type.getId())) inventory.recountUnitType(previousType);
 
-        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
 
@@ -265,9 +266,9 @@ public class DevelopmentUnitService {
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
 
-        DevelopmentUnit unit = require(development, unitHashId);
+        Property unit = require(development, unitHashId);
         assertNoLiveBooking(unit, "Change");
-        if (unit.isSold()) {
+        if (unit.isSoldUnit()) {
             throw new HodiException("That unit is already sold.", HttpStatus.CONFLICT);
         }
         if (unit.isOnHold() && !unit.isHoldExpired()) {
@@ -282,6 +283,7 @@ public class DevelopmentUnitService {
         String before = snapshot(unit);
         int days = request.holdDays() == null ? DEFAULT_HOLD_DAYS : request.holdDays();
         unit.setSaleState(AppConstant.UNIT_RESERVED);
+        DevelopmentInventoryService.applyListingState(unit, development);
         unit.setReservedAt(OffsetDateTime.now());
         unit.setReservedUntil(OffsetDateTime.now().plusDays(days));
         unit.setBuyerName(request.buyerName().trim());
@@ -290,29 +292,31 @@ public class DevelopmentUnitService {
         unit.setNotes(blankToNull(request.note()));
         unit.setUpdatedBy(AuthContext.username());
 
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
         inventory.recountUnitType(saved.getUnitTypeId());
-        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
 
-    /** Records a sale. The buyer, the price and the date are all required by the table itself. */
+    /**
+     * Records a sale made off the platform.
+     *
+     * <p>Not a state flip any more. The sale is written as a completed booking — a buyer, a price, and a
+     * place for late money to land — through the one service that sells any home. Where a live booking already
+     * holds the unit, that booking is completed instead, with its balance checked first; so there is exactly
+     * one path by which a unit becomes SOLD, and the dashboard's figures include every sale.
+     */
     @Transactional
     public UnitResponse sell(String developmentHashId, String unitHashId, SellUnitRequest request) {
         UserPrincipal caller = AuthContext.require();
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
-
-        DevelopmentUnit unit = require(development, unitHashId);
-        // A booked unit is sold by completing its booking, which checks the balance first. Selling it from
-        // here would mark it sold with money still outstanding and no record of the terms.
-        assertNoLiveBooking(unit, "Complete");
-        if (unit.isSold()) {
+        Property unit = require(development, unitHashId);
+        if (unit.isSoldUnit()) {
             throw new HodiException("That unit is already sold.", HttpStatus.CONFLICT);
         }
         DevelopmentUnitType type = unitTypes.findById(unit.getUnitTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Unit type", unit.getUnitTypeId()));
-
         BigDecimal price = request.soldPrice() != null
                 ? request.soldPrice()
                 : unit.effectivePrice(type.getListPrice());
@@ -320,21 +324,12 @@ public class DevelopmentUnitService {
             throw new HodiException("Say what it sold for — neither the unit nor its type has a price.",
                     HttpStatus.BAD_REQUEST);
         }
-
         String before = snapshot(unit);
-        unit.setSaleState(AppConstant.UNIT_SOLD);
-        unit.setSoldAt(OffsetDateTime.now());
-        unit.setSoldPrice(price);
-        unit.setBuyerName(request.buyerName().trim());
-        unit.setBuyerPhone(blankToNull(request.buyerPhone()));
-        unit.setBuyerEmail(blankToNull(request.buyerEmail()));
-        unit.setReservedUntil(null);
-        if (request.note() != null && !request.note().isBlank()) unit.setNotes(request.note().trim());
-        unit.setUpdatedBy(AuthContext.username());
-
-        DevelopmentUnit saved = repository.save(unit);
-        inventory.recountUnitType(saved.getUnitTypeId());
-        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        bookingService.recordSale(unit, new com.hodi.modules.bookings.BookingDtos.MarkSoldRequest(
+                request.buyerName().trim(), blankToNull(request.buyerPhone()), blankToNull(request.buyerEmail()),
+                price, blankToNull(request.note())));
+        Property saved = repository.findById(unit.getId()).orElseThrow();
+        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         log.info("Unit {} of {} sold", saved.getUnitLabel(), development.getReference());
         return toResponse(saved);
     }
@@ -351,14 +346,15 @@ public class DevelopmentUnitService {
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
 
-        DevelopmentUnit unit = require(development, unitHashId);
+        Property unit = require(development, unitHashId);
         // Releasing a booked unit would free it while the booking still claimed it. Cancel the booking.
         assertNoLiveBooking(unit, "Cancel");
-        if (unit.isSold()) {
+        if (unit.isSoldUnit()) {
             throw new HodiException("A sold unit cannot be released.", HttpStatus.CONFLICT);
         }
         String before = snapshot(unit);
         unit.setSaleState(AppConstant.UNIT_AVAILABLE);
+        DevelopmentInventoryService.applyListingState(unit, development);
         unit.setReservedAt(null);
         unit.setReservedUntil(null);
         unit.setBuyerName(null);
@@ -367,9 +363,9 @@ public class DevelopmentUnitService {
         unit.setBuyerUserId(null);
         unit.setUpdatedBy(AuthContext.username());
 
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
         inventory.recountUnitType(saved.getUnitTypeId());
-        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
 
@@ -381,7 +377,7 @@ public class DevelopmentUnitService {
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
 
-        DevelopmentUnit unit = require(development, unitHashId);
+        Property unit = require(development, unitHashId);
         String status = request.constructionStatus().trim().toUpperCase();
         String before = snapshot(unit);
 
@@ -394,9 +390,9 @@ public class DevelopmentUnitService {
         }
         unit.setUpdatedBy(AuthContext.username());
 
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
         inventory.recountUnitType(saved.getUnitTypeId());
-        audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
 
@@ -406,8 +402,8 @@ public class DevelopmentUnitService {
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
 
-        DevelopmentUnit unit = require(development, unitHashId);
-        if (unit.isSold()) {
+        Property unit = require(development, unitHashId);
+        if (unit.isSoldUnit()) {
             throw new HodiException(
                     "A sold unit cannot be removed — it is the record of a sale.", HttpStatus.CONFLICT);
         }
@@ -415,10 +411,10 @@ public class DevelopmentUnitService {
         unit.setStatus(AppConstant.STATUS_DELETED);
         unit.setStatusFlag(AppConstant.FLAG_DELETED);
         unit.setUpdatedBy(AuthContext.username());
-        DevelopmentUnit saved = repository.save(unit);
+        Property saved = repository.save(unit);
 
         inventory.recountUnitType(saved.getUnitTypeId());
-        audit.record(AppConstant.ACTION_DELETE, "DevelopmentUnit", saved.getId(), before, snapshot(saved));
+        audit.record(AppConstant.ACTION_DELETE, "Property", saved.getId(), before, snapshot(saved));
     }
 
     // ── internals ─────────────────────────────────────────────────────────────
@@ -428,12 +424,51 @@ public class DevelopmentUnitService {
                 request.firstFloor(), request.unitsPerFloor(), request.labelPattern());
     }
 
-    private void apply(DevelopmentUnit unit, SaveUnitRequest request) {
+    /**
+     * A unit row, before its own label and price: everything it inherits from the project and the category.
+     *
+     * <p>A unit is a property, so it carries what a listing carries — a title, a type, an owner, a place — and
+     * those come from the development and the typology rather than from the form. The owner is the selling
+     * organisation where there is one, else the project's own; a bank's project that nobody is marketing yet
+     * has neither, and the row is the institution's until it does.
+     */
+    private Property.PropertyBuilder unitRow(Development development, DevelopmentUnitType type) {
+        return Property.builder()
+                .listingKind(AppConstant.LISTING_KIND_UNIT)
+                .developmentId(development.getId())
+                .developmentName(development.getName())
+                .developmentReference(development.getReference())
+                .unitTypeId(type.getId())
+                .unitTypeReference(type.getReference())
+                .propertyType(type.getPropertyType())
+                .listingType(AppConstant.LISTING_TYPE_SALE)
+                .tenantId(development.getSellingTenantId() != null
+                        ? development.getSellingTenantId() : development.getTenantId())
+                .tenantName(development.getSellingTenantId() != null
+                        ? development.getSellingTenantName() : development.getTenantName())
+                .institutionId(development.getInstitutionId())
+                .county(development.getCounty())
+                .town(development.getTown())
+                .estate(development.getEstate())
+                .addressLine(development.getAddressLine())
+                .latitude(development.getLatitude())
+                .longitude(development.getLongitude())
+                .listingState(DevelopmentInventoryService.unitListingStateFor(development))
+                .publishedAt(development.getPublishedAt())
+                .saleState(AppConstant.UNIT_AVAILABLE)
+                .constructionStatus(AppConstant.BUILD_PLANNED)
+                .title(development.getName());
+    }
+
+    private void apply(Property unit, SaveUnitRequest request) {
         unit.setUnitLabel(request.unitLabel().trim());
+        // The title follows the label: "Highrise Apartments · B-14" is how the row reads everywhere else.
+        unit.setTitle((unit.getDevelopmentName() == null ? "" : unit.getDevelopmentName() + " · ")
+                + unit.getUnitLabel());
         unit.setBlock(blankToNull(request.block()));
         unit.setFloorNo(request.floorNo());
         unit.setDoorNo(blankToNull(request.doorNo()));
-        unit.setListPrice(request.listPrice());
+        unit.setPrice(request.listPrice());
         unit.setNotes(blankToNull(request.notes()));
         if (request.constructionStatus() != null && !request.constructionStatus().isBlank()) {
             String status = request.constructionStatus().trim().toUpperCase();
@@ -475,7 +510,7 @@ public class DevelopmentUnitService {
      * <p>The message names the booking and its buyer, because "you cannot do that" on a screen that shows an
      * available unit is an answer nobody can act on.
      */
-    private void assertNoLiveBooking(DevelopmentUnit unit, String action) {
+    private void assertNoLiveBooking(Property unit, String action) {
         bookings.findLiveForUnit(unit.getId()).ifPresent(booking -> {
             throw new HodiException(unit.getUnitLabel() + " is booked under " + booking.getReference()
                     + " by " + booking.getBuyerName() + ". " + action + " it through that booking instead.",
@@ -483,8 +518,8 @@ public class DevelopmentUnitService {
         });
     }
 
-    private DevelopmentUnit require(Development development, String unitHashId) {
-        DevelopmentUnit unit = repository.findById(HashIdUtil.decodeId(unitHashId))
+    private Property require(Development development, String unitHashId) {
+        Property unit = repository.findById(HashIdUtil.decodeId(unitHashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Unit", unitHashId));
         if (!unit.getDevelopmentId().equals(development.getId())) {
             throw new ResourceNotFoundException("Unit", unitHashId);
@@ -513,7 +548,7 @@ public class DevelopmentUnitService {
     }
 
     /** Free text across the label and the buyer, which is what somebody at a sales desk searches by. */
-    private Specification<DevelopmentUnit> labelOrBuyerLike(String search) {
+    private Specification<Property> labelOrBuyerLike(String search) {
         if (search == null || search.isBlank()) return null;
         String like = "%" + search.trim().toLowerCase() + "%";
         return (root, query, cb) -> {
@@ -538,7 +573,7 @@ public class DevelopmentUnitService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    private UnitResponse toResponse(DevelopmentUnit unit) {
+    private UnitResponse toResponse(Property unit) {
         Optional<DevelopmentUnitType> type = unitTypes.findById(unit.getUnitTypeId());
         Map<Long, DevelopmentUnitType> one = type
                 .map(t -> Map.of(t.getId(), t)).orElse(Map.of());
@@ -552,13 +587,13 @@ public class DevelopmentUnitService {
     private Map<Long, com.hodi.modules.bookings.UnitBooking> liveBookings(List<Long> unitIds) {
         if (unitIds.isEmpty()) return Map.of();
         return bookings.findLiveForUnits(unitIds).stream().collect(Collectors.toMap(
-                com.hodi.modules.bookings.UnitBooking::getUnitId, Function.identity(),
+                com.hodi.modules.bookings.UnitBooking::getPropertyId, Function.identity(),
                 // Cannot happen — the partial unique index permits one live booking per unit — but a merge
                 // function is required and throwing here would be a 500 for a state the database forbids.
                 (a, b) -> a));
     }
 
-    private UnitResponse toResponse(DevelopmentUnit u, Map<Long, DevelopmentUnitType> types,
+    private UnitResponse toResponse(Property u, Map<Long, DevelopmentUnitType> types,
                                     Map<Long, String> phaseNames,
                                     Map<Long, com.hodi.modules.bookings.UnitBooking> bookingsByUnit) {
         DevelopmentUnitType type = types.get(u.getUnitTypeId());
@@ -574,7 +609,7 @@ public class DevelopmentUnitService {
                 type == null ? null : type.getCode(),
                 type == null ? null : type.getName(),
                 u.getPhaseId() == null ? null : phaseNames.get(u.getPhaseId()),
-                u.getListPrice(),
+                u.getPrice(),
                 u.effectivePrice(type == null ? null : type.getListPrice()),
                 u.getCurrency(),
                 u.getSaleState(),
@@ -594,7 +629,7 @@ public class DevelopmentUnitService {
                 booking == null ? null : booking.getState());
     }
 
-    private String snapshot(DevelopmentUnit u) {
+    private String snapshot(Property u) {
         return "label=" + u.getUnitLabel() + ", state=" + u.getSaleState()
                 + ", build=" + u.getConstructionStatus()
                 + ", buyer=" + (u.getBuyerName() == null ? "-" : u.getBuyerName())

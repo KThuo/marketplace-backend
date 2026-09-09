@@ -2,7 +2,11 @@ package com.hodi.modules.analytics;
 
 import com.hodi.modules.analytics.ChartCatalogue.Chart;
 import com.hodi.common.exception.ResourceNotFoundException;
-import com.hodi.security.TenantScope;
+import com.hodi.modules.developments.Development;
+import com.hodi.modules.developments.DevelopmentRepository;
+import com.hodi.modules.developments.DevelopmentVisibility;
+import com.hodi.security.OwnerScopeSql;
+import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,9 +37,16 @@ import java.util.Map;
  *
  * <h2>Every query is scoped, and a chart that cannot be is refused</h2>
  *
- * <p>{@code TenantScope.sqlPredicate} is spliced onto the columns the chart declares. An aggregate that
- * escaped scoping would be one organisation reading another's totals — and a total does not look like
- * somebody else's data until you work out what it is made of, which is what makes it worse than a row leak.
+ * <p>{@code OwnerScopeSql} is spliced onto the columns the chart declares — the tenant column, the institution
+ * column, and the development column where the view has one. An aggregate that escaped scoping would be one
+ * organisation reading another's totals — and a total does not look like somebody else's data until you work
+ * out what it is made of, which is what makes it worse than a row leak.
+ *
+ * <h2>A chart may be about one development</h2>
+ *
+ * <p>Where the catalogue names a subject column and the caller names a development, the query is narrowed to
+ * it — after {@code DevelopmentVisibility} has said the caller may see that project. A development the caller
+ * cannot see is not found, like everywhere else.
  *
  * <h2>The summary is composed here, not in the browser</h2>
  *
@@ -50,6 +61,8 @@ import java.util.Map;
 public class ChartService {
 
     private final JdbcTemplate jdbc;
+    private final DevelopmentRepository developments;
+    private final DevelopmentVisibility visibility;
 
     /**
      * @param key      the catalogue key, echoed so a client can match a response to a request
@@ -79,6 +92,8 @@ public class ChartService {
     public List<Map<String, String>> available() {
         return ChartCatalogue.all().stream()
                 .filter(this::maySee)
+                // A subject-only chart is meaningless summed across projects, so it is not offered here.
+                .filter(c -> !c.subjectOnly())
                 .map(c -> Map.of(
                         "key", c.key(),
                         "title", c.title(),
@@ -89,6 +104,15 @@ public class ChartService {
 
     @Transactional(readOnly = true)
     public ChartData draw(String key) {
+        return draw(key, null);
+    }
+
+    /**
+     * @param developmentHash the development to narrow the chart to, or null for everything in scope. Refused
+     *                        on a chart with no subject column; required on one marked subject-only
+     */
+    @Transactional(readOnly = true)
+    public ChartData draw(String key, String developmentHash) {
         Chart chart = ChartCatalogue.byKey(key)
                 .orElseThrow(() -> new ResourceNotFoundException("Chart", key));
         if (!maySee(chart)) {
@@ -96,13 +120,28 @@ public class ChartService {
             throw new ResourceNotFoundException("Chart", key);
         }
 
-        String sql = "select bucket, series, sum(value) as value from " + chart.view()
-                + " where " + scope(chart) + " group by 1, 2 order by 1, 2";
+        Long developmentId = HashIdUtil.decodeId(developmentHash);
+        if (developmentId != null) {
+            if (!chart.hasSubject()) throw new ResourceNotFoundException("Chart", key);
+            Development development = developments.findById(developmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Development", developmentHash));
+            if (!visibility.mayRead(development, AuthContext.require())) {
+                throw new ResourceNotFoundException("Development", developmentHash);
+            }
+        } else if (chart.subjectOnly()) {
+            throw new ResourceNotFoundException("Chart", key);
+        }
 
+        String sql = "select bucket, series, sum(value) as value from " + chart.view()
+                + " where " + scope(chart)
+                + (developmentId != null ? " and " + chart.subjectColumn() + " = ?" : "")
+                + " group by 1, 2 order by 1, 2";
+
+        Object[] params = developmentId != null ? new Object[] {developmentId} : new Object[0];
         List<Row> rows = jdbc.query(sql, (rs, i) -> new Row(
                 rs.getDate("bucket") == null ? null : rs.getDate("bucket").toLocalDate(),
                 rs.getString("series"),
-                rs.getBigDecimal("value") == null ? BigDecimal.ZERO : rs.getBigDecimal("value")));
+                rs.getBigDecimal("value") == null ? BigDecimal.ZERO : rs.getBigDecimal("value")), params);
 
         return shape(chart, rows);
     }
@@ -124,14 +163,9 @@ public class ChartService {
             throw new IllegalStateException(
                     "Chart " + chart.key() + " declares no scope column; refusing to run it unscoped");
         }
-        List<String> parts = new ArrayList<>();
-        for (String column : chart.scopeColumns()) {
-            String predicate = TenantScope.sqlPredicate(column);
-            if ("TRUE".equals(predicate)) return "TRUE";      // unrestricted: platform staff
-            if ("FALSE".equals(predicate)) continue;          // this axis grants nothing
-            parts.add("(" + predicate + ")");
-        }
-        return parts.isEmpty() ? "FALSE" : String.join(" OR ", parts);
+        String tenant = chart.scopeColumns().contains("tenant_id") ? "tenant_id" : null;
+        String institution = chart.scopeColumns().contains("institution_id") ? "institution_id" : null;
+        return OwnerScopeSql.predicate(tenant, institution, chart.subjectColumn());
     }
 
     /**

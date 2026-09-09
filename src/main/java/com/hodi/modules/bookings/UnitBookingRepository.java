@@ -21,7 +21,7 @@ public interface UnitBookingRepository
      * allowed a second of. Used to refuse a second booking with a message rather than a constraint violation
      * — the index is still what guarantees it under a race.
      */
-    @Query("select b from UnitBooking b where b.unitId = :unitId "
+    @Query("select b from UnitBooking b where b.propertyId = :unitId "
             + "and b.state in ('RESERVED', 'AGREED') and b.status <> 5")
     Optional<UnitBooking> findLiveForUnit(@Param("unitId") Long unitId);
 
@@ -35,12 +35,12 @@ public interface UnitBookingRepository
      *
      * <p>An empty collection is the caller's job to short-circuit: {@code in ()} is not valid SQL.
      */
-    @Query("select b from UnitBooking b where b.unitId in :unitIds "
+    @Query("select b from UnitBooking b where b.propertyId in :unitIds "
             + "and b.state in ('RESERVED', 'AGREED') and b.status <> 5")
     List<UnitBooking> findLiveForUnits(@Param("unitIds") java.util.Collection<Long> unitIds);
 
     /** Every booking a unit has ever had, newest first. A cancelled one is part of the record. */
-    @Query("select b from UnitBooking b where b.unitId = :unitId and b.status <> 5 "
+    @Query("select b from UnitBooking b where b.propertyId = :unitId and b.status <> 5 "
             + "order by b.bookedOn desc, b.id desc")
     List<UnitBooking> findForUnit(@Param("unitId") Long unitId);
 

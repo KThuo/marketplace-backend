@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -29,8 +30,9 @@ class UnitSpecTest {
                 .build();
     }
 
-    private DevelopmentUnit bare() {
-        return DevelopmentUnit.builder().id(10L).unitLabel("B-3-04").build();
+    private Property bare() {
+        return Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit").id(10L).unitLabel("B-3-04").build();
     }
 
     @Test
@@ -55,9 +57,9 @@ class UnitSpecTest {
     @Test
     @DisplayName("a unit that disagrees wins, field by field")
     void unitOverridesFieldByField() {
-        DevelopmentUnit special = bare();
+        Property special = bare();
         special.setBathrooms((short) 3);
-        special.setListPrice(new BigDecimal("11250000"));
+        special.setPrice(new BigDecimal("11250000"));
 
         UnitSpec spec = UnitSpec.of(special, typology(), List.of(), List.of());
 
@@ -96,7 +98,7 @@ class UnitSpecTest {
          */
         assertNull(UnitSpec.of(bare(), typology(), List.of(), List.of()).balconies());
 
-        DevelopmentUnit two = bare();
+        Property two = bare();
         two.setBalconies((short) 2);
         assertEquals((short) 2, UnitSpec.of(two, typology(), List.of(), List.of()).balconies());
     }
@@ -104,7 +106,7 @@ class UnitSpecTest {
     @Test
     @DisplayName("a unit with no typology at all still resolves")
     void survivesAMissingTypology() {
-        DevelopmentUnit orphan = bare();
+        Property orphan = bare();
         orphan.setBathrooms((short) 1);
 
         UnitSpec spec = UnitSpec.of(orphan, null, List.of(), List.of());
@@ -122,7 +124,7 @@ class UnitSpecTest {
          * The trap this codebase has already fallen into twice — a studio's zero bedrooms, a flat's zero
          * parking. A unit that says "no parking" must not silently borrow the typology's one bay.
          */
-        DevelopmentUnit noParking = bare();
+        Property noParking = bare();
         noParking.setParkingSpaces((short) 0);
 
         UnitSpec spec = UnitSpec.of(noParking, typology(), List.of(), List.of());

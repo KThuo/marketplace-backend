@@ -1,5 +1,6 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.Property;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -41,9 +42,9 @@ public interface DevelopmentUnitTypeRepository extends JpaRepository<Development
      * <p>Coalesces each unit's own price against the typology's, because a unit only carries a price where it
      * differs — so ignoring the null would report the corner flat's premium as the entry price.
      */
-    @Query("select min(coalesce(u.listPrice, t.listPrice)) from DevelopmentUnit u "
+    @Query("select min(coalesce(u.price, t.listPrice)) from Property u "
             + "join DevelopmentUnitType t on t.id = u.unitTypeId "
-            + "where u.unitTypeId = :unitTypeId and u.status <> 5 "
+            + "where u.listingKind = 'UNIT' and u.unitTypeId = :unitTypeId and u.status <> 5 "
             + "and u.saleState in ('AVAILABLE', 'HELD', 'RESERVED')")
     BigDecimal cheapestAvailable(@Param("unitTypeId") Long unitTypeId);
 

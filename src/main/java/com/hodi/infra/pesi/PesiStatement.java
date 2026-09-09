@@ -41,7 +41,8 @@ public class PesiStatement {
     @Column(name = "our_reference", nullable = false, unique = true, length = 16) private String ourReference;
 
     @Column(name = "trans_type", nullable = false, length = 48) private String transType;
-    @Column(name = "payment_method_id") private Long paymentMethodId;
+    /** Which of our accounts it landed in, resolved from {@code accountIdentifier}. Null when we do not know it. */
+    @Column(name = "payment_account_id") private Long paymentAccountId;
     @Column(name = "account_identifier", length = 64) private String accountIdentifier;
 
     /** What the payer typed. The reason this table exists is that this is often wrong. */

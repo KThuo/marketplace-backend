@@ -141,7 +141,7 @@ public class PublicPropertyService {
         // way; the fix is that both sides agree, not which side they agree on.
         Object[] range = (Object[]) entityManager.createNativeQuery(
                         "select min(price), max(price) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5")
+                                + "where listing_state = 'LIVE' and listing_kind <> 'UNIT' and status <> 5")
                 .getSingleResult();
 
         return new FacetsResponse(types, counties, towns,
@@ -156,6 +156,9 @@ public class PublicPropertyService {
     private Specification<Property> live() {
         return (root, query, cb) -> cb.and(
                 cb.equal(root.get("listingState"), AppConstant.LISTING_LIVE),
+                // One row per kind of home, not one per home: an estate of 125 bungalows is four results. The
+                // units are properties too, reached through their typology's card, not listed beside it.
+                cb.notEqual(root.get("listingKind"), AppConstant.LISTING_KIND_UNIT),
                 cb.notEqual(root.get("status"), AppConstant.STATUS_DELETED));
     }
 
@@ -225,7 +228,7 @@ public class PublicPropertyService {
                         // It is a literal from this class and never request input, and the two callers above
                         // are the only ones.
                         "select " + column + ", count(*) from properties "
-                                + "where listing_state = 'LIVE' and status <> 5 and " + column
+                                + "where listing_state = 'LIVE' and listing_kind <> 'UNIT' and status <> 5 and " + column
                                 + " is not null group by 1 order by 2 desc, 1 asc")
                 .getResultList();
         List<Facet> out = new ArrayList<>(rows.size());

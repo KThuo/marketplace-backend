@@ -1,13 +1,18 @@
 package com.hodi.infra.pesi;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.properties.Property;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.infra.pesi.PesiIpnDtos.IpnPayload;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
 import com.hodi.modules.bookings.BookingDtos.CreateBookingRequest;
-import com.hodi.modules.bookings.BookingPaymentRepository;
 import com.hodi.modules.bookings.BookingService;
 import com.hodi.modules.developments.*;
+import com.hodi.modules.payments.PaymentAccount;
+import com.hodi.modules.payments.PaymentAccountRepository;
+import com.hodi.modules.payments.PaymentRepository;
+import com.hodi.modules.payments.PaymentType;
+import com.hodi.modules.payments.PaymentTypeRepository;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
 import com.hodi.security.hashid.HashIdUtil;
@@ -56,9 +61,9 @@ class PesiIpnIT {
     @Autowired PesiIpnService service;
     @Autowired BookingService bookings;
     @Autowired PesiStatementRepository statements;
-    @Autowired PesiPaymentMethodRepository methods;
-    @Autowired PesiSuperTypeRepository superTypes;
-    @Autowired BookingPaymentRepository payments;
+    @Autowired PaymentAccountRepository accounts;
+    @Autowired PaymentTypeRepository types;
+    @Autowired PaymentRepository payments;
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitRepository units;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
@@ -66,8 +71,8 @@ class PesiIpnIT {
 
     private Long tenantId;
     private Development development;
-    private DevelopmentUnit unit;
-    private PesiPaymentMethod till;
+    private Property unit;
+    private PaymentAccount till;
     private BookingResponse booking;
 
     /** Unique per run, so two runs cannot collide on the till's account number. */
@@ -75,6 +80,8 @@ class PesiIpnIT {
 
     @BeforeEach
     void signInAndBuild() {
+        // A run that died before its own clean-up leaves a unit holding the code this one needs.
+        purgeStaleFixtures();
         tenantId = jdbc.queryForObject(
                 "select id from tenants where status <> 5 order by id limit 1", Long.class);
         User user = User.builder().id(1L).username("pesi-test").password("x")
@@ -85,7 +92,7 @@ class PesiIpnIT {
                 .tenantId(tenantId).tenantName("Test Seller")
                 .status(AppConstant.STATUS_ACTIVE).build();
         UserPrincipal principal = UserPrincipal.of(user, profile,
-                Set.of("UNITS_MANAGE", "UNITS_SELL", "BOOKINGS_MANAGE", "BOOKINGS_PAYMENTS"),
+                Set.of("UNITS_MANAGE", "UNITS_SELL", "BOOKINGS_MANAGE", "PAYMENTS_RECEIVE"),
                 List.of(tenantId), false, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
@@ -97,18 +104,21 @@ class PesiIpnIT {
                 .reference(RrnGenerator.generate("UT")).developmentId(development.getId())
                 .code("2B").name("Two bedroom").propertyType("APARTMENT").bedrooms((short) 2)
                 .listPrice(new BigDecimal("9500000")).build());
-        unit = units.save(DevelopmentUnit.builder()
+        unit = units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("C-3-07")
                 .payReference("Z4XP")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
 
-        account = "TILL" + RrnGenerator.generate("T").substring(0, 8);
-        Long superTypeId = superTypes.findByCode("BUNI_IPN_TILL").orElseThrow().getId();
-        till = methods.save(PesiPaymentMethod.builder()
-                .superTypeId(superTypeId).accountNumber(account).accountName("Seller's till")
-                .tenantId(tenantId).createdBy("test").build());
+        account = "TILL" + Long.toString(System.nanoTime(), 36).toUpperCase();
+        PaymentType channel = types.findByPesiProviderType("BUNI_IPN_TILL").orElseThrow();
+        PaymentAccount row = PaymentAccount.builder()
+                .accountNo(account).accountName("Seller's till")
+                .tenantId(tenantId).createdBy("test").build();
+        row.stampChannel(channel);
+        till = accounts.save(row);
 
         booking = bookings.create(HashIdUtil.encodeId(development.getId()),
                 new CreateBookingRequest(HashIdUtil.encodeId(unit.getId()), "Asha Mwangi",
@@ -116,20 +126,48 @@ class PesiIpnIT {
                         new BigDecimal("950000"), null, 14, null, null));
     }
 
+    /**
+     * Removes whatever an earlier, interrupted run left behind under this class's own fixture names.
+     *
+     * <p>The statement and the payment point at each other, so the link is broken before either is deleted.
+     */
+    private void purgeStaleFixtures() {
+        jdbc.update("update payments set statement_id = null where development_id in "
+                + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from pesi_statements where mapped_payment_id in (select id from payments "
+                + "where development_id in (select id from developments where name = 'Paying Heights')) "
+                + "or account_identifier like 'TILL%'");
+        jdbc.update("delete from payments where development_id in "
+                + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
+                + "where development_id in (select id from developments where name = 'Paying Heights'))");
+        jdbc.update("delete from unit_bookings where development_id in "
+                + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id in "
+                + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from development_unit_types where development_id in "
+                + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from developments where name = 'Paying Heights'");
+        jdbc.update("delete from payment_accounts where account_no like 'TILL%' and account_name = 'Seller''s till'");
+    }
+
     @AfterEach
     void cleanUp() {
         try {
-            jdbc.update("delete from pesi_statements where payment_method_id = ? "
+            // The payment names the statement and the statement names the payment: unlink, then delete.
+            jdbc.update("update payments set statement_id = null where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?)", development.getId());
+            jdbc.update("delete from pesi_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
-            jdbc.update("delete from booking_payments where booking_id in "
+            jdbc.update("delete from payments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from booking_instalments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
-            jdbc.update("delete from development_units where development_id = ?", development.getId());
+            jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id = ?", development.getId());
             jdbc.update("delete from development_unit_types where development_id = ?", development.getId());
             jdbc.update("delete from developments where id = ?", development.getId());
-            jdbc.update("delete from pesi_payment_methods where id = ?", till.getId());
+            jdbc.update("delete from payment_accounts where id = ?", till.getId());
         } finally {
             SecurityContextHolder.clearContext();
         }

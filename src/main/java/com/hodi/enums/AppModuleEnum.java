@@ -480,6 +480,20 @@ public enum AppModuleEnum {
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
                     + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
+    /**
+     * Money, and where it lands.
+     *
+     * <p>Admits the same populations as developments, because the money follows the development: a seller
+     * records a buyer's deposit, and a bank financing a build records what arrived against the units it
+     * owns. Core, for the reason developments are — a module every organisation on the platform needs
+     * the day a unit is booked.
+     */
+    PAYMENTS("PAYMENTS", "Payments",
+            "Money received against bookings, the receipts, and the accounts it is collected into",
+            true, 36,
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+
     REPORTS("REPORTS", "Reports",
             "The figures behind the platform, scoped to whoever is asking",
             true, 95,

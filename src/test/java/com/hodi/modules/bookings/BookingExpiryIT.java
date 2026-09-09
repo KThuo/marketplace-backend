@@ -1,6 +1,7 @@
 package com.hodi.modules.bookings;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.properties.Property;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
 import com.hodi.modules.bookings.BookingDtos.CreateBookingRequest;
@@ -55,7 +56,7 @@ class BookingExpiryIT {
     private Long tenantId;
     private Development development;
     private DevelopmentUnitType typology;
-    private DevelopmentUnit unit;
+    private Property unit;
 
     @BeforeEach
     void signInAndBuild() {
@@ -80,9 +81,10 @@ class BookingExpiryIT {
                 .reference(RrnGenerator.generate("UT")).developmentId(development.getId())
                 .code("1B").name("One bedroom").propertyType("APARTMENT").bedrooms((short) 1)
                 .listPrice(new BigDecimal("8400000")).build());
-        unit = units.save(DevelopmentUnit.builder()
+        unit = units.save(Property.builder()
+                .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
-                .unitTypeId(typology.getId()).unitLabel("A-2-04").payReference("Q9M3")
+                .unitTypeId(typology.getId()).unitLabel("A-2-04").payReference(RrnGenerator.payCode())
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
     }
@@ -96,12 +98,12 @@ class BookingExpiryIT {
     @AfterEach
     void cleanUp() {
         try {
-            jdbc.update("delete from booking_payments where booking_id in "
+            jdbc.update("delete from payments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from booking_instalments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
-            jdbc.update("delete from development_units where development_id = ?", development.getId());
+            jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id = ?", development.getId());
             jdbc.update("delete from development_unit_types where development_id = ?", development.getId());
             jdbc.update("delete from developments where id = ?", development.getId());
         } finally {

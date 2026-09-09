@@ -27,7 +27,23 @@ public final class ReportCatalogue {
      */
     public record Report(String code, String name, String description, String view,
                          String dateColumn, Map<String, String> columns, List<String> numeric,
-                         boolean platformOnly, List<Filter> filters) {
+                         boolean platformOnly, List<Filter> filters,
+                         /**
+                          * Whether the view's rows may be owned by a lending institution as well as a tenant.
+                          *
+                          * <p>Such a view carries {@code tenant_id}, {@code institution_id} and
+                          * {@code development_id}, and is scoped by {@code OwnerScopeSql} rather than the
+                          * tenant predicate — otherwise a bank running the report on its own financed
+                          * projects would see nothing at all.
+                          */
+                         boolean ownerScoped) {
+
+        /** The tenant-scoped shape every report had before developments could be owned by a lender. */
+        public Report(String code, String name, String description, String view, String dateColumn,
+                      Map<String, String> columns, List<String> numeric, boolean platformOnly,
+                      List<Filter> filters) {
+            this(code, name, description, view, dateColumn, columns, numeric, platformOnly, filters, false);
+        }
 
         /** The columns a free-text search looks at: everything that is neither a figure nor a timestamp. */
         public List<String> searchable() {
@@ -155,6 +171,25 @@ public final class ReportCatalogue {
                     List.of(new Filter("Standing", "onboarding_status", Filter.Kind.ENUM),
                             new Filter("Kind", "organisation_kind", Filter.Kind.ENUM),
                             new Filter("Seller type", "seller_type", Filter.Kind.ENUM))),
+
+            new Report("DEVELOPMENT_FINANCE", "Development finance",
+                    "Every development's budget, spend, facility and sales, one row each.",
+                    "v_development_finance", "created_at",
+                    ordered("Reference", "reference", "Development", "development_name",
+                            "Organisation", "owner_name", "Build", "construction_status",
+                            "Complete %", "percent_complete", "Units", "units_total", "Sold", "units_sold",
+                            "Contracted", "contracted", "Collected", "collected", "Receivable", "receivable",
+                            "Overdue", "overdue", "Budget", "budget_amount", "Planned to date", "planned_to_date",
+                            "Committed", "committed", "Spent", "spent", "Facility", "facility_amount",
+                            "Drawn", "drawn", "Target", "projected_completion_on", "Forecast", "forecast_on",
+                            "Phases late", "phases_late", "Set up", "created_at"),
+                    List.of("percent_complete", "units_total", "units_sold", "contracted", "collected",
+                            "receivable", "overdue", "budget_amount", "planned_to_date", "committed", "spent",
+                            "facility_amount", "drawn", "phases_late"),
+                    false,
+                    List.of(new Filter("Organisation", "owner_name", Filter.Kind.ENUM),
+                            new Filter("Build", "construction_status", Filter.Kind.ENUM)),
+                    true),
 
             new Report("RATINGS", "Reviews",
                     "What buyers said, by subject.",

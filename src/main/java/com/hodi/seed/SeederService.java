@@ -442,10 +442,12 @@ public class SeederService {
         // The leads a listing manager works day to day (M4). Deciding an offer is not here: it is the
         // most consequential thing a seller organisation grants, and a default template should not hand it
         // to everybody who can edit a listing.
+        // Reading payments, not recording them: a manager checks what a buyer has paid; who may write it down
+        // is the organisation's decision, made by granting PAYMENTS_RECEIVE on purpose.
         byType.put("LISTING_MANAGER", List.of(
                 "DASHBOARD_VIEW", "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_ASSIGN",
                 "ENQUIRIES_CLOSE", "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
-                "PURCHASE_REQUESTS_VIEW"));
+                "PURCHASE_REQUESTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
         // An agent answers questions and shows people round. The offers module does not admit them at all,
         // so PURCHASE_REQUESTS_VIEW here would be a permission their user type could never hold.
         byType.put("SALES_AGENT", List.of(
@@ -456,12 +458,13 @@ public class SeederService {
         // A valuer's whole world: their own panel row, and the jobs assigned to them.
         byType.put("VALUER", List.of(
                 "VALUER_PANEL_VIEW", "VALUATIONS_VIEW", "VALUATIONS_WORK"));
+        // A lender's staff read the money on the projects the bank financed: that is the exposure they watch.
         byType.put("MORTGAGE_OFFICER", List.of(
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW"));
+                "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
         byType.put("CREDIT_ANALYST", List.of(
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW"));
+                "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
         // No AUDIT_VIEW: the audit trail is what distinguishes PLATFORM_AUDITOR from support, and the AUDIT
         // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
         // its own user type could never hold, which surfaced as "these permissions are not available for this
@@ -471,11 +474,12 @@ public class SeederService {
         byType.put("SUPPORT_ADMIN", List.of(
                 "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
                 "PARTNERSHIPS_VIEW", "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
-                "KYC_VIEW"));
+                "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW"));
         byType.put("PLATFORM_AUDITOR", List.of(
                 "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW", "VALUATIONS_VIEW",
-                "VALUER_PANEL_VIEW", "AUCTIONS_VIEW", "AUCTIONEERS_VIEW"));
+                "VALUER_PANEL_VIEW", "AUCTIONS_VIEW", "AUCTIONEERS_VIEW",
+                "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
 
         int touched = 0;
         for (var entry : byType.entrySet()) {
