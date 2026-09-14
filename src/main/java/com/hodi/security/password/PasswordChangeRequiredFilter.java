@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * A user who must change their password gets no access until they do.
@@ -81,7 +82,16 @@ public class PasswordChangeRequiredFilter extends OncePerRequestFilter {
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         // 403 rather than 401: the credentials are valid, the account simply may not act yet. A 401 would
         // send the client's interceptor into a refresh-then-logout loop over something refreshing cannot fix.
-        ApiResponse<?> body = ApiResponse.error("You must change your password before continuing.");
+        //
+        // The marker goes in `data` because that is the only part of the envelope a client may read without
+        // matching on prose. The class comment above has promised it since this filter was written and
+        // nothing ever put it in the body, so a client that hit this had the sentence and nothing else — and
+        // routing on a sentence is how a copy edit becomes an outage.
+        ApiResponse<Map<String, Boolean>> body = ApiResponse.<Map<String, Boolean>>builder()
+                .success(false)
+                .message("You must change your password before continuing.")
+                .data(Map.of("passwordChangeRequired", true))
+                .build();
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 

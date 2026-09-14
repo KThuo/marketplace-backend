@@ -439,47 +439,121 @@ public class SeederService {
          * The first version gave the seller agents TENANT_SELF_VIEW, whose module did not admit them, and the
          * clone endpoint was where it surfaced.
          */
-        // The leads a listing manager works day to day (M4). Deciding an offer is not here: it is the
-        // most consequential thing a seller organisation grants, and a default template should not hand it
-        // to everybody who can edit a listing.
-        // Reading payments, not recording them: a manager checks what a buyer has paid; who may write it down
-        // is the organisation's decision, made by granting PAYMENTS_RECEIVE on purpose.
+        /*
+         * A listing manager manages listings, and for a long time this template did not say so.
+         *
+         * It granted the leads, the site visits and the payments a manager reads — and not one
+         * PROPERTIES_*, DEVELOPMENTS_* or UNITS_* code. Every organisation that cloned it got a group whose
+         * name promised the job and whose permissions refused it: the listings screen answered "Access
+         * denied", and a project whose units had just been generated showed no Units tab, because the button
+         * is drawn on UNITS_VIEW. The gap read as a platform-wide authorisation fault, which is what it was
+         * reported as.
+         *
+         * So the verbs of the role are here now, and the line the template draws is between doing the work
+         * and deciding it. Create, edit, photograph, submit and withdraw are the work. APPROVE, DELETE and
+         * MARK_SOLD are decisions an organisation grants on purpose, to somebody chosen, and they stay out —
+         * as do PAYMENTS_RECEIVE and PURCHASE_REQUESTS_DECIDE, which move money and close sales.
+         *
+         * Least privilege is still the principle. What changed is the reading of it: a default that cannot
+         * perform the role is not a conservative default, it is a broken one, and every organisation's first
+         * act was granting back the permissions the job is made of.
+         */
         byType.put("LISTING_MANAGER", List.of(
-                "DASHBOARD_VIEW", "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_ASSIGN",
-                "ENQUIRIES_CLOSE", "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
-                "PURCHASE_REQUESTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
-        // An agent answers questions and shows people round. The offers module does not admit them at all,
-        // so PURCHASE_REQUESTS_VIEW here would be a permission their user type could never hold.
+                "DASHBOARD_VIEW",
+                // The listings themselves — through submission, not through approval.
+                "PROPERTIES_VIEW", "PROPERTIES_CREATE", "PROPERTIES_UPDATE", "PROPERTIES_MEDIA",
+                "PROPERTIES_SUBMIT", "PROPERTIES_WITHDRAW",
+                // A project and its inventory. UNITS_MANAGE is what generates them; UNITS_SELL reserves and
+                // sells one, which is the sales side of the house.
+                "DEVELOPMENTS_VIEW", "DEVELOPMENTS_CREATE", "DEVELOPMENTS_UPDATE", "DEVELOPMENTS_MEDIA",
+                "DEVELOPMENTS_PHASES", "DEVELOPMENTS_PROGRESS", "DEVELOPMENTS_SUBMIT",
+                "DEVELOPMENTS_WITHDRAW", "UNITS_VIEW", "UNITS_MANAGE",
+                // The leads a listing manager works day to day (M4). Deciding an offer is not here: it is
+                // the most consequential thing a seller organisation grants, and a default template should
+                // not hand it to everybody who can edit a listing.
+                "ENQUIRIES_VIEW", "ENQUIRIES_REPLY", "ENQUIRIES_ASSIGN", "ENQUIRIES_CLOSE",
+                "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
+                "PURCHASE_REQUESTS_VIEW", "BOOKINGS_VIEW",
+                "CALENDAR_VIEW", "CALENDAR_MANAGE",
+                "RATINGS_VIEW", "RATINGS_REPLY",
+                "APPROVALS_VIEW", "PROMOTIONS_VIEW", "PROMOTIONS_REQUEST",
+                // Reading payments, not recording them: a manager checks what a buyer has paid; who may
+                // write it down is the organisation's decision, made by granting PAYMENTS_RECEIVE on
+                // purpose.
+                "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
+        /*
+         * An agent answers questions and shows people round — so they read the stock and write nothing about
+         * it. The listings, projects and units are view-only here, which is the difference between this
+         * template and the one above; without them an agent could not look up the flat the person on the
+         * phone is asking about.
+         *
+         * The offers module does not admit this type at all, so PURCHASE_REQUESTS_VIEW here would be a
+         * permission their user type could never hold.
+         */
         byType.put("SALES_AGENT", List.of(
-                "DASHBOARD_VIEW", "ENQUIRIES_VIEW", "ENQUIRIES_REPLY",
-                "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE"));
+                "DASHBOARD_VIEW",
+                "PROPERTIES_VIEW", "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW",
+                "ENQUIRIES_VIEW", "ENQUIRIES_REPLY",
+                "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
+                "CALENDAR_VIEW", "CALENDAR_MANAGE", "PAYMENTS_VIEW"));
         // Reading the catalogue, not writing it. An officer quoting a rate to a buyer needs to see the
         // products; changing one is the administrator's, and publishing one is separate again.
         // A valuer's whole world: their own panel row, and the jobs assigned to them.
         byType.put("VALUER", List.of(
                 "VALUER_PANEL_VIEW", "VALUATIONS_VIEW", "VALUATIONS_WORK"));
-        // A lender's staff read the money on the projects the bank financed: that is the exposure they watch.
-        byType.put("MORTGAGE_OFFICER", List.of(
+        /*
+         * A lender's staff read the money on the projects the bank financed: that is the exposure they watch.
+         *
+         * The projects themselves are here now. Reading a drawdown figure without being able to open the
+         * project it belongs to, see its units or its bookings, is a number with nothing behind it — and
+         * DEVELOPMENTS_FINANCE_VIEW without DEVELOPMENTS_VIEW meant the finance screen 403'd on the way in.
+         *
+         * Still entirely read-only: nothing here writes, and a lender writing on a seller's project would be
+         * a decision an organisation grants deliberately rather than inherits from a default.
+         */
+        List<String> lenderStaff = List.of(
                 "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
-        byType.put("CREDIT_ANALYST", List.of(
-                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
+                "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW",
+                "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW", "APPROVALS_VIEW",
+                "DEVELOPMENTS_FINANCE_VIEW");
+        byType.put("MORTGAGE_OFFICER", lenderStaff);
+        byType.put("CREDIT_ANALYST", lenderStaff);
         // No AUDIT_VIEW: the audit trail is what distinguishes PLATFORM_AUDITOR from support, and the AUDIT
         // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
         // its own user type could never hold, which surfaced as "these permissions are not available for this
         // kind of user" the first time anybody tried to clone it.
         // KYC_VIEW without KYC_REVIEW: support can see where an organisation stands, which is what a
         // "why can I not list?" call needs, without being able to decide it or open the documents.
-        byType.put("SUPPORT_ADMIN", List.of(
-                "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "USERS_VIEW",
-                "PARTNERSHIPS_VIEW", "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
-                "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW"));
-        byType.put("PLATFORM_AUDITOR", List.of(
-                "DASHBOARD_VIEW", "AUDIT_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW",
-                "MORTGAGE_PRODUCTS_VIEW", "AFFORDABILITY_VIEW", "KYC_VIEW", "VALUATIONS_VIEW",
-                "VALUER_PANEL_VIEW", "AUCTIONS_VIEW", "AUCTIONEERS_VIEW",
-                "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
+        /*
+         * Support answers "why can I not do this?", so support has to be able to look at the thing being
+         * asked about. Both of these templates are read-only and were merely too narrow to do the job:
+         * neither could open a listing, a project or a unit, which is most of what a support call is about.
+         *
+         * Every code here is a _VIEW. That is the rule for both roles, and it is what makes widening them
+         * safe — a support administrator who can see everything and change nothing cannot make a bad
+         * afternoon worse. Writes stay with the organisation that owns the row.
+         */
+        List<String> platformReadOnly = List.of(
+                "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "PARTNERSHIPS_VIEW",
+                "PROPERTIES_VIEW", "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW",
+                "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
+                "APPROVALS_VIEW", "RATINGS_VIEW", "AGENTS_VIEW", "VENDORS_VIEW",
+                "AUCTIONS_VIEW", "AUCTIONEERS_VIEW", "COMMISSIONS_VIEW",
+                "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUER_PANEL_VIEW",
+                "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW");
+
+        // USERS_VIEW and the property-type catalogue on top: support resolves "who is this person" and
+        // "why is that type not on the form", and neither is the auditor's question.
+        List<String> supportAdmin = new ArrayList<>(platformReadOnly);
+        supportAdmin.addAll(List.of("USERS_VIEW", "ASSIGNMENT_VIEW", "PROPERTY_TYPES_VIEW",
+                "CALENDAR_VIEW"));
+        byType.put("SUPPORT_ADMIN", supportAdmin);
+
+        // The trail itself, plus affordability, which is a record of a decision rather than a live screen.
+        // AUDIT is admitted to this type and to no other non-platform one — it is what the role is for.
+        List<String> platformAuditor = new ArrayList<>(platformReadOnly);
+        platformAuditor.addAll(List.of("AUDIT_VIEW", "AFFORDABILITY_VIEW"));
+        byType.put("PLATFORM_AUDITOR", platformAuditor);
 
         int touched = 0;
         for (var entry : byType.entrySet()) {

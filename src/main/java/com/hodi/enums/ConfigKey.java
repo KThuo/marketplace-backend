@@ -548,7 +548,34 @@ public enum ConfigKey {
             "pesi.ipn.secret", "STRING", "INTEGRATION", "",
             "Pesi notification secret",
             "Required in the X-Pesi-Signature header on inbound notifications. While blank, payments are "
-                    + "still accepted and stored but never matched automatically.", true, false);
+                    + "still accepted and stored but never matched automatically.", true, false),
+
+    /**
+     * Which gateway providers the payment catalogue offers.
+     *
+     * <p>Pesi fronts several banks, and the catalogue was seeded with all of them — Safaricom, KCB, Co-op
+     * and Equity — because the table describes what Pesi can do rather than what this deployment sells
+     * through. This deployment sells through Co-op, so the rest are noise on a platform screen and, worse,
+     * a list somebody can pick the wrong bank from when attaching an account.
+     *
+     * <p>A configuration row rather than a constant, following {@code AFFORDABILITY_PROVIDER}: adding a
+     * second bank is then an edit here, and the way back is the same edit. Empty means no restriction,
+     * matching {@code KYC_REQUIRED_SELLER_TYPES} — a blank allow-list allows everything, because the other
+     * reading turns an accidentally-cleared setting into "no way to take money".
+     *
+     * <p>Matched against a channel's provider name. Not tenant-overridable: the catalogue is platform-wide,
+     * so which banks it offers cannot be one organisation's decision.
+     *
+     * <p>What this does <em>not</em> touch is inbound. A credit that arrives for a channel outside this list
+     * is still stored and still recorded — money that is already in the bank is not made to disappear by a
+     * setting about what to offer next.
+     */
+    PESI_PROVIDERS(
+            "pesi.providers", "STRING", "INTEGRATION", "Co-operative Bank",
+            "Gateway providers offered",
+            "Comma-separated provider names whose channels appear in the payment catalogue and can be "
+                    + "given an account. Cash and cheque are always offered. Empty means every provider.",
+            false, false);
 
     private final String key;
     private final String valueType;

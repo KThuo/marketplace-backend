@@ -143,8 +143,10 @@ public enum AppModuleEnum {
     APPROVALS("APPROVALS", "Approvals",
             "What is waiting for a second person to agree with it",
             true, 95,
+            // VENDOR for the same reason as DASHBOARD above: a vendor's catalogue submission goes through
+            // approvals, so the module that shows them what they are waiting on has to admit them.
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VENDOR"),
     /**
      * A lender's own products (M3).
      *
@@ -292,15 +294,39 @@ public enum AppModuleEnum {
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
                     + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
+    /**
+     * Core, and the reason is the same one that made DEVELOPMENTS core.
+     *
+     * <p>The CSV admits SELLER_OWNER, and {@code TenantService.sellerGrantablePermissions} duly puts
+     * {@code AUDIT_VIEW} in every seller owner's group. But a non-core module is never written into
+     * {@code tenant_modules} by {@code TenantModuleService.enableCoreModules}, so
+     * {@code EffectivePermissionResolver} dropped the authority again at login — the group said the owner
+     * could read their own audit trail and the endpoint answered "Access denied".
+     *
+     * <p>Two places have to agree about a module: the audience CSV and whether an organisation gets it
+     * switched on. This one disagreed with itself, in the direction that produces a granted-but-refused
+     * permission — the hardest kind to diagnose, because the group screen shows it ticked.
+     */
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
-            false, 100,
+            true, 100,
             "SUPER_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN"),
+    /*
+     * VENDOR is here to match V20260826110000__vendors.sql, which appends it to this CSV.
+     *
+     * That migration only ever repaired databases that already had the row: Flyway runs before the seeder,
+     * so on a fresh database its UPDATE matches nothing, and the seeder then writes this enum's CSV without
+     * VENDOR — while the same seeder grants the Vendor group DASHBOARD_VIEW. Every vendor on a
+     * freshly-created database was refused the dashboard, and every vendor on a migrated one was not.
+     *
+     * The enum is the source of truth on a fresh database and the migration is the source of truth on an
+     * old one, so the two have to say the same thing or the two environments diverge silently.
+     */
     DASHBOARD("DASHBOARD", "Dashboard",
             "The landing figures for whichever kind of user is signed in",
             true, 110,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT"),
+                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT,VENDOR"),
 
     /**
      * Admits a buyer to their own area, and nothing else.

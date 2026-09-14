@@ -5,6 +5,8 @@ import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
+import com.hodi.enums.ConfigKey;
+import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.payments.PaymentTypeDtos.ChannelListRequest;
 import com.hodi.modules.payments.PaymentTypeDtos.ChannelResponse;
@@ -20,6 +22,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +47,7 @@ public class PaymentTypeService {
 
     private final PaymentTypeRepository types;
     private final PaymentAccountRepository accounts;
+    private final ConfigurationService configs;
     private final AuditService audit;
 
     @Transactional(readOnly = true)
@@ -52,6 +56,7 @@ public class PaymentTypeService {
                 SearchSpecs.notArchived(),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("category", blankToNull(request.getCategory())),
+                offeredProviders(),
                 SearchSpecs.statusIn(request.effectiveStatuses()));
         Map<Long, Long> inUse = scopedCounts(AuthContext.require());
         var page = types.findAll(spec, request.toPageable(Sort.by("sortOrder", "id")));
@@ -164,6 +169,45 @@ public class PaymentTypeService {
 
     private static String snapshot(PaymentType t) {
         return t.getCode() + " " + t.getName() + " order=" + t.getSortOrder() + " status=" + t.getStatus();
+    }
+
+    /**
+     * Restricts the catalogue to the gateway providers this deployment actually sells through.
+     *
+     * <p>The table was seeded with every bank Pesi fronts, which is right for a table describing a gateway
+     * and wrong for a screen: four banks' channels offered when one of them is the bank we take money
+     * through. The list is {@link ConfigKey#PESI_PROVIDERS}, so widening it later is an edit rather than a
+     * release.
+     *
+     * <p>A channel with no Pesi provider passes unconditionally, and that is the reason this is a predicate
+     * rather than a plain equals. Cash and cheque are not Pesi's at all, and filtering on provider name
+     * alone would take the two methods that always work off every screen.
+     *
+     * <p>Null when nothing is configured, so an empty setting adds no predicate rather than matching
+     * nothing — {@code SearchSpecs.allOf} drops nulls, which is what makes that the no-op.
+     */
+    private Specification<PaymentType> offeredProviders() {
+        List<String> offered = offeredProviderNames(configs);
+        if (offered.isEmpty()) return null;
+        return (root, query, cb) -> cb.or(
+                cb.isNull(root.get("pesiProviderType")),
+                root.get("providerName").in(offered));
+    }
+
+    /**
+     * The configured allow-list, split and trimmed. Empty means no restriction.
+     *
+     * <p>Shared with {@code PaymentAccountService}, which asks the same question when it offers the channels
+     * an organisation may be given: a catalogue that hides a bank while the account form still offers it
+     * would be worse than not filtering at all.
+     */
+    static List<String> offeredProviderNames(ConfigurationService configs) {
+        String configured = configs.getString(ConfigKey.PESI_PROVIDERS);
+        if (configured == null || configured.isBlank()) return List.of();
+        return Arrays.stream(configured.split(","))
+                .map(String::trim)
+                .filter(name -> !name.isEmpty())
+                .toList();
     }
 
     private static String blankToNull(String value) {

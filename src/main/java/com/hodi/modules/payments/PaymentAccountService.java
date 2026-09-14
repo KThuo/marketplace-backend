@@ -98,7 +98,17 @@ public class PaymentAccountService {
     @Transactional(readOnly = true)
     public List<AssignableChannel> assignable(String tenantHash, String institutionHash) {
         Owner owner = ownerFor(AuthContext.require(), tenantHash, institutionHash);
+        /*
+         * The same allow-list the catalogue screen applies, for the reason it applies it: this deployment
+         * banks with one of the four providers Pesi fronts, and a form offering the other three is a form
+         * somebody attaches an account to the wrong bank from. A channel with no Pesi provider — cash,
+         * cheque — is never filtered out, and an empty setting restricts nothing.
+         */
+        List<String> offered = PaymentTypeService.offeredProviderNames(configs);
         return types.findAvailable().stream()
+                .filter(t -> offered.isEmpty()
+                        || t.getPesiProviderType() == null
+                        || offered.contains(t.getProviderName()))
                 .filter(t -> t.channelCategory().isReceivable())
                 .filter(t -> !(t.isManual() && alreadyHeld(owner, t.getId(), null)))
                 .map(t -> new AssignableChannel(HashIdUtil.encodeId(t.getId()), t.getName(),

@@ -1,5 +1,7 @@
 package com.hodi.modules.developments;
 
+import com.hodi.modules.properties.ProgressUpdate;
+import com.hodi.modules.properties.ProgressUpdateRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
@@ -45,6 +47,7 @@ public class DevelopmentMediaService {
     private final DevelopmentPhaseRepository phases;
     private final DevelopmentUnitTypeRepository unitTypes;
     private final DevelopmentUnitRepository units;
+    private final ProgressUpdateRepository progressUpdates;
     private final DevelopmentVisibility visibility;
 
     @Transactional(readOnly = true)
@@ -117,9 +120,25 @@ public class DevelopmentMediaService {
                 type.setPrimaryImageKey(key);
                 unitTypes.save(type);
             });
+            /*
+             * A post does carry a cover cache, and it is the one that renders.
+             *
+             * listing_progress_updates.image_key is what PublicDevelopmentService and the timeline both read
+             * for a post's photograph, and image_count is what lets a feed card say "4 photos" without a
+             * query per row. Neither was written here, so a post kept the blank cover it was created with no
+             * matter how many photographs went onto it — the upload succeeded and the card stayed empty.
+             *
+             * The count comes from the album rather than from an increment, for the same reason the key is
+             * re-read rather than patched: a removal has to move it down as well as an upload moving it up.
+             */
+            case AppConstant.MEDIA_OWNER_PROGRESS_UPDATE -> progressUpdates.findById(ownerId).ifPresent(post -> {
+                post.setImageKey(key);
+                post.setImageCount((int) media.count(AppConstant.MEDIA_OWNER_PROGRESS_UPDATE, ownerId));
+                progressUpdates.save(post);
+            });
             default -> {
-                // Phases, units and progress posts carry no cover cache of their own: nothing renders a card
-                // for them, so a key on the row would be a column nothing reads.
+                // Phases and units carry no cover cache of their own: nothing renders a card for them, so a
+                // key on the row would be a column nothing reads.
             }
         }
     }
@@ -164,6 +183,23 @@ public class DevelopmentMediaService {
                     .filter(u -> u.getDevelopmentId().equals(development.getId()))
                     .map(Property::getId)
                     .orElseThrow(() -> new ResourceNotFoundException("Unit", childHashId));
+            /*
+             * The photographs that come with a progress post, and the reason this case exists.
+             *
+             * PROGRESS_UPDATE has been in CHILD_OWNER_TYPES since the development timeline was built, so the
+             * set let the request through and the switch below had nowhere to send it — every attempt to
+             * attach a photograph to a post came back "Files cannot be attached to a PROGRESS_UPDATE", from
+             * the branch whose comment calls itself unreachable. It was reachable for exactly one type.
+             *
+             * Matched on development_id rather than on the post alone: listing_progress_updates carries
+             * listings and developments in one table, so findById can return another project's post — or a
+             * listing's, which has no development at all and would make the equals() below throw if the
+             * comparison ran the other way round.
+             */
+            case AppConstant.MEDIA_OWNER_PROGRESS_UPDATE -> progressUpdates.findById(id)
+                    .filter(u -> development.getId().equals(u.getDevelopmentId()))
+                    .map(ProgressUpdate::getId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Progress update", childHashId));
             // Unreachable: the set above has already refused anything not listed here. Kept because the
             // switch must be exhaustive, and a default that throws is better than one that returns null.
             default -> throw new HodiException("Files cannot be attached to a " + ownerType + ".",
