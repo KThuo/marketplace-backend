@@ -154,8 +154,12 @@ public final class FinanceDtos {
             String propertyReference,
             BigDecimal price,
             String currency,
-            /** The lenders partnered with this seller, whether or not any of them has a live product. */
-            int lenderCount,
+            /*
+             * No lenderCount. It counted the lenders partnered with this seller, and the panel said "from N
+             * lenders this seller works with" — a sentence about a marketplace of banks competing for a
+             * seller's portfolio. There is one lender and it runs the platform, so the number could only
+             * ever be 1, and a figure that cannot vary is not information.
+             */
             List<FinanceOption> options,
             /** Said out loud on every screen carrying these numbers, because that is what they are. */
             String disclaimer) {}

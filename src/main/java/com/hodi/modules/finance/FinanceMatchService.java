@@ -65,14 +65,8 @@ public class FinanceMatchService {
             if (option != null) options.add(option);
         }
 
-        /*
-         * The lender count is now "how many banks have a product on offer" rather than "how many have
-         * partnered with this seller". With one bank it is 0 or 1, and 0 is the honest answer when nothing
-         * has been published yet — the panel renders empty rather than promising finance that does not exist.
-         */
-        long lenders = onOffer.stream().map(MortgageProduct::getInstitutionId).distinct().count();
         return new FinancePanel(property.getReference(), property.getPrice(), property.getCurrency(),
-                (int) lenders, options, DISCLAIMER);
+                options, DISCLAIMER);
     }
 
     /**
