@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * Loads a principal by username or email — login accepts either, which is what the form offers.
  *
- * <p>One namespace for all four populations: platform staff, seller staff, lender staff and buyers all live
+ * <p>One namespace for all four populations: platform staff, seller staff, the bank's staff and buyers all live
  * in {@code users} with unique username and email, so there is exactly one login pipeline and one session
  * model rather than a separate one for the marketplace. Which surface somebody may then reach is decided by
  * their user type and permissions, not by which form they signed in through.

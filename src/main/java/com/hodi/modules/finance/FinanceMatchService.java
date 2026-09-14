@@ -21,7 +21,7 @@ import java.util.List;
  *
  * <h2>Which products appear</h2>
  *
- * <p>Every published one. This used to be filtered through the partnership table — a lender who had not
+ * <p>Every published one. This used to be filtered through the partnership table — the bank who had not
  * partnered with this seller did not appear however good their rate — because the panel was showing a market
  * of competing banks and had to say which of them had a right to this seller's portfolio. There is one bank,
  * it runs the platform, and it lends against everything listed on it, so the filter has nothing left to
@@ -40,7 +40,7 @@ public class FinanceMatchService {
 
     static final String DISCLAIMER =
             "Indicative only. Figures are calculated from published product terms and are not an offer, a "
-                    + "quotation or a credit decision. A lender will assess your circumstances before "
+                    + "quotation or a credit decision. The bank will assess your circumstances before "
                     + "lending.";
 
     private final PropertyRepository properties;
@@ -72,7 +72,7 @@ public class FinanceMatchService {
     /**
      * One product costed against one price.
      *
-     * @return null when the product cannot cover this purchase at all — a lender whose ceiling is below the
+     * @return null when the product cannot cover this purchase at all — the bank whose ceiling is below the
      *         loan required is not an option, and listing it with a figure they would refuse would be worse
      *         than leaving it out
      */
@@ -88,7 +88,7 @@ public class FinanceMatchService {
         if (product.getMinAmount() != null && loan.compareTo(product.getMinAmount()) < 0) return null;
 
         // The caller's preferred term, clamped into what this product allows — a buyer asking for 25 years
-        // from a lender who caps at 20 should see the 20-year figure rather than nothing at all.
+        // from the bank who caps at 20 should see the 20-year figure rather than nothing at all.
         short term = requestedTerm != null && requestedTerm > 0
                 ? requestedTerm
                 : product.getMaxTermMonths();
@@ -105,7 +105,7 @@ public class FinanceMatchService {
             BigDecimal share = Amortisation.shareOf(repayment, netMonthlyIncome);
             // The product's own ceiling where it states one; otherwise simply whether the repayment fits
             // inside the income at all. Never this platform's default ceiling — that is the assessor's
-            // opinion, and putting it under a named lender's row would attribute it to them.
+            // opinion, and putting it under a named bank's row would attribute it to them.
             affordable = ceiling != null
                     ? share.compareTo(ceiling) <= 0
                     : repayment.compareTo(netMonthlyIncome) <= 0;
@@ -115,7 +115,7 @@ public class FinanceMatchService {
                 totalPayable, affordable);
     }
 
-    /** The lender-facing row, reduced to what is on offer. */
+    /** The bank-facing row, reduced to what is on offer. */
     public static PublicProductResponse publicView(MortgageProduct p) {
         return new PublicProductResponse(
                 p.getReference(),

@@ -22,7 +22,7 @@ import java.time.OffsetDateTime;
  * token names the active profile. The person no longer answers any of those questions.
  *
  * <p>At most one organisation, enforced by a database CHECK exactly as it was on {@code users}: a seller
- * profile carries a tenant, a lender profile an institution, platform and buyer profiles neither. And as
+ * profile carries a tenant, the bank profile an institution, platform and buyer profiles neither. And as
  * before, {@link #profileType} is stored rather than inferred from those two columns — "both null" describes
  * a platform administrator and a house-hunter, and the inference that confuses them is the one that hands a
  * buyer the platform.
@@ -55,7 +55,7 @@ public class UserProfile {
     @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private com.hodi.modules.users.User user;
 
-    /** The actor class: PLATFORM, SELLER, LENDER or BUYER. Copied from the user type. */
+    /** The actor class: PLATFORM, SELLER, BUYER, VALUER, AGENT or VENDOR. Copied from the user type. */
     @Column(name = "profile_type", nullable = false, length = 16) private String profileType;
 
     @Column(name = "user_type_id", nullable = false) private Long userTypeId;
@@ -111,10 +111,6 @@ public class UserProfile {
 
     public boolean isSellerActor() {
         return AppConstant.ACTOR_SELLER.equals(profileType);
-    }
-
-    public boolean isLenderActor() {
-        return AppConstant.ACTOR_LENDER.equals(profileType);
     }
 
     public boolean isBuyerActor() {

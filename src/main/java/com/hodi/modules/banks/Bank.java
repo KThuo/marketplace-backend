@@ -1,4 +1,4 @@
-package com.hodi.modules.institutions;
+package com.hodi.modules.banks;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -13,19 +13,19 @@ import java.time.OffsetDateTime;
  * <p><strong>Not a tenant</strong>, and that is the central design decision of this access model. An
  * institution's staff are ordinary {@code users} rows carrying {@code institution_id}, and their whole job is
  * reading <em>other</em> organisations' portfolios. A tenant is a boundary you are inside; an institution is
- * a party that reaches across boundaries by agreement. Modelling lenders as tenants would have meant either
+ * a party that reaches across boundaries by agreement. Modelling banks as tenants would have meant either
  * giving them no cross-organisation visibility (useless) or a blanket exemption from tenant scoping (a hole
  * shaped exactly like the thing scoping exists to prevent). The agreement is
- * {@code tenant_lender_partnerships}, and it is the only thing that widens what a lender's staff can see.
+ * a partnership, which is how a bank was once admitted to a seller's portfolio and no longer exists.
  *
  * <p>Institutions have no per-organisation module gating in this phase — their staff are gated by user type
  * alone (plan section 12, question 2). The symmetry with {@code tenant_modules} is deliberately left
  * unbuilt rather than half-built.
  */
 @Entity
-@Table(name = "lending_institutions")
+@Table(name = "banks")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class LendingInstitution {
+public class Bank {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;

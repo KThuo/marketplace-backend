@@ -66,7 +66,7 @@ public final class UserDtos {
      * @param tenantId ignored unless the caller is platform staff. A seller owner's new staff go to their own
      *                 organisation and nowhere else, so accepting this from them would be accepting an
      *                 instruction we then have to refuse.
-     * @param institutionId the same, for lender staff.
+     * @param institutionId the same, for the bank's staff.
      */
     public record CreateUserRequest(
             @NotBlank(message = "A first name is required")
@@ -117,7 +117,7 @@ public final class UserDtos {
     @Getter
     @Setter
     public static class UserListRequest extends PagedDataRequest {
-        /** Narrow to one population: {@code PLATFORM}, {@code SELLER}, {@code LENDER}, {@code BUYER}. */
+        /** Narrow to one population: {@code PLATFORM}, {@code SELLER}, {@code BUYER} and the rest. */
         private String actorClass;
         private String userTypeCode;
         /** Platform staff filtering to one organisation; hash id, decoded in the service. */

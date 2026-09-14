@@ -24,7 +24,7 @@ public class TenantController {
      * The organisation list, scoped by who is asking.
      *
      * <p>{@code TENANTS_VIEW} is platform-only, and the bank's staff are platform staff, so it is the only
-     * gate needed. It used to admit {@code PARTNERSHIPS_VIEW} as well, because a lender needed the list to
+     * gate needed. It used to admit {@code PARTNERSHIPS_VIEW} as well, because the bank needed the list to
      * see which sellers it had been partnered with; there is nothing to partner with now, and the permission
      * that expressed it is gone.
      */

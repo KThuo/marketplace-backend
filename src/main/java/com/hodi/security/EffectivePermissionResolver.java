@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
  *
  * <p>The third axis — which <em>rows</em> — is not here. That is {@code TenantScope}, and it is deliberately
  * a separate mechanism: permissions govern actions and scope governs data, and collapsing the two is how a
- * lender's officer ends up either unable to work at all or able to read every seller on the platform.
+ * bank's officer ends up either unable to work at all or able to read every seller on the platform.
  *
  * <h2>Two populations skip the tenant-module axis, for different reasons</h2>
  *
@@ -42,7 +42,7 @@ import java.util.stream.Collectors;
  * consult — but they remain subject to {@code allowed_user_types}. That is how a Support Admin is kept out of
  * modules only a Super Admin should reach.
  *
- * <p><strong>Lender staff</strong> belong to an institution, not a tenant, and institutions have no
+ * <p><strong>The bank's staff</strong> belong to an institution, not a tenant, and institutions have no
  * per-organisation module gating in this phase (plan section 12, question 2). They are gated by user type
  * alone. When institutions gain packages, an {@code institution_modules} table mirrors the tenant one and
  * this method grows one symmetrical branch.

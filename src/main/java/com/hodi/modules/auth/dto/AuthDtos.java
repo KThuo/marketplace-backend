@@ -73,7 +73,7 @@ public final class AuthDtos {
      * nav and routes on it, and does not attempt to re-derive it.
      *
      * <p>{@code visibleTenants} is the other half of the access model, and it is here so the UI can be honest
-     * about it: a lender's officer sees which sellers they may work, and a lender admin with none sees a
+     * about it: a bank's officer sees which sellers they may work, and the bank admin with none sees a
      * "no partnerships yet" state rather than empty tables that look like a bug.
      */
     public record MeResponse(

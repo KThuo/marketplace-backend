@@ -22,14 +22,14 @@ import java.io.IOException;
  * anywhere in this application: Hodi is one marketplace on one host, so a request's organisation is a
  * property of who is asking, not of where they asked (plan section 1).
  *
- * <p>Only seller staff bind an organisation. Platform staff, lender staff and buyers all leave the context
+ * <p>Only seller staff bind an organisation. Platform staff, the bank's staff and buyers all leave the context
  * empty, each for its own reason:
  *
  * <ul>
  *   <li>platform staff have no organisation — their configuration is the global layer by definition;
- *   <li>lender staff belong to an institution rather than a tenant, and read <em>several</em> sellers' rows
+ *   <li>the bank's staff belong to an institution rather than a tenant, and read <em>several</em> sellers' rows
  *       through {@code TenantScope}. Binding one of them here would be arbitrary, and worse, would make a
- *       lender's session silently adopt that seller's configuration overrides;
+ *       bank's session silently adopt that seller's configuration overrides;
  *   <li>buyers are identity-scoped and belong to nobody.
  * </ul>
  *
@@ -49,7 +49,7 @@ public class TenantBindingFilter extends OncePerRequestFilter {
                 TenantContext.set(principal.getTenantId(), principal.getTenantName());
                 MDC.put(AppConstant.MDC_TENANT, String.valueOf(principal.getTenantId()));
             } else if (principal != null && principal.getInstitutionId() != null) {
-                // Not a tenant, but worth having in the log line: "which lender was this" is the first
+                // Not a tenant, but worth having in the log line: "which bank was this" is the first
                 // question asked about a cross-organisation read.
                 MDC.put(AppConstant.MDC_TENANT, "inst" + principal.getInstitutionId());
             }

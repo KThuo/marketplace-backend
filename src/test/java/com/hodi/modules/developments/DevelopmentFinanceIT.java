@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Two of these are the ones that matter. That a voided line drops out of the phase's spent figure — the
  * whole argument for a ledger over a typed number is that the number cannot drift from its lines. And that a
- * lender's officer, who has no tenant at all, sees their own project's money and nobody else's — the tenant
+ * bank's officer, who has no tenant at all, sees their own project's money and nobody else's — the tenant
  * predicate every other table uses would show them nothing, and the fix for that must not show them
  * everything.
  */
@@ -72,7 +72,7 @@ class DevelopmentFinanceIT {
                 "select id from tenants where status <> 5 order by id limit 2", Long.class);
         tenantId = tenants.getFirst();
         otherTenantId = tenants.get(1);
-        institutionId = jdbc.queryForObject("select id from lending_institutions order by id limit 1", Long.class);
+        institutionId = jdbc.queryForObject("select id from banks order by id limit 1", Long.class);
 
         development = developments.save(Development.builder()
                 .reference(RrnGenerator.generate("DV")).tenantId(tenantId).sellingTenantId(tenantId)
@@ -95,7 +95,7 @@ class DevelopmentFinanceIT {
 
     /*
      * Hash ids are salted per caller, so every hash here is minted at the moment of use — by whoever is signed
-     * in at that moment — rather than once in set-up. A hash encoded for the seller is not one the lender
+     * in at that moment — rather than once in set-up. A hash encoded for the seller is not one the bank
      * can present.
      */
     private String categoryHash() {
@@ -123,12 +123,12 @@ class DevelopmentFinanceIT {
         signIn(UserPrincipal.of(user, profile, Set.of(permissions), List.of(tenant), false, true));
     }
 
-    private void signInAsLender(Long institution, String... permissions) {
-        User user = User.builder().id(2L).username("finance-lender").password("x")
+    private void signInAsBank(Long institution, String... permissions) {
+        User user = User.builder().id(2L).username("finance-bank").password("x")
                 .email("l@example.invalid").firstName("Len").lastName("Der")
                 .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
         UserProfile profile = UserProfile.builder().id(2L).userId(2L)
-                .profileType(AppConstant.ACTOR_LENDER).userTypeCode("LENDER_ADMIN")
+                .profileType("BANK").userTypeCode("BANK_ADMIN")
                 .institutionId(institution).status(AppConstant.STATUS_ACTIVE).build();
         signIn(UserPrincipal.of(user, profile, Set.of(permissions), List.of(), false, true));
     }
@@ -280,13 +280,13 @@ class DevelopmentFinanceIT {
     }
 
     @Test
-    @DisplayName("a lender sees the money on its own financed project, and its charts, and not a seller's")
-    void lenderScope() {
+    @DisplayName("the bank sees the money on its own financed project, and its charts, and not a seller's")
+    void bankScope() {
         Development financed = developments.save(Development.builder()
                 .reference(RrnGenerator.generate("DV")).institutionId(institutionId).sellingTenantId(otherTenantId)
                 .name("Bank Towers").developmentType("APARTMENT").currency("KES")
                 .facilityAmount(new BigDecimal("80000000")).budgetAmount(new BigDecimal("90000000")).build());
-        signInAsLender(institutionId, "DEVELOPMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW",
+        signInAsBank(institutionId, "DEVELOPMENTS_VIEW", "DEVELOPMENTS_FINANCE_VIEW",
                 "DEVELOPMENTS_FINANCE_RECORD");
         String financedHash = HashIdUtil.encodeId(financed.getId());
         finance.recordDrawdown(financedHash, new RecordDrawdownRequest(new BigDecimal("20000000"),
@@ -299,20 +299,20 @@ class DevelopmentFinanceIT {
         assertMoney("60000000", s.undrawn());
         assertMoney("7000000", s.spent());
 
-        // The lender's funding chart for its project has a Drawn bar with the tranche on it. Bucketless
+        // The bank's funding chart for its project has a Drawn bar with the tranche on it. Bucketless
         // rows are drawn as categories: the labels are the series names, and there is one series of values.
         ChartService.ChartData funding = charts.draw("dev-funding", financedHash);
         int drawn = funding.labels().indexOf("Drawn");
         assertTrue(drawn >= 0, "a Drawn bar: " + funding.labels());
         assertMoney("20000000", funding.series().getFirst().values().get(drawn));
 
-        // Summed across everything the lender may see, the seller's project is not in it.
-        BigDecimal lenderSpend = charts.draw("dev-spend", null).series().stream()
+        // Summed across everything the bank may see, the seller's project is not in it.
+        BigDecimal bankSpend = charts.draw("dev-spend", null).series().stream()
                 .filter(series -> "Spent".equals(series.name())).findFirst()
                 .map(ChartService.Series::total).orElse(BigDecimal.ZERO);
-        assertTrue(lenderSpend.compareTo(new BigDecimal("7000000")) >= 0);
+        assertTrue(bankSpend.compareTo(new BigDecimal("7000000")) >= 0);
 
-        // And the seller's own development is not the lender's to read.
+        // And the seller's own development is not the bank's to read.
         assertThrows(ResourceNotFoundException.class, () -> finance.summary(devHash()));
         assertThrows(ResourceNotFoundException.class, () -> charts.draw("dev-funding", devHash()));
     }

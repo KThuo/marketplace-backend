@@ -14,7 +14,7 @@ import lombok.RequiredArgsConstructor;
  * runtime; the values below are only the seeded defaults.
  *
  * <p>Matching is a set-membership check over the split CSV, never a SQL {@code LIKE}: {@code '%ADMIN%'} would
- * also match {@code SUPER_ADMIN} and {@code LENDER_ADMIN}, and all three codes exist.
+ * also match {@code SUPER_ADMIN} and {@code BANK_ADMIN}, and all three codes exist.
  *
  * <p>{@code core = true} modules are enabled for every seller organisation at onboarding and cannot be
  * switched off; the rest are opt-in per tenant via {@code tenant_modules}.
@@ -53,9 +53,9 @@ public enum AppModuleEnum {
      * They described a marketplace: a directory of banks, and a negotiation by which one of them was
      * granted sight of a seller's portfolio. There is one bank, it runs the platform, and its people are
      * platform staff — so there is no directory worth browsing and no partnership to approve. The screens
-     * behind them were the "Lenders" and "Partnerships" entries in the workspace navigation.
+     * behind them were the "Banks" and "Partnerships" entries in the workspace navigation.
      *
-     * The lending_institutions row survives as the bank's own record, because mortgage products hang off
+     * The banks row survives as the bank's own record, because mortgage products hang off
      * it; what is gone is the module that let anybody manage a list of them. V20260914140000 retires the
      * rows and takes the permissions off every group that held them.
      */
@@ -76,17 +76,17 @@ public enum AppModuleEnum {
     USER_GROUPS("USER_GROUPS", "User Groups",
             "Roles as permission bundles — global templates plus organisation-owned groups",
             true, 70,
-            "SUPER_ADMIN,SELLER_OWNER,LENDER_ADMIN"),
+            "SUPER_ADMIN,SELLER_OWNER,BANK_ADMIN"),
     USERS("USERS", "Users",
-            "Platform staff, seller staff and lender staff",
+            "Platform staff and seller staff",
             true, 80,
-            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,LENDER_ADMIN"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,BANK_ADMIN"),
 
     // ── Cross-cutting ─────────────────────────────────────────────────────────
     APP_SETTINGS("APP_SETTINGS", "Settings",
             "Global system configuration, with by-exception per-tenant overrides",
             true, 90,
-            "SUPER_ADMIN,SELLER_OWNER,LENDER_ADMIN"),
+            "SUPER_ADMIN,SELLER_OWNER,BANK_ADMIN"),
     /**
      * The one module in this phase that is <strong>not</strong> core, and the only one a seller can be
      * switched off from.
@@ -103,8 +103,8 @@ public enum AppModuleEnum {
     /**
      * Property listings — what the platform is for.
      *
-     * <p>Admits the seller side that maintains them and the platform that oversees them. Lender staff are
-     * deliberately <strong>not</strong> here: a partnered lender reads a seller's portfolio through the public
+     * <p>Admits the seller side that maintains them and the platform that oversees them. The bank's staff are
+     * deliberately <strong>not</strong> here: a partnered bank reads a seller's portfolio through the public
      * marketplace and their own mortgage screens, not through the seller's listing management — the module
      * that holds "create", "submit" and "withdraw" is the seller's own workspace.
      *
@@ -120,7 +120,7 @@ public enum AppModuleEnum {
      * The Maker/Checker queue (plan §3.2).
      *
      * <p>Admits every user type that can hold an approve permission in any module, because the queue is one
-     * screen serving all of them — a lender administrator deciding a partnership and a listing manager
+     * screen serving all of them — the bank administrator deciding a partnership and a listing manager
      * deciding a listing are looking at the same list, filtered to their own organisation.
      *
      * <p>Core, unlike the audit trail. Maker/Checker is a control the BRD requires across the platform, and
@@ -134,26 +134,26 @@ public enum AppModuleEnum {
             // VENDOR for the same reason as DASHBOARD above: a vendor's catalogue submission goes through
             // approvals, so the module that shows them what they are waiting on has to admit them.
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VENDOR"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VENDOR"),
     /**
-     * A lender's own products (M3).
+     * A bank's own products (M3).
      *
-     * <p>Lender staff and the platform. Sellers are deliberately absent: a seller sees which lenders they are
-     * partnered with, and the rates those lenders offer are shown to <em>buyers</em> against listings — a
+     * <p>The bank's staff and the platform. Sellers are deliberately absent: a seller sees which banks they are
+     * partnered with, and the rates those banks offer are shown to <em>buyers</em> against listings — a
      * seller editing or even browsing another organisation's pricing sheet is not a thing the arrangement
      * between them implies.
      */
     MORTGAGE_PRODUCTS("MORTGAGE_PRODUCTS", "Mortgage Products",
-            "What each lender offers — rates, terms, deposit and who qualifies",
+            "What the bank offers — rates, terms, deposit and who qualifies",
             true, 35,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT"),
 
     /**
      * Affordability checks (M3), and <strong>platform staff only</strong>.
      *
      * <p>The narrowest module matrix in the catalogue, and the reason is the data rather than the feature: a
      * check is somebody's household income. A buyer sees their own through the buyer portal, resolved from
-     * their identity and needing no permission. A lender learns a buyer's finances when that buyer applies to
+     * their identity and needing no permission. The bank learns a buyer's finances when that buyer applies to
      * them — which is M4 — and not by browsing a list. Even here the list carries the outcome and the derived
      * figures, never the raw inputs; the two response records are separate types, as they are for a listing.
      */
@@ -165,7 +165,7 @@ public enum AppModuleEnum {
     /**
      * The seller's inbox (M4).
      *
-     * <p>Seller staff and the platform. A lender is not here: an enquiry is a conversation between a buyer
+     * <p>Seller staff and the platform. The bank is not here: an enquiry is a conversation between a buyer
      * and the person selling the house, and a partnership does not make a bank a party to it.
      */
     ENQUIRIES("ENQUIRIES", "Enquiries",
@@ -202,7 +202,7 @@ public enum AppModuleEnum {
      * {@code KYC_SUBMIT} is the seller's, {@code KYC_REVIEW} is the platform's, and the review permission is
      * also the key that opens the documents in the vault.
      *
-     * <p>Lender staff are absent. A partnership lets a bank see a seller's portfolio, not their directors'
+     * <p>The bank's staff are absent. A partnership lets a bank see a seller's portfolio, not their directors'
      * identity documents.
      */
     KYC("KYC", "Compliance",
@@ -214,7 +214,7 @@ public enum AppModuleEnum {
      * Valuation jobs (M5).
      *
      * <p>Admits four populations that see four different things through one module — the platform runs the
-     * panel, a seller sees what they commissioned, a lender sees what they commissioned, and a valuer sees
+     * panel, a seller sees what they commissioned, the bank sees what they commissioned, and a valuer sees
      * what was assigned to them. {@code ValuationScope} is what keeps those apart; the module matrix only
      * decides who reaches the screen.
      */
@@ -222,7 +222,7 @@ public enum AppModuleEnum {
             "Valuation jobs, from request to signed report",
             true, 60,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VALUER,AGENT"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,VALUER,AGENT"),
 
     /**
      * The valuer's own workspace (M5).
@@ -256,7 +256,7 @@ public enum AppModuleEnum {
     /**
      * Auction (M6, BRD UC006).
      *
-     * <p>Lenders realising security, sellers consigning stock, and the platform that publishes the
+     * <p>Banks realising security, sellers consigning stock, and the platform that publishes the
      * catalogue. Buyers are absent for the usual reason: registering to bid is identity-scoped under
      * {@code /me} and needs no permission, and browsing the catalogue needs no account at all.
      */
@@ -264,7 +264,7 @@ public enum AppModuleEnum {
             "Lots going to auction, the catalogue, and who has registered to bid",
             true, 65,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
     /**
      * The auctioneers the platform will list a sale under.
@@ -274,13 +274,13 @@ public enum AppModuleEnum {
      * licence is current — but a licence that has lapsed makes a sale voidable, and whoever benefits from the
      * sale should not be the one confirming it. That line is held by {@code AUCTIONEERS_MANAGE} being
      * platform-only rather than by the module refusing the type: reading the register and writing it are
-     * different things, and the first version conflated them into a picker no lender could fill.
+     * different things, and the first version conflated them into a picker no bank could fill.
      */
     AUCTIONEERS("AUCTIONEERS", "Auctioneers",
             "Licensed auctioneers the platform will publish a sale under",
             true, 66,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
     /**
      * Core, and the reason is the same one that made DEVELOPMENTS core.
@@ -298,7 +298,7 @@ public enum AppModuleEnum {
     AUDIT("AUDIT", "Audit Trail",
             "Who changed what, when, and what it looked like before",
             true, 100,
-            "SUPER_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN"),
+            "SUPER_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,BANK_ADMIN"),
     /*
      * VENDOR is here to match V20260826110000__vendors.sql, which appends it to this CSV.
      *
@@ -314,7 +314,7 @@ public enum AppModuleEnum {
             "The landing figures for whichever kind of user is signed in",
             true, 110,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT,VENDOR"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST,AGENT,VENDOR"),
 
     /**
      * Admits a buyer to their own area, and nothing else.
@@ -413,7 +413,7 @@ public enum AppModuleEnum {
     ASSIGNMENT("ASSIGNMENT", "Routing",
             "Rules deciding whose desk a new enquiry, viewing or offer lands on",
             true, 85,
-            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,LENDER_ADMIN,AGENT"),
+            "SUPER_ADMIN,SUPPORT_ADMIN,SELLER_OWNER,BANK_ADMIN,AGENT"),
 
     /**
      * The diary (M12).
@@ -425,7 +425,7 @@ public enum AppModuleEnum {
             "Viewings, auctions and whatever else somebody put in the week",
             true, 86,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,"
-                    + "AGENT,VENDOR,LENDER_ADMIN"),
+                    + "AGENT,VENDOR,BANK_ADMIN"),
 
     /**
      * The kinds of property, and which questions each is asked (M13).
@@ -468,7 +468,7 @@ public enum AppModuleEnum {
     /**
      * Developments (a project with many units).
      *
-     * <p>Admits lender staff, which {@code PROPERTIES} deliberately does not — and that difference is the
+     * <p>Admits the bank's staff, which {@code PROPERTIES} deliberately does not — and that difference is the
      * whole reason this module exists separately. A seller's listing is the seller's business; a development
      * a bank financed is the bank's own record, created by them and tracked for their exposure. A mortgage
      * officer who cannot open it cannot do the job the module was asked for.
@@ -492,7 +492,7 @@ public enum AppModuleEnum {
             "Projects with many units — off-plan inventory, phases and build progress",
             true, 35,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
     /**
      * Money, and where it lands.
@@ -506,12 +506,12 @@ public enum AppModuleEnum {
             "Money received against bookings, the receipts, and the accounts it is collected into",
             true, 36,
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
-                    + "LENDER_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
+                    + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
     REPORTS("REPORTS", "Reports",
             "The figures behind the platform, scoped to whoever is asking",
             true, 95,
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LENDER_ADMIN,AGENT");
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,BANK_ADMIN,AGENT");
 
     private final String code;
     private final String displayName;

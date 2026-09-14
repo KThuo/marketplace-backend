@@ -20,7 +20,7 @@ import java.util.Optional;
  *
  * <p>Every other module in this codebase gets row scoping from {@code TenantScope}, which is a single choke
  * point: one method, used everywhere, impossible to forget in a way that compiles. A development cannot use
- * it, because its owner may be a lending institution and a lender has no visible-tenant set describing it.
+ * it, because its owner may be a lending institution and the bank has no visible-tenant set describing it.
  * {@code AuctionService} met the same wall and wrote a private {@code mine()} specification.
  *
  * <p>That is the right answer and it has a cost worth naming: the protection is now a rule somebody has to

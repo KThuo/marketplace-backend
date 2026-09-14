@@ -15,7 +15,7 @@ import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
-import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.banks.BankRepository;
 import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.security.principal.AuthContext;
@@ -38,7 +38,7 @@ import java.util.List;
  *
  * <h2>Two kinds of thing on it</h2>
  *
- * <p>The cards are the facts that need saying in words — a stranded lender, an unconfirmed buyer, projects
+ * <p>The cards are the facts that need saying in words — a stranded bank, an unconfirmed buyer, projects
  * running late — and they are assembled per audience here. The figures — overall, the month, the calendar —
  * are each their own endpoint, because they filter independently: Overall by year or not at all, the summary
  * by month, the calendar by year. One combined answer would mean stepping the calendar re-read the month.
@@ -53,7 +53,7 @@ import java.util.List;
 public class DashboardService {
 
     private final TenantRepository tenants;
-    private final LendingInstitutionRepository institutions;
+    private final BankRepository institutions;
     private final UserProfileRepository profiles;
     private final RefreshTokenRepository refreshTokens;
     private final AnalyticsQueries figures;
@@ -91,7 +91,7 @@ public class DashboardService {
             return new DashboardResponse("SELLER", greeting, withProjectCards(sellerCards(caller)));
         }
         /*
-         * No LENDER branch. Its staff are platform actors now, so they take the PLATFORM arm above — which
+         * No branch for the bank. Its staff are platform actors now, so they take the PLATFORM arm above — which
          * is the right dashboard for somebody who runs the place rather than one who was let into it.
          */
         return new DashboardResponse("BUYER", greeting, buyerCards(caller));
@@ -198,7 +198,7 @@ public class DashboardService {
                         caller.getTenantId(), AppConstant.STATUS_DELETED)),
                 "people with access", "neutral", "/app/users"));
 
-        // The "Finance partners" card is gone: a seller no longer chooses a lender, because there is one
+        // The "Finance partners" card is gone: a seller no longer chooses the bank, because there is one
         // and it runs the platform. Nothing replaces it — a card saying "your finance partner is the bank"
         // would be a constant.
         return cards;

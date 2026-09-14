@@ -21,7 +21,7 @@ import java.util.function.Supplier;
  *
  * <p><strong>It is never an authorisation input.</strong> Which rows a caller may read is
  * {@code TenantScope}'s decision, resolved from the principal — not from this. That separation is the
- * point: a lender's staff have a tenant context of none and yet legitimately read several sellers' rows,
+ * point: a bank's staff have a tenant context of none and yet legitimately read several sellers' rows,
  * so a filter keyed off this value would be both too narrow and too trusting.
  *
  * <p>Bound per request by {@link TenantBindingFilter} after authentication, and cleared in a

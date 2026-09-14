@@ -27,7 +27,7 @@ import java.time.OffsetDateTime;
  *
  * <h2>Never edited, only voided</h2>
  *
- * <p>A cost report a lender has read must not quietly change. A wrong line is voided with a reason and stays,
+ * <p>A cost report the bank has read must not quietly change. A wrong line is voided with a reason and stays,
  * exactly as a payment is; the views sum recorded lines only.
  */
 @Entity

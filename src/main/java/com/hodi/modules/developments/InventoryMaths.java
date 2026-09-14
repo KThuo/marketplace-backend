@@ -34,7 +34,7 @@ final class InventoryMaths {
      *   <li><b>WEIGHT</b> — every phase carries a weight and they sum to 100. Somebody said what each stage is
      *       worth, and a stated intention beats an inferred one.</li>
      *   <li><b>BUDGET</b> — every phase carries a positive budget. Money committed is the honest weight for a
-     *       project's progress, which is why it sits above unit counts for a lender.</li>
+     *       project's progress, which is why it sits above unit counts for the bank.</li>
      *   <li><b>UNITS</b> — every phase carries a positive planned unit count.</li>
      *   <li><b>EQUAL</b> — none of the above is complete, so a plain mean, and the basis says so rather than
      *       implying a weighting nobody supplied.</li>

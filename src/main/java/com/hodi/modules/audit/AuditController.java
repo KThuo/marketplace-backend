@@ -23,8 +23,8 @@ import java.time.OffsetDateTime;
  * The audit trail, read-only.
  *
  * <p>Scoped through {@code TenantScope} like every other tenant-bearing list: platform staff see everything,
- * a seller sees their own organisation's trail, and a lender sees the trail of the organisations they are
- * partnered with. That last one follows from the scope model rather than being a separate decision — a lender
+ * a seller sees their own organisation's trail, and the bank sees the trail of the organisations they are
+ * partnered with. That last one follows from the scope model rather than being a separate decision — the bank
  * working a seller's portfolio can see what happened to it.
  *
  * <p>Rows with a null {@code tenant_id} are platform actions, and a restricted caller does not see them:

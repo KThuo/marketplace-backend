@@ -17,7 +17,7 @@ import java.time.OffsetDateTime;
  * a way of paying it, wants this house.
  *
  * <p>{@link #affordabilityReference} and {@link #productReference} are references rather than foreign keys.
- * A buyer attaches the sums they did; neither the check nor the lender's product should become undeletable
+ * A buyer attaches the sums they did; neither the check nor the bank's product should become undeletable
  * because somebody once pointed at it, and both survive as text if they do go.
  */
 @Entity

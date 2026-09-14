@@ -34,7 +34,6 @@ public final class AppConstant {
     // organisation, so this is what tells them apart — never inference from null columns.
     public static final String ACTOR_PLATFORM = "PLATFORM";
     public static final String ACTOR_SELLER   = "SELLER";
-    public static final String ACTOR_LENDER   = "LENDER";
     public static final String ACTOR_BUYER    = "BUYER";
     /**
      * A valuer on the platform's panel (M5, plan §3.5).
@@ -88,14 +87,11 @@ public final class AppConstant {
     public static final String ONBOARDING_SUSPENDED  = "SUSPENDED";
     public static final String ONBOARDING_TERMINATED = "TERMINATED";
 
-    // ── Partnership portfolio scope (tenant_lender_partnerships.portfolio_scope) ──
-    /** The lender may see the seller's whole portfolio. */
-    public static final String PORTFOLIO_FULL = "FULL";
-    /**
-     * The lender may see only named listings. The column exists now so the later per-listing join
-     * is additive; nothing writes this value until listings exist (plan section 12, question 3).
+    /*
+     * The portfolio-scope constants used to sit here — FULL and SELECTED, the two widths a partnership
+     * could grant a bank over a seller's listings. Nothing has read them since the partnership module was
+     * retired, and a constant nothing reads is a claim about the system that is no longer true.
      */
-    public static final String PORTFOLIO_SELECTED = "SELECTED";
 
     // ── Property listings (M2) ───────────────────────────────────────────────
     // Where a listing stands in the world. Separate from `status`, which is the soft-delete lifecycle every

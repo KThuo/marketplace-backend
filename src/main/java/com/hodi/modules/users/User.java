@@ -8,7 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.OffsetDateTime;
 
 /**
- * Every person who can sign in: platform staff, seller staff, lender staff and buyers alike.
+ * Every person who can sign in: platform staff, seller staff, the bank's staff and buyers alike.
  *
  * <p><strong>One identity table, four populations.</strong> A separate buyer table was the obvious
  * alternative and the wrong one: it would mean two login pipelines, two password policies, two session

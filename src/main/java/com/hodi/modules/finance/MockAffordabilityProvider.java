@@ -17,7 +17,7 @@ import java.util.Map;
  *
  * <h2>Not a stub</h2>
  *
- * <p>It returns real arithmetic a lender would recognise, not a fixed number and not noise. The point of the
+ * <p>It returns real arithmetic the bank would recognise, not a fixed number and not noise. The point of the
  * interface is that the OCP microservice replaces this as the *authority*; the point of this class is that
  * until then a buyer still gets an answer, and it is an answer somebody can check by hand.
  *
@@ -27,7 +27,7 @@ import java.util.Map;
  *   <li><strong>Net income</strong> = gross + other income − existing monthly obligations. Obligations come
  *       off the top rather than out of the ceiling: a household already paying a car loan has that much less
  *       to give, whatever percentage anyone is willing to lend against.</li>
- *   <li><strong>Affordable repayment</strong> = net income × the configured DTI ceiling. Kenyan lenders
+ *   <li><strong>Affordable repayment</strong> = net income × the configured DTI ceiling. Kenyan banks
  *       commonly sit between 35% and 50%; the row defaults to 40 and an operator moves it without a deploy.</li>
  *   <li><strong>Maximum loan</strong> = the annuity read backwards at the assumed rate over the chosen term.</li>
  *   <li><strong>Maximum price</strong> = that loan plus whatever deposit they have.</li>
@@ -37,7 +37,7 @@ import java.util.Map;
  *
  * <p>Where a specific property is in play, the repayment it would need is compared with what the household
  * can carry. Within the ceiling is ELIGIBLE; past it but inside the marginal band is MARGINAL; beyond that is
- * NOT_ELIGIBLE. A hard line at the ceiling turns one shilling into a refusal, which is not how a lender reads
+ * NOT_ELIGIBLE. A hard line at the ceiling turns one shilling into a refusal, which is not how the bank reads
  * a file and not how a buyer should be told.
  *
  * <p><strong>Nothing here is a credit decision.</strong> No bureau, no scoring, no view of the applicant's
@@ -120,16 +120,16 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         } else if (dti.compareTo(ceiling) <= 0) {
             outcome = AppConstant.AFFORDABILITY_ELIGIBLE;
             reason = "The repayment would take " + plain(dti) + "% of your net income, inside the "
-                    + plain(ceiling) + "% a lender typically allows.";
+                    + plain(ceiling) + "% the bank typically allows.";
         } else if (dti.compareTo(ceiling.add(marginalBand)) <= 0) {
             outcome = AppConstant.AFFORDABILITY_MARGINAL;
             reason = "The repayment would take " + plain(dti) + "% of your net income, just past the "
-                    + plain(ceiling) + "% a lender typically allows. A longer term or a larger deposit "
+                    + plain(ceiling) + "% the bank typically allows. A longer term or a larger deposit "
                     + "would bring it within reach.";
         } else {
             outcome = AppConstant.AFFORDABILITY_NOT_ELIGIBLE;
             reason = "The repayment would take " + plain(dti) + "% of your net income, well past the "
-                    + plain(ceiling) + "% a lender typically allows.";
+                    + plain(ceiling) + "% the bank typically allows.";
         }
         working.put("outcome", outcome);
 

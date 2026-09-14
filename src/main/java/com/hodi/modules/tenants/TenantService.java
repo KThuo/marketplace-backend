@@ -143,7 +143,7 @@ public class TenantService {
      * The organisations the caller may see.
      *
      * <p>This is the list where {@code TenantScope} earns its keep: platform staff see every seller, a
-     * seller's own staff see exactly one row, and a lender's staff see the sellers they are partnered with —
+     * seller's own staff see exactly one row, and a bank's staff see the sellers they are partnered with —
      * which is the whole point of the partnership model and is expressed here as one composable predicate
      * rather than three branches.
      */

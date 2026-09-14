@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 /**
  * A valuation job (M5).
  *
- * <p>Raised by a seller wanting a figure for a listing, or by a lender who will not lend without one.
+ * <p>Raised by a seller wanting a figure for a listing, or by the bank who will not lend without one.
  * Exactly one of {@link #tenantId} and {@link #institutionId} is set, and which one decides who may read the
  * report — "a seller asked" and "a bank asked" are different answers to that question.
  *

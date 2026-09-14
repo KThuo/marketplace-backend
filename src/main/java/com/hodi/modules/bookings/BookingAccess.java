@@ -21,7 +21,7 @@ import java.util.Set;
  * Who may see, and who may sell, a home.
  *
  * <p>A booking is on a property, and a property is one of two things. A unit belongs to a development, and the
- * development's own rule decides — {@code DevelopmentVisibility}, which knows about lenders, selling
+ * development's own rule decides — {@code DevelopmentVisibility}, which knows about banks, selling
  * organisations and collaborators. A house belongs to a seller, and the tenant scope decides, as it does for
  * every other row that has a tenant. One place says which rule applies, so the booking service and the payment
  * service cannot drift apart on it.
@@ -73,7 +73,7 @@ public class BookingAccess {
      * Whether the caller may book, sell or take money for this home.
      *
      * <p>A unit: the development's unit-writing rule. A house: the seller's own staff, or the platform. A
-     * lender may read a partner's house through the tenant scope but does not sell it for them.
+     * bank may read a partner's house through the tenant scope but does not sell it for them.
      */
     public void assertMayWrite(Property property, UserPrincipal caller) {
         Development development = developmentOf(property);

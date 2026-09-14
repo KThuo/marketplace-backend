@@ -18,7 +18,7 @@ import java.util.List;
  * <ul>
  *   <li><strong>Platform staff</strong> — everything. They run the panel.</li>
  *   <li><strong>A seller</strong> — the jobs their organisation raised.</li>
- *   <li><strong>A lender</strong> — the jobs their institution raised. Not the partnered seller's: a
+ *   <li><strong>The bank</strong> — the jobs their institution raised. Not the partnered seller's: a
  *       partnership opens a portfolio, not the valuations somebody else commissioned on it.</li>
  *   <li><strong>A valuer</strong> — the jobs assigned to <em>them</em>. Not their firm's, not the requesting
  *       seller's portfolio, and nothing about the property beyond what the job carries.</li>

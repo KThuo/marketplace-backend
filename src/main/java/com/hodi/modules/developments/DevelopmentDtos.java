@@ -63,6 +63,13 @@ public final class DevelopmentDtos {
             String description,
             String developmentType,
             String purpose,
+            /**
+             * Who owns the record: {@code BANK} or {@code SELLER}.
+             *
+             * <p>The two sides disagreed: this sent one pair of values and the client's type declared
+             * another, so the "financed by" line on the project list had never once rendered. Two
+             * vocabularies for one field is how that happens; there is one now.
+             */
             String ownerKind,
             String ownerName,
             String developerName,

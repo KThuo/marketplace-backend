@@ -23,7 +23,7 @@ import java.util.*;
  *
  * <p>Every query here starts from {@link OwnerScopeSql#predicate}. The failure this prevents has already
  * happened once in this codebase: a chart that spliced the caller's <i>tenant</i> ids into an
- * {@code institution_id} predicate, which was wrong for every lender. A total that reaches past the caller's
+ * {@code institution_id} predicate, which was wrong for every bank. A total that reaches past the caller's
  * scope leaks the shape of another organisation's business without ever showing a row — and silently, because
  * a wrong total looks exactly like a right one.
  *

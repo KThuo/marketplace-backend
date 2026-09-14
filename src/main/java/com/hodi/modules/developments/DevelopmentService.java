@@ -14,7 +14,7 @@ import com.hodi.modules.developments.DevelopmentDtos.DevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
 import com.hodi.modules.developments.DevelopmentDtos.SubmitRequest;
 import com.hodi.modules.developments.DevelopmentDtos.WithdrawRequest;
-import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.banks.BankRepository;
 import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
@@ -44,7 +44,7 @@ import java.util.List;
  *
  * <p>{@link DevelopmentVisibility} holds it. Every read goes through its specification and every write through
  * one of its assertions, because a development cannot use {@code TenantScope} — a lending institution may own
- * one, and a lender has no visible-tenant set. That makes the scoping a rule to apply rather than a choke
+ * one, and the bank has no visible-tenant set. That makes the scoping a rule to apply rather than a choke
  * point to pass through, which is exactly the kind of protection worth keeping in one tested place.
  */
 @Slf4j
@@ -59,7 +59,7 @@ public class DevelopmentService {
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final TenantRepository tenants;
-    private final LendingInstitutionRepository institutions;
+    private final BankRepository institutions;
     private final ApprovalService approvals;
     private final AuditService audit;
     private final StorageService storage;
@@ -491,7 +491,7 @@ public class DevelopmentService {
                 d.getDescription(),
                 d.getDevelopmentType(),
                 d.getPurpose(),
-                d.isInstitutionOwned() ? "LENDER" : "SELLER",
+                d.isInstitutionOwned() ? "BANK" : "SELLER",
                 d.principalName(),
                 d.getDeveloperName(),
                 d.getSellingTenantName(),

@@ -10,11 +10,11 @@ import java.time.OffsetDateTime;
 /**
  * The valuer's answer (M5).
  *
- * <p>Two figures, because a Kenyan valuation carries two: market value, and the forced-sale value a lender
+ * <p>Two figures, because a Kenyan valuation carries two: market value, and the forced-sale value the bank
  * actually lends against. The CHECK keeps the second at or below the first — a forced sale that fetched more
  * than the market would be a typo, and it is the figure a mortgage is sized from.
  *
- * <p>The signed report is a vault document, referenced rather than joined: it is evidence a lender relies
+ * <p>The signed report is a vault document, referenced rather than joined: it is evidence the bank relies
  * on, so it lives behind an ACL rather than on the media path.
  */
 @Entity

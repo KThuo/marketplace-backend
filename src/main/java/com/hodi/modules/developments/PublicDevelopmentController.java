@@ -75,7 +75,7 @@ public class PublicDevelopmentController {
      * <p>Only posts written for the public. A detailed update somebody published is still a detailed update,
      * and the query behind this is where that is decided rather than a filter here.
      *
-     * <p>A tracked project — one a lender is financing and nobody is selling — is not found here at all, and
+     * <p>A tracked project — one the bank is financing and nobody is selling — is not found here at all, and
      * that is the whole rule: it is not LIVE, so it fails the same predicate that keeps it out of search. No
      * second flag anybody has to remember.
      */

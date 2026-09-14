@@ -52,7 +52,7 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final String[] PUBLIC_GET = {
-            // The marketplace itself: listings and lender products a house-hunter reaches before they have
+            // The marketplace itself: listings and bank products a house-hunter reaches before they have
             // an account. A shop window behind authentication is not a shop window.
             "/api/v1/public/**",
             "/api/v1/auth/password-policy",

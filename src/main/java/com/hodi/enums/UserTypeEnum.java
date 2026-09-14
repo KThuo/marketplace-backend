@@ -26,7 +26,7 @@ public enum UserTypeEnum {
 
     // ── Platform (no organisation) ────────────────────────────────────────────
     SUPER_ADMIN("Super Administrator",
-            "Full platform control — sellers, lending, modules, global configuration",
+            "Full platform control — sellers, mortgages, modules, global configuration",
             AppConstant.ACTOR_PLATFORM, 10),
     SUPPORT_ADMIN("Support Administrator",
             "Read-mostly troubleshooting across organisations",
@@ -50,14 +50,14 @@ public enum UserTypeEnum {
     /**
      * The bank's own staff, and they are platform staff.
      *
-     * <p>These three were {@code ACTOR_LENDER}: one institution among several, reading the portfolios of the
-     * sellers it had an approved partnership with. That model had a marketplace of competing lenders in it.
-     * There is one lender, and they own the product — so the bank is not a participant in the platform, it
+     * <p>These three belonged to an institution: one among several, reading the portfolios of the
+     * sellers it had an approved partnership with. That model had a marketplace of competing banks in it.
+     * There is one bank, and they own the product — so the bank is not a participant in the platform, it
      * <em>is</em> the platform, and its people see every seller because that is what running the thing means.
      *
      * <p>Moving them to {@code ACTOR_PLATFORM} is the whole of the behavioural change:
      * {@code PrincipalFactory} reads {@code isPlatformActor()} before it reads anything else, so visibility
-     * stops being derived from {@code tenant_lender_partnerships} and becomes unrestricted. No query changed;
+     * stops being derived from {@code retired_tenant_partnerships} and becomes unrestricted. No query changed;
      * the branch that consulted partnerships is simply no longer reached by these types.
      *
      * <p>The lending work itself is untouched. Mortgage products, affordability, valuations and the valuer
@@ -69,8 +69,8 @@ public enum UserTypeEnum {
      * V20260914120000 moves the ones that already exist. Changing one without the other would leave live
      * users classified by whichever the code happened to read.
      */
-    LENDER_ADMIN("Bank Administrator",
-            "Full control of the bank's platform: staff, user groups, lending configuration",
+    BANK_ADMIN("Bank Administrator",
+            "Full control of the bank's platform: staff, user groups, mortgage configuration",
             AppConstant.ACTOR_PLATFORM, 70),
     MORTGAGE_OFFICER("Mortgage Officer",
             "Works finance cases against seller portfolios",
@@ -96,7 +96,7 @@ public enum UserTypeEnum {
      * A valuer on the platform's panel (M5, plan §3.5).
      *
      * <p>The third visibility rule on this platform, and the reason §3.5 called it a new mechanism. A seller
-     * sees their organisation's rows; a lender sees the organisations they are partnered with; a valuer sees
+     * sees their organisation's rows; the bank sees the organisations they are partnered with; a valuer sees
      * <strong>the jobs assigned to them</strong> — not their firm's, not the requesting seller's portfolio,
      * and not the property they were sent to value beyond what the job says about it.
      *

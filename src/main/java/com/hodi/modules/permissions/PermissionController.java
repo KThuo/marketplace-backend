@@ -80,7 +80,7 @@ public class PermissionController {
         UserPrincipal caller = AuthContext.require();
         boolean platformCaller = caller.isPlatformStaff();
 
-        // Null means "the tenant-module axis does not apply" — platform and lender callers. An empty set
+        // Null means "the tenant-module axis does not apply" — platform and bank callers. An empty set
         // would mean the opposite and would offer nothing at all.
         Set<String> tenantEnabled = caller.getTenantId() == null
                 ? null

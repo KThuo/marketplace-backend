@@ -38,7 +38,7 @@ public final class ReportCatalogue {
                           */
                          boolean ownerScoped) {
 
-        /** The tenant-scoped shape every report had before developments could be owned by a lender. */
+        /** The tenant-scoped shape every report had before developments could be owned by the bank. */
         public Report(String code, String name, String description, String view, String dateColumn,
                       Map<String, String> columns, List<String> numeric, boolean platformOnly,
                       List<Filter> filters) {

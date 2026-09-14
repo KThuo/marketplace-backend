@@ -113,7 +113,7 @@ public class BidderRegistrationService {
         return toResponse(repository.save(registration), null);
     }
 
-    // ── the seller's or lender's side ─────────────────────────────────────────
+    // ── the seller's or bank's side ─────────────────────────────────────────
 
     /**
      * Who has asked to bid on this organisation's lots.

@@ -249,7 +249,7 @@ class DevelopmentMediaIT {
         media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
                 jpeg("brochure.jpg"), null, "For buyers", true);
         media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
-                jpeg("defects.jpg"), null, "For the lender's file", false);
+                jpeg("defects.jpg"), null, "For the bank's file", false);
 
         assertEquals(2, media.list(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null).size(),
                 "the owner sees both");

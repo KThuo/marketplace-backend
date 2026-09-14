@@ -88,10 +88,10 @@ public class RulesAssistantProvider implements AssistantProvider {
                             + "before you are allowed to bid. On a mortgage, it is the part of the price you "
                             + "pay yourself — the rest is the loan."),
             Map.entry("ltv",
-                    "Loan to value: the share of the price a lender will lend. At 80% LTV on a 10 million "
-                            + "house, the lender puts up 8 million and you find 2 million."),
+                    "Loan to value: the share of the price the bank will lend. At 80% LTV on a 10 million "
+                            + "house, the bank puts up 8 million and you find 2 million."),
             Map.entry("dti",
-                    "Debt to income: the share of your monthly income a lender will let go on repayments, "
+                    "Debt to income: the share of your monthly income the bank will let go on repayments, "
                             + "usually somewhere between a third and a half."),
             Map.entry("freehold",
                     "Freehold means you own the land outright and for good. Leasehold means you hold it for "
@@ -200,20 +200,20 @@ public class RulesAssistantProvider implements AssistantProvider {
         /*
          * Said as it is.
          *
-         * With no deposit supplied, the most a lender would advance *is* the most property it buys — and
+         * With no deposit supplied, the most the bank would advance *is* the most property it buys — and
          * the first version still said "once a deposit is added", which was a sentence claiming a figure
          * that had not been given. Anything about somebody's money should be exactly true or not said.
          */
         boolean noDeposit = estimate.maxPropertyPrice() != null
                 && estimate.maxPropertyPrice().compareTo(estimate.maxLoanAmount()) == 0;
-        String line = "On " + money(income) + " a month, a lender would typically look at around "
+        String line = "On " + money(income) + " a month, the bank would typically look at around "
                 + money(estimate.maxLoanAmount()) + " of borrowing"
                 + (noDeposit
                         ? " — so about that much property, before any deposit of your own. Every shilling "
                           + "you put down buys more."
                         : " — roughly " + money(estimate.maxPropertyPrice())
                           + " of property once your deposit is added.")
-                + " That is arithmetic, not an offer: only a lender can tell you what they will actually "
+                + " That is arithmetic, not an offer: only the bank can tell you what they will actually "
                 + "lend.";
         return new Answer(AssistantConstants.INTENT_AFFORD, line,
                 null,

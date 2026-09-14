@@ -37,7 +37,7 @@ import java.util.Optional;
  *
  * <h2>Why a bank's tracked project cannot publish</h2>
  *
- * <p>A lender financing a developer's rental block has no reason to put its progress on the public site, and
+ * <p>The bank financing a developer's rental block has no reason to put its progress on the public site, and
  * the cost of getting that wrong is disclosing a client's project. So publishing asks
  * {@link DevelopmentVisibility#mayPublishProgress} first, and a PRIVATE development is refused — with the
  * reason, because "forbidden" on a button somebody can see is not an answer.

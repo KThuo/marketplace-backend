@@ -32,8 +32,8 @@ public class DevelopmentCollaborator {
     @Column(name = "development_id", nullable = false) private Long developmentId;
 
     /**
-     * The organisation being granted the right. A tenant, never an institution: a lender owning a project
-     * needs no grant to write to it, and one lender writing another's project is not a case that exists.
+     * The organisation being granted the right. A tenant, never an institution: the bank owning a project
+     * needs no grant to write to it, and one bank writing another's project is not a case that exists.
      */
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "tenant_name", length = 255) private String tenantName;

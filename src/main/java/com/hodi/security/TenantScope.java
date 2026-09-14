@@ -24,7 +24,7 @@ import java.util.Set;
  *
  * <p>{@link #visibleIds()} returns {@code null} for a caller under no restriction, which callers must read
  * as "no constraint" rather than "no organisations". An <em>empty</em> set means the opposite — a caller who
- * may see nothing at all, which is the correct and common state for a lender with no approved partnership
+ * may see nothing at all, which is the correct and common state for the bank with no approved partnership
  * yet.
  *
  * <table>
@@ -32,7 +32,7 @@ import java.util.Set;
  *   <tr><th>Caller</th><th>{@code visibleIds()}</th></tr>
  *   <tr><td>Platform staff</td><td>{@code null} — unrestricted</td></tr>
  *   <tr><td>Seller staff</td><td>their own tenant, and only ever that</td></tr>
- *   <tr><td>Lender staff</td><td>the sellers their institution has an <em>active</em> partnership with</td></tr>
+ *   <tr><td>The bank's staff</td><td>the sellers their institution has an <em>active</em> partnership with</td></tr>
  *   <tr><td>Buyer</td><td>empty — a buyer reads their own rows by identity, never by organisation</td></tr>
  * </table>
  *
@@ -60,7 +60,7 @@ public final class TenantScope {
     /**
      * True when a restricted caller has no organisations in view at all.
      *
-     * <p>Worth a distinct name because the UI must say so: a lender admin whose last partnership was revoked
+     * <p>Worth a distinct name because the UI must say so: the bank admin whose last partnership was revoked
      * should be told that, not shown empty tables that read as missing data.
      */
     public static boolean isStranded() {

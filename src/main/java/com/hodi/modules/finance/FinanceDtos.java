@@ -19,7 +19,7 @@ import java.util.Map;
  * <p>Three response records where a lazier design would have one, and each split earns its place:
  *
  * <ul>
- *   <li>{@link ProductResponse} vs {@link PublicProductResponse} — the lender's own view carries the
+ *   <li>{@link ProductResponse} vs {@link PublicProductResponse} — the bank's own view carries the
  *       lifecycle, the internal notes and the draft; the public one carries what is on offer. Two records
  *       rather than one with fields blanked, exactly as for a listing.</li>
  *   <li>{@link AffordabilityResponse} vs {@link AffordabilitySummary} — the first is somebody's household
@@ -31,7 +31,7 @@ public final class FinanceDtos {
 
     private FinanceDtos() {}
 
-    // ── mortgage products, lender side ────────────────────────────────────────
+    // ── mortgage products, bank side ────────────────────────────────────────
 
     public record ProductResponse(
             String id,
@@ -109,7 +109,7 @@ public final class FinanceDtos {
      *
      * <p>No lifecycle, no internal notes, no draft — being on offer is the permission to be seen, the same
      * rule the marketplace applies to listings. The eligibility text stays: a buyer deciding whether to
-     * approach a lender needs to know what that lender will ask for.
+     * approach the bank needs to know what that bank will ask for.
      */
     public record PublicProductResponse(
             String reference,
@@ -155,9 +155,9 @@ public final class FinanceDtos {
             BigDecimal price,
             String currency,
             /*
-             * No lenderCount. It counted the lenders partnered with this seller, and the panel said "from N
-             * lenders this seller works with" — a sentence about a marketplace of banks competing for a
-             * seller's portfolio. There is one lender and it runs the platform, so the number could only
+             * No count of banks. It counted those partnered with this seller, and the panel said "from N
+             * banks this seller works with" — a sentence about a marketplace of banks competing for a
+             * seller's portfolio. There is one bank and it runs the platform, so the number could only
              * ever be 1, and a figure that cannot vary is not information.
              */
             List<FinanceOption> options,
@@ -217,7 +217,7 @@ public final class FinanceDtos {
             BigDecimal propertyPrice,
             /** The assessor's own working, so the figures can be checked rather than trusted. */
             Map<String, Object> working,
-            /** What the money would actually buy today, at the lenders in play. */
+            /** What the money would actually buy today, at the banks in play. */
             List<FinanceOption> options,
             String disclaimer,
             /** Null for an unsaved estimate — a stranger's calculation is not kept. */

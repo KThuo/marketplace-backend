@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Which rows an aggregate may add up, as SQL, where the rows may be owned by a lender rather than a seller.
+ * Which rows an aggregate may add up, as SQL, where the rows may be owned by the bank rather than a seller.
  *
  * <p>{@link TenantScope#sqlPredicate} answers for tables that belong to a tenant. Developments, bookings,
  * payments and the cost ledger do not: a lending institution may own them outright, a seller may market units
@@ -18,7 +18,7 @@ import java.util.Set;
  *
  * <p><strong>The bug this replaces.</strong> The chart engine spliced the caller's <em>tenant</em> ids into an
  * {@code institution_id IN (…)} predicate, because the only predicate builder it had knew about tenants. For a
- * lender that matched nothing, or matched an institution whose id happened to equal a partnered seller's.
+ * bank that matched nothing, or matched an institution whose id happened to equal a partnered seller's.
  *
  * <p>Every id here comes from the principal — never from a request — and is a long, so there is nothing to
  * escape. Any column argument may be null when the table has no such column, and the predicate simply does
@@ -33,7 +33,7 @@ public final class OwnerScopeSql {
      *
      * <ul>
      *   <li>Platform staff: {@code TRUE}.</li>
-     *   <li>Lender staff: their own institution's rows, plus the rows of the sellers they are partnered
+     *   <li>The bank's staff: their own institution's rows, plus the rows of the sellers they are partnered
      *       with.</li>
      *   <li>Seller staff (and agents): their own organisation's rows, the developments they market, and the
      *       developments they have been granted rights on.</li>

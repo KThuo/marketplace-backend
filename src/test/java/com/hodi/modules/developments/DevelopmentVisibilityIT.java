@@ -26,7 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <p>The most consequential test in this module. Every other table in the schema gets its row scoping from
  * {@code TenantScope} — one choke point, hard to forget. A development cannot use it, because a lending
- * institution may own one and a lender has no visible-tenant set. So the protection is a rule somebody has to
+ * institution may own one and the bank has no visible-tenant set. So the protection is a rule somebody has to
  * apply, and a repository query written without it reads across organisations.
  *
  * <p>Which is why the assertions here are mostly about what is <em>not</em> visible. A test that only proves an
@@ -47,7 +47,7 @@ class DevelopmentVisibilityIT {
     }
 
     private Long institutionId() {
-        return jdbc.queryForObject("select id from lending_institutions order by id limit 1", Long.class);
+        return jdbc.queryForObject("select id from banks order by id limit 1", Long.class);
     }
 
     private Development owned(Long tenantId, Long institutionId, Long sellingTenantId, String state) {
@@ -68,7 +68,7 @@ class DevelopmentVisibilityIT {
      * <p>{@code UserPrincipal} has no builder and no setters on purpose — it is derived from a user and a
      * profile, and the actor class it authorises on comes from {@code profile.profileType}. Building one here
      * from those two rather than mocking the getters means the test exercises the same derivation the login
-     * path does, including the fact that a lender's tenantId is null because their profile carries an
+     * path does, including the fact that the bank's tenantId is null because their profile carries an
      * institution instead.
      */
     private UserPrincipal principal(Long userId, String profileType, String userTypeCode,
@@ -89,8 +89,16 @@ class DevelopmentVisibilityIT {
         return principal(1L, AppConstant.ACTOR_SELLER, "SELLER_OWNER", tenantId, null);
     }
 
-    private UserPrincipal lender(Long institutionId) {
-        return principal(2L, AppConstant.ACTOR_LENDER, "LENDER_ADMIN", null, institutionId);
+    /**
+     * A caller bound to the bank that owns the project.
+     *
+     * <p>PLATFORM with `unrestricted` false, which is a shape no sign-in produces — and that is the point.
+     * What these tests exercise is the institution ownership axis, and DevelopmentVisibility decides it on
+     * `institutionId` rather than on an actor class, so the axis is still covered now that no user type is
+     * bound to an institution.
+     */
+    private UserPrincipal bankStaff(Long institutionId) {
+        return principal(2L, AppConstant.ACTOR_PLATFORM, "SUPER_ADMIN", null, institutionId);
     }
 
     private UserPrincipal platform() {
@@ -136,7 +144,7 @@ class DevelopmentVisibilityIT {
 
         Development financed = owned(null, bank, null, AppConstant.DEV_STATE_PRIVATE);
 
-        assertTrue(visibility.mayRead(financed, lender(bank)));
+        assertTrue(visibility.mayRead(financed, bankStaff(bank)));
         assertFalse(visibility.mayRead(financed, seller(unrelated)),
                 "a private financed project is not visible to an unrelated seller");
         assertFalse(visibility.mayRead(financed, seller(bankProjectDeveloper)),
@@ -234,9 +242,9 @@ class DevelopmentVisibilityIT {
         assertThrows(HodiException.class, () -> visibility.assertMayWriteUnits(project, seller(developer)));
 
         // The owner may do all three.
-        visibility.assertMayManage(project, lender(bank));
-        visibility.assertMayWriteUnits(project, lender(bank));
-        visibility.assertMayWriteProgress(project, lender(bank));
+        visibility.assertMayManage(project, bankStaff(bank));
+        visibility.assertMayWriteUnits(project, bankStaff(bank));
+        visibility.assertMayWriteProgress(project, bankStaff(bank));
     }
 
     @Test

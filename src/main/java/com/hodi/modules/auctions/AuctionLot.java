@@ -18,7 +18,7 @@ import java.time.OffsetDateTime;
  * properties} remembering to exclude it — including the queries nobody has written yet.
  *
  * <p>It is also honestly a different thing: a guide price rather than an asking price, a reserve nobody
- * outside the room may see, a date, a venue, a licensed auctioneer, and usually a lender exercising a power
+ * outside the room may see, a date, a venue, a licensed auctioneer, and usually the bank exercising a power
  * of sale rather than an owner who wants to sell.
  */
 @Entity

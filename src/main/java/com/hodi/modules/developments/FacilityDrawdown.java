@@ -13,7 +13,7 @@ import java.time.OffsetDateTime;
 /**
  * One disbursement against a development's facility.
  *
- * <p>The other half of "funds consumed": the ledger says what the project spent, this says what the lender
+ * <p>The other half of "funds consumed": the ledger says what the project spent, this says what the bank
  * put in. Drawn and undrawn are then sums over dated rows rather than a figure somebody remembers to update.
  * Voided with a reason, never edited, like every money row in this schema.
  */

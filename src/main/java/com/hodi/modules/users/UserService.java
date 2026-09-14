@@ -9,8 +9,8 @@ import com.hodi.common.util.SearchSpecs;
 import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.auth.RefreshTokenService;
-import com.hodi.modules.institutions.LendingInstitution;
-import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.banks.Bank;
+import com.hodi.modules.banks.BankRepository;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.profiles.UserProfileService;
@@ -45,7 +45,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Staff administration: platform staff, seller staff and lender staff.
+ * Staff administration: platform staff, seller staff and the bank's staff.
  *
  * <p>Buyers are not created here — they register themselves (see
  * {@code com.hodi.modules.buyers.BuyerRegistrationService}). They are visible through this module's list so
@@ -71,7 +71,7 @@ import java.util.List;
  * full stop — the request's {@code tenantId} is ignored rather than validated, because a field that is
  * sometimes honoured is a field somebody will eventually get honoured. Only platform staff may name an
  * organisation, and what they may name is constrained by the user type's actor class: a {@code SELLER} type
- * needs a tenant and a {@code LENDER} type needs an institution, and neither can be given the other's.
+ * needs a tenant and a platform type needs none, and neither can be given the other's.
  */
 @Slf4j
 @Service
@@ -88,7 +88,7 @@ public class UserService {
     private final UserTypeRepository userTypes;
     private final UserGroupRepository userGroups;
     private final TenantRepository tenants;
-    private final LendingInstitutionRepository institutions;
+    private final BankRepository institutions;
     private final PasswordService passwords;
     private final RefreshTokenService refreshTokens;
     private final StorageService storage;
@@ -156,14 +156,14 @@ public class UserService {
      * Which profiles the caller may see.
      *
      * <p>Not {@code TenantScope.restrict("tenantId")}, because this list holds four populations that a tenant
-     * predicate alone gets wrong in both directions. A lender's staff carry no tenant, so restricting on
-     * {@code tenant_id} would hide a lender admin's own colleagues from them; buyers carry no organisation
+     * predicate alone gets wrong in both directions. A bank's staff carry no tenant, so restricting on
+     * {@code tenant_id} would hide the bank admin's own colleagues from them; buyers carry no organisation
      * either, so the same predicate would hide every buyer from support. So:
      *
      * <ul>
      *   <li>platform staff — everyone;
      *   <li>seller staff — their own organisation's people, and nobody else's;
-     *   <li>lender staff — their own institution's people. Deliberately <em>not</em> the staff of the sellers
+     *   <li>the bank's staff — their own institution's people. Deliberately <em>not</em> the staff of the sellers
      *       they are partnered with: a partnership grants sight of a portfolio, not of another
      *       organisation's people.
      * </ul>
@@ -312,7 +312,7 @@ public class UserService {
             UserPrincipal caller = AuthContext.require();
             assertMayAssignType(caller, type);
             if (!type.getActorClass().equals(profile.getProfileType())) {
-                // A seller's staff member cannot become lender staff by way of a group: the organisation on
+                // A seller's staff member cannot become the bank's staff by way of a group: the organisation on
                 // the profile would then be the wrong kind for the actor class, and TenantScope would resolve
                 // visibility through a column that is null.
                 throw new HodiException(
@@ -464,7 +464,7 @@ public class UserService {
      *
      * <p>For an organisation's own administrator the answer is fixed and the request has no say. For platform
      * staff the answer comes from the request but must agree with the user type's actor class — a
-     * {@code LENDER} type placed in a tenant would produce a profile whose visible-tenant set resolves through
+     * A type placed in the wrong organisation would produce a profile whose visible-tenant set resolves through
      * a partnership lookup on an institution it does not have, which is a broken account rather than a
      * dangerous one, but broken in a way nothing downstream would explain.
      */
@@ -475,12 +475,6 @@ public class UserService {
                 requireActorClass(type, AppConstant.ACTOR_SELLER,
                         "You can only add staff of your own organisation's kind.");
                 return new Affiliation(caller.getTenantId(), caller.getTenantName(), null, null);
-            }
-            if (caller.getInstitutionId() != null) {
-                requireActorClass(type, AppConstant.ACTOR_LENDER,
-                        "You can only add staff of your own institution's kind.");
-                return new Affiliation(null, null,
-                        caller.getInstitutionId(), caller.getInstitutionName());
             }
             throw new HodiException("Your account is not attached to an organisation.",
                     HttpStatus.FORBIDDEN);
@@ -498,17 +492,11 @@ public class UserService {
                         .orElseThrow(() -> new ResourceNotFoundException("Organisation", tenantHashId));
                 yield new Affiliation(tenant.getId(), tenant.getName(), null, null);
             }
-            case AppConstant.ACTOR_LENDER -> {
-                Long institutionId = HashIdUtil.decodeId(institutionHashId);
-                if (institutionId == null) {
-                    throw new HodiException("Choose the lending institution this user belongs to.",
-                            HttpStatus.BAD_REQUEST);
-                }
-                LendingInstitution institution = institutions.findById(institutionId)
-                        .orElseThrow(() -> new ResourceNotFoundException(
-                                "Institution", institutionHashId));
-                yield new Affiliation(null, null, institution.getId(), institution.getName());
-            }
+            /*
+             * No branch for an institution-bound actor. Every user type is PLATFORM, SELLER, BUYER, VALUER,
+             * AGENT or VENDOR now — the three that once belonged to a bank became platform staff, because
+             * the bank runs the platform rather than being let into it.
+             */
             default -> throw new HodiException("That kind of user cannot be created here.",
                     HttpStatus.BAD_REQUEST);
         };

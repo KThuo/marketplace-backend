@@ -19,7 +19,7 @@ import java.util.List;
  * <h2>Resolving the visible-tenant set</h2>
  *
  * <p>This is where the difference between Hodi's access model and axis's actually lands. Four populations,
- * four answers, and the interesting one is the lender:
+ * four answers, and the interesting one is the bank:
  *
  * <ul>
  *   <li><strong>Platform staff</strong> — unrestricted. No filter is applied to their reads at all.

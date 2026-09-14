@@ -10,8 +10,8 @@ import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.finance.FinanceDtos.ProductListRequest;
 import com.hodi.modules.finance.FinanceDtos.ProductResponse;
 import com.hodi.modules.finance.FinanceDtos.SaveProductRequest;
-import com.hodi.modules.institutions.LendingInstitution;
-import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.banks.Bank;
+import com.hodi.modules.banks.BankRepository;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
@@ -28,11 +28,11 @@ import java.time.OffsetDateTime;
 import java.util.Set;
 
 /**
- * A lender's products (M3, BRD FR025–FR030).
+ * A bank's products (M3, BRD FR025–FR030).
  *
  * <h2>Visibility is the institution, and it comes off the principal</h2>
  *
- * <p>{@code TenantScope} governs *sellers*; a lender's own rows are scoped by the institution on their
+ * <p>{@code TenantScope} governs *sellers*; a bank's own rows are scoped by the institution on their
  * profile, exactly as {@code PartnershipService} does it. Platform staff see every institution's products —
  * they administer the catalogue — and a caller with neither an institution nor platform standing sees none,
  * which is the honest answer for a buyer who reached this endpoint.
@@ -52,7 +52,7 @@ public class MortgageProductService {
     private static final String REFERENCE_PREFIX = "MP";
 
     private final MortgageProductRepository repository;
-    private final LendingInstitutionRepository institutions;
+    private final BankRepository institutions;
     private final AuditService audit;
 
     // ── reads ─────────────────────────────────────────────────────────────────
@@ -87,12 +87,12 @@ public class MortgageProductService {
         if (institutionId == null) {
             // Platform staff administering the catalogue still have to say whose product it is, and there is
             // nowhere in this request to say it. Refused with the sentence rather than silently filed under
-            // nobody — a product with no lender is a rate a buyer cannot act on.
+            // nobody — a product with no bank is a rate a buyer cannot act on.
             throw new HodiException(
-                    "Only a lender's own staff can create a product. Ask the institution to add it.",
+                    "Only a bank's own staff can create a product. Ask the institution to add it.",
                     HttpStatus.FORBIDDEN);
         }
-        LendingInstitution institution = institutions.findById(institutionId)
+        Bank institution = institutions.findById(institutionId)
                 .orElseThrow(() -> new ResourceNotFoundException("Institution", institutionId));
 
         MortgageProduct product = MortgageProduct.builder()
@@ -198,9 +198,9 @@ public class MortgageProductService {
     /**
      * Writable by this caller — their own institution's, and platform staff are <em>not</em> exempt.
      *
-     * <p>The one place the platform's reach deliberately stops. Reading every lender's catalogue is oversight;
+     * <p>The one place the platform's reach deliberately stops. Reading every bank's catalogue is oversight;
      * editing another organisation's published rate is not, and a support administrator with a typo could put
-     * a number in front of the public that the lender never agreed to.
+     * a number in front of the public that the bank never agreed to.
      */
     private MortgageProduct loadOwn(String hashId) {
         MortgageProduct product = repository.findById(HashIdUtil.decodeId(hashId))
@@ -215,7 +215,7 @@ public class MortgageProductService {
     private Specification<MortgageProduct> ownInstitution(UserPrincipal caller) {
         if (caller.isPlatformStaff()) return null;
         Long institutionId = caller.getInstitutionId();
-        // A caller with no institution and no platform standing is party to no lender's catalogue.
+        // A caller with no institution and no platform standing is party to no bank's catalogue.
         if (institutionId == null) return (root, query, cb) -> cb.disjunction();
         return (root, query, cb) -> cb.equal(root.get("institutionId"), institutionId);
     }
@@ -260,7 +260,7 @@ public class MortgageProductService {
     /**
      * The database's CHECKs, said in sentences.
      *
-     * <p>The constraints are what make these true; this is what makes the refusal readable. A lender who has
+     * <p>The constraints are what make these true; this is what makes the refusal readable. The bank who has
      * typed the term range backwards should be told which field, not shown a constraint name.
      */
     private void validate(MortgageProduct product) {

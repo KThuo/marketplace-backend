@@ -11,14 +11,14 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 
 /**
- * What one lender offers (M3, BRD FR025–FR030).
+ * What one bank offers (M3, BRD FR025–FR030).
  *
  * <p>Owned by a lending institution and scoped by {@code institutionId} exactly as a listing is scoped by
  * {@code tenantId}. Which products a <em>buyer</em> sees against a particular listing is a different
  * question, and the partnership table already answers it — see {@code FinanceMatchService}.
  *
  * <p>Every money field is {@code BigDecimal} and every rate is a scaled decimal. A rate multiplies money;
- * 13.5 that is really 13.499999 compounds over 240 months into a repayment that does not match the lender's
+ * 13.5 that is really 13.499999 compounds over 240 months into a repayment that does not match the bank's
  * own quote, and the buyer is holding the one that is wrong.
  */
 @Entity
@@ -93,7 +93,7 @@ public class MortgageProduct {
     /**
      * The deposit this product requires on a given price, in money.
      *
-     * <p>The larger of the two constraints wins. Lenders quote a minimum deposit and a maximum
+     * <p>The larger of the two constraints wins. Banks quote a minimum deposit and a maximum
      * loan-to-value, and the two are only equivalent when they agree — a product with a 10% minimum deposit
      * and an 85% LTV ceiling requires 15%, and telling a buyer 10% would be quoting them a loan the same
      * product would refuse.

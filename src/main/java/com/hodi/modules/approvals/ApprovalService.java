@@ -161,7 +161,7 @@ public class ApprovalService {
      * The same decision, reached from the owning module's own screen rather than from the queue.
      *
      * <p>It skips only the queue-<em>visibility</em> check, because that check answers a different question:
-     * whose list this appears in. A seller approving from the partnership screen is not in the lender's queue
+     * whose list this appears in. A seller approving from the partnership screen is not in the bank's queue
      * and never will be, and answering "not found" there told them their own partnership did not exist. Every
      * guard that decides whether they may approve still runs — they simply now hear the real reason, which is
      * that their organisation proposed it.
@@ -235,7 +235,7 @@ public class ApprovalService {
     /**
      * Which requests a caller may see.
      *
-     * <p>Their own organisation's queue, and nothing else. Not {@code TenantScope}: a lender's visible-tenant
+     * <p>Their own organisation's queue, and nothing else. Not {@code TenantScope}: a bank's visible-tenant
      * set is the sellers they are partnered with, and a partnership grants sight of a portfolio, not of the
      * other organisation's internal approvals. The platform sees everything, as everywhere.
      */

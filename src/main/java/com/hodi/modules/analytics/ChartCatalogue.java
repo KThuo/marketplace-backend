@@ -23,8 +23,8 @@ import java.util.Optional;
  *
  * <p>{@link Chart#scopeColumns} is what {@code OwnerScopeSql} is spliced onto. A chart that cannot name one
  * cannot be scoped, and an aggregate that cannot be scoped is where one organisation reads another's figures.
- * Two columns where a thing may be owned by a lender rather than a seller — a bank's development is not a
- * tenant's, and a chart that only understood tenants would show a lender an empty page.
+ * Two columns where a thing may be owned by the bank rather than a seller — a bank's development is not a
+ * tenant's, and a chart that only understood tenants would show the bank an empty page.
  *
  * <h2>Some charts are about one project</h2>
  *
@@ -125,7 +125,7 @@ public final class ChartCatalogue {
                     OWNER, AppPermissionEnum.DEVELOPMENTS_FINANCE_VIEW, "KES", true, "development_id", false),
 
             new Chart("dev-funding", "Where the money stands",
-                    "What was allowed, what has gone, what the lender put in, and what buyers have paid.",
+                    "What was allowed, what has gone, what the bank put in, and what buyers have paid.",
                     "v_chart_dev_funding", Kind.BAR,
                     OWNER, AppPermissionEnum.DEVELOPMENTS_FINANCE_VIEW, "KES", true, "development_id", false),
 

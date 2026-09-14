@@ -9,7 +9,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.OffsetDateTime;
 
 /**
- * A class of user, global across every organisation (plan section 4.2). Neither a seller nor a lender can
+ * A class of user, global across every organisation (plan section 4.2). Neither a seller nor the bank can
  * create one — only the platform.
  *
  * <p>Which modules a type may reach is declared on the module, not here — see
@@ -35,7 +35,7 @@ public class UserType {
 
     /**
      * Which of the four populations this type belongs to — {@code PLATFORM}, {@code SELLER},
-     * {@code LENDER} or {@code BUYER}.
+     * {@code BUYER}, {@code VALUER}, {@code AGENT} or {@code VENDOR}.
      *
      * <p>Treated as part of the type's identity: the seeder reconciles names and descriptions but never
      * moves a type between classes, and the API refuses to. Changing it would silently reclassify every user

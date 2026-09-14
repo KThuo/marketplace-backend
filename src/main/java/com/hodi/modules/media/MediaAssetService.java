@@ -96,7 +96,7 @@ public class MediaAssetService {
      * photograph does: an album whose cover stays blank until somebody finds "make primary" ships blank.
      *
      * @param tenantId      the owning organisation, or null when an institution owns it
-     * @param institutionId the owning lender, or null when a tenant owns it
+     * @param institutionId the owning bank, or null when a tenant owns it
      */
     @Transactional
     public MediaResponse add(String ownerType, Long ownerId, Long tenantId, Long institutionId,

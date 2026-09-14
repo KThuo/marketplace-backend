@@ -14,8 +14,8 @@ import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.developments.Development;
 import com.hodi.modules.developments.DevelopmentRepository;
 import com.hodi.modules.developments.DevelopmentVisibility;
-import com.hodi.modules.institutions.LendingInstitution;
-import com.hodi.modules.institutions.LendingInstitutionRepository;
+import com.hodi.modules.banks.Bank;
+import com.hodi.modules.banks.BankRepository;
 import com.hodi.modules.payments.PaymentTypeDtos.*;
 import com.hodi.modules.tenants.Tenant;
 import com.hodi.modules.tenants.TenantRepository;
@@ -54,7 +54,7 @@ public class PaymentAccountService {
     private final PaymentAccountRepository accounts;
     private final PaymentTypeRepository types;
     private final TenantRepository tenants;
-    private final LendingInstitutionRepository institutions;
+    private final BankRepository institutions;
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
     private final UnitBookingRepository bookings;
@@ -458,7 +458,7 @@ public class PaymentAccountService {
     private String phoneOf(Owner owner) {
         String phone;
         if (owner.institutionId() != null) {
-            phone = institutions.findById(owner.institutionId()).map(LendingInstitution::getContactPhone)
+            phone = institutions.findById(owner.institutionId()).map(Bank::getContactPhone)
                     .orElse(null);
         } else if (owner.tenantId() != null) {
             phone = tenants.findById(owner.tenantId()).map(Tenant::getContactPhone).orElse(null);
@@ -477,7 +477,7 @@ public class PaymentAccountService {
 
     private String nameOf(Owner owner) {
         if (owner.institutionId() != null) {
-            return institutions.findById(owner.institutionId()).map(LendingInstitution::getName)
+            return institutions.findById(owner.institutionId()).map(Bank::getName)
                     .orElse("the institution");
         }
         if (owner.tenantId() != null) {
@@ -532,7 +532,7 @@ public class PaymentAccountService {
                 .collect(Collectors.toMap(Tenant::getId, Tenant::getName));
         Map<Long, String> institutionNames = institutions
                 .findAllById(ids(rows, PaymentAccount::getInstitutionId)).stream()
-                .collect(Collectors.toMap(LendingInstitution::getId, LendingInstitution::getName));
+                .collect(Collectors.toMap(Bank::getId, Bank::getName));
         Map<Long, String> developmentNames = developments
                 .findAllById(ids(rows, PaymentAccount::getDevelopmentId)).stream()
                 .collect(Collectors.toMap(Development::getId, Development::getName));

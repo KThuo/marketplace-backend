@@ -35,7 +35,7 @@ public class PublicFinanceController {
     private final FinanceMatchService finance;
     private final AffordabilityService affordability;
 
-    /** Every published product, whoever the lender. */
+    /** Every published product, whoever the bank. */
     @GetMapping("/mortgage-products/search")
     public ApiResponse<PagedResponse<PublicProductResponse>> search(
             @ModelAttribute PublicProductSearchRequest request) {
@@ -43,7 +43,7 @@ public class PublicFinanceController {
     }
 
     /**
-     * The finance panel for one listing: the products of the lenders this seller is partnered with, each
+     * The finance panel for one listing: the products of the banks this seller is partnered with, each
      * costed against the asking price.
      *
      * @param netMonthlyIncome optional — when given, each option says whether it fits. Absent leaves the

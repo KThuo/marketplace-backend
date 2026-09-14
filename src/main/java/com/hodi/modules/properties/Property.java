@@ -184,7 +184,7 @@ public class Property {
 
     // ── a unit's own columns (null on every other kind) ───────────────────────
 
-    /** The lender that owns the project, where a bank rather than a seller does. */
+    /** The bank that owns the project, where a bank rather than a seller does. */
     @Column(name = "institution_id") private Long institutionId;
     @Column(name = "phase_id") private Long phaseId;
     @Column(name = "unit_label", length = 32) private String unitLabel;

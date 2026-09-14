@@ -29,7 +29,7 @@ import java.io.IOException;
  * costs a query and buys the property the whole access model depends on: a deactivated account, a revoked
  * role, a module switched off for an organisation, or — the one unique to Hodi — a <em>revoked
  * partnership</em> takes effect on the caller's very next request instead of whenever their token happens to
- * expire. Since a partnership is the only thing granting a lender's staff sight of a seller's rows, revoking
+ * expire. Since a partnership is the only thing granting a bank's staff sight of a seller's rows, revoking
  * one has to bite immediately, and that is only true if the visible-tenant set is rebuilt per request.
  *
  * <p>A blacklisted token is rejected even if still cryptographically valid — that is how logout invalidates

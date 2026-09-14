@@ -502,22 +502,22 @@ public class SeederService {
         byType.put("VALUER", List.of(
                 "VALUER_PANEL_VIEW", "VALUATIONS_VIEW", "VALUATIONS_WORK"));
         /*
-         * A lender's staff read the money on the projects the bank financed: that is the exposure they watch.
+         * A bank's staff read the money on the projects the bank financed: that is the exposure they watch.
          *
          * The projects themselves are here now. Reading a drawdown figure without being able to open the
          * project it belongs to, see its units or its bookings, is a number with nothing behind it — and
          * DEVELOPMENTS_FINANCE_VIEW without DEVELOPMENTS_VIEW meant the finance screen 403'd on the way in.
          *
-         * Still entirely read-only: nothing here writes, and a lender writing on a seller's project would be
+         * Still entirely read-only: nothing here writes, and the bank writing on a seller's project would be
          * a decision an organisation grants deliberately rather than inherits from a default.
          */
-        List<String> lenderStaff = List.of(
+        List<String> bankStaff = List.of(
                 "DASHBOARD_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW",
                 "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW", "APPROVALS_VIEW",
                 "DEVELOPMENTS_FINANCE_VIEW");
-        byType.put("MORTGAGE_OFFICER", lenderStaff);
-        byType.put("CREDIT_ANALYST", lenderStaff);
+        byType.put("MORTGAGE_OFFICER", bankStaff);
+        byType.put("CREDIT_ANALYST", bankStaff);
         // No AUDIT_VIEW: the audit trail is what distinguishes PLATFORM_AUDITOR from support, and the AUDIT
         // module does not admit SUPPORT_ADMIN — so granting it here produced a template naming a permission
         // its own user type could never hold, which surfaced as "these permissions are not available for this

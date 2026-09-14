@@ -27,7 +27,7 @@ import java.util.List;
  * <p>When every phase of a development carries a weight, the weights have to sum to 100, and no CHECK can say
  * so: a constraint sees one row. So it is checked here on every save, and refused as a field error on
  * {@code weightPct} rather than silently normalised — scaling somebody's arithmetic mistake into a plausible
- * total is how it survives to the next screen and out to a lender.
+ * total is how it survives to the next screen and out to the bank.
  *
  * <p>The refusal is deliberately not fatal to the shape: weights are optional, and a development where only
  * some phases carry one simply derives its percentage a different way ({@link InventoryMaths} tries budget,

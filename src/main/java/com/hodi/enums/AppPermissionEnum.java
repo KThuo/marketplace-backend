@@ -59,7 +59,7 @@ public enum AppPermissionEnum {
      * Removing them from this enum is not enough on its own. SeederService only ever adds and reconciles;
      * it never retires a row whose enum entry has disappeared, so the permissions would stay on every group
      * that holds them and the workspace navigation — which filters on the effective permission set — would
-     * go on showing "Lenders" and "Partnerships". V20260914140000 is what actually removes them.
+     * go on showing "Banks" and "Partnerships". V20260914140000 is what actually removes them.
      */
     // ── PROPERTY LISTINGS ─────────────────────────────────────────────────────
     PROPERTIES_VIEW("See the organisation's listings", AppModuleEnum.PROPERTIES),
@@ -273,13 +273,13 @@ public enum AppPermissionEnum {
 
     // ── VALUATIONS ────────────────────────────────────────────────────────────
     VALUATIONS_VIEW("See valuations", AppModuleEnum.VALUATIONS),
-    /** Commissioning one. Held by the seller or the lender who needs the figure, never by the platform. */
+    /** Commissioning one. Held by whoever needs the figure, never by the platform. */
     VALUATIONS_REQUEST("Request a valuation", AppModuleEnum.VALUATIONS),
     /**
      * Putting a valuer on a job.
      *
      * <p>Platform-only, and the reason the panel is independent: a seller who could choose their own valuer
-     * would be choosing the figure, which is the thing a lender is relying on not being true.
+     * would be choosing the figure, which is the thing the bank is relying on not being true.
      */
     VALUATIONS_ASSIGN("Assign a valuer to a job", AppModuleEnum.VALUATIONS, true),
     VALUATIONS_CANCEL("Cancel a valuation", AppModuleEnum.VALUATIONS),

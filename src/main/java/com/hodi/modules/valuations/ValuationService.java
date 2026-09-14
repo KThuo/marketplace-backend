@@ -159,7 +159,7 @@ public class ValuationService {
         UserPrincipal caller = AuthContext.require();
         if (caller.getTenantId() == null && caller.getInstitutionId() == null) {
             throw new HodiException(
-                    "A valuation is raised by the seller or the lender who needs it.", HttpStatus.FORBIDDEN);
+                    "A valuation is raised by the seller or the bank who needs it.", HttpStatus.FORBIDDEN);
         }
 
         Property property = properties.findLiveByReference(trim(request.propertyReference()))
@@ -174,7 +174,7 @@ public class ValuationService {
                 .county(property.getCounty())
                 .tenantId(caller.getTenantId())
                 // The requester's own name, from the principal — not the listing's seller, which is a
-                // different organisation whenever a lender commissions the valuation.
+                // different organisation whenever the bank commissions the valuation.
                 .tenantName(caller.getTenantId() == null ? null : caller.getTenantName())
                 .institutionId(caller.getInstitutionId())
                 .institutionName(caller.getInstitutionId() == null ? null : caller.getInstitutionName())
@@ -325,7 +325,7 @@ public class ValuationService {
     /**
      * The answer.
      *
-     * <p>Written once. A valuation that could be edited after a lender relied on it is not a valuation, so a
+     * <p>Written once. A valuation that could be edited after the bank relied on it is not a valuation, so a
      * second submission is refused rather than overwriting — a corrected figure is a new job.
      */
     @Transactional

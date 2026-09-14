@@ -100,7 +100,7 @@ public class ConfigurationCache {
      *
      * <p>Unlike the axis original, the query itself carries the tenant id — there is no per-tenant schema
      * making the repository implicitly scoped, so the scoping has to be in the predicate. Returning null
-     * when no tenant is bound rather than querying with a null id is deliberate: a lender's or a platform
+     * when no tenant is bound rather than querying with a null id is deliberate: a bank's or a platform
      * user's request has no override layer at all, and a {@code WHERE tenant_id IS NULL} would invent one.
      */
     @Cacheable(cacheNames = TENANT_CACHE, key = TENANT_KEY, unless = "#result == null")

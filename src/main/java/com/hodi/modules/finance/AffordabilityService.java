@@ -43,7 +43,7 @@ import java.util.Map;
  *
  * <p>The person who ran it, in full, through their own endpoints. Platform staff holding
  * {@code AFFORDABILITY_VIEW}, as {@link AffordabilitySummary} — outcomes and derived figures, never income.
- * A lender learns a buyer's finances when the buyer applies to them, which is M4, and not by browsing a list.
+ * The bank learns a buyer's finances when the buyer applies to them, which is M4, and not by browsing a list.
  */
 @Slf4j
 @Service
@@ -139,8 +139,8 @@ public class AffordabilityService {
                 rate,
                 currency));
 
-        // What the money would actually buy, at the lenders in play. Against a listing that is the seller's
-        // partnered lenders; with no listing named it is everything on offer, because the question has
+        // What the money would actually buy, at the banks in play. Against a listing that is the seller's
+        // partnered banks; with no listing named it is everything on offer, because the question has
         // stopped being about one seller.
         BigDecimal carryable = decision.monthlyRepayment();
         List<FinanceOption> options = property != null

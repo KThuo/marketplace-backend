@@ -46,8 +46,8 @@ public final class UserTypeDtos {
             @Size(max = 2000) String description,
 
             @NotBlank(message = "Choose which kind of user this is")
-            @Pattern(regexp = "^(PLATFORM|SELLER|LENDER|BUYER)$",
-                    message = "Must be PLATFORM, SELLER, LENDER or BUYER")
+            @Pattern(regexp = "^(PLATFORM|SELLER|BUYER|VALUER|AGENT|VENDOR)$",
+                    message = "Must be PLATFORM, SELLER, BUYER, VALUER, AGENT or VENDOR")
             String actorClass,
 
             Integer sortOrder) {}

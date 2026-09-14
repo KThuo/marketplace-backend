@@ -12,7 +12,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * A lender's product catalogue.
+ * A bank's product catalogue.
  *
  * <p>Publishing carries its own permission, checked here and meant in the service: putting a rate in front of
  * the public is a different act from drafting one, and an institution may well want them done by different

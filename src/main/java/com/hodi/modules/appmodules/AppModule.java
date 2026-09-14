@@ -75,7 +75,7 @@ public class AppModule {
      *
      * <p>Splits and compares exact tokens. A substring test would be wrong in the direction that grants
      * rather than denies: {@code allowed_user_types LIKE '%ADMIN%'} also matches {@code SUPER_ADMIN} and
-     * {@code LENDER_ADMIN}, and all three codes exist in {@code UserTypeEnum}. That is the whole reason this
+     * {@code BANK_ADMIN}, and all three codes exist in {@code UserTypeEnum}. That is the whole reason this
      * is a method over an in-memory set rather than a SQL predicate.
      */
     public boolean allows(String userTypeCode) {

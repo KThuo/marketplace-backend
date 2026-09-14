@@ -18,7 +18,7 @@ import java.util.Objects;
  * Who may see a payment, and who may see an account.
  *
  * <p>Neither can use {@code TenantScope}, for the reason developments cannot: a lending institution may own
- * them outright, and a lender has no visible-tenant set describing that. So the rule lives here, in one
+ * them outright, and the bank has no visible-tenant set describing that. So the rule lives here, in one
  * place, and the services have no other way to build a list.
  *
  * <h2>Payments follow the development</h2>

@@ -17,7 +17,7 @@ import java.time.OffsetDateTime;
  *
  * <p>{@link #plannedCompletionOn} is the original promise and does not move. {@link #revisedCompletionOn} is
  * what is now expected and does. {@link #actualCompletionOn} is what happened. "It slipped four months" is the
- * first question a lender asks about a project they financed, and a single column that has been overwritten
+ * first question the bank asks about a project they financed, and a single column that has been overwritten
  * cannot answer it — which is the whole reason there are three.
  *
  * <h2>No owner column</h2>

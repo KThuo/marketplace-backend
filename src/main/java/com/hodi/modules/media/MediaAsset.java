@@ -53,7 +53,7 @@ public class MediaAsset {
     @Column(name = "is_primary", nullable = false) @Builder.Default private boolean primary = false;
 
     /**
-     * Whether a buyer may see it. Marketing photographs are public; a site photograph a lender keeps for its
+     * Whether a buyer may see it. Marketing photographs are public; a site photograph the bank keeps for its
      * own file is not. Never a title deed either way — those are vault documents, encrypted and ACL-gated.
      */
     @Column(name = "public_visible", nullable = false) @Builder.Default private boolean publicVisible = true;

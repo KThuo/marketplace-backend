@@ -87,7 +87,7 @@ public class PropertyService {
                 // Houses and typology cards. A development's individual units are properties too, but two
                 // hundred of them in the listing list would bury the listings; they have the inventory screen.
                 notUnits(),
-                // The isolation. A seller sees their own; a lender sees their partnered sellers'; the
+                // The isolation. A seller sees their own; the bank sees their partnered sellers'; the
                 // platform sees everything — all of it decided by TenantScope rather than by this method.
                 TenantScope.restrict("tenantId"));
         var page = repository.findAll(spec,
@@ -303,7 +303,7 @@ public class PropertyService {
     /**
      * The caller's own organisation's listing.
      *
-     * <p>Stricter than {@link #requireVisible}: a partnered lender may <em>read</em> a seller's portfolio, and
+     * <p>Stricter than {@link #requireVisible}: a partnered bank may <em>read</em> a seller's portfolio, and
      * editing it would be a partnership granting write access to somebody else's business.
      */
     private Property requireOwn(String hashId) {

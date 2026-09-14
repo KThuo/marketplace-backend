@@ -25,7 +25,7 @@ import java.util.Set;
  * profile is two different principals with the same {@link #userId}, which is the point of FR073.
  *
  * <p>Carries the resolved <strong>visible-tenant set</strong> as well as the permission set, because both
- * are needed on every request and both are expensive to work out. For a lender's staff the set is the
+ * are needed on every request and both are expensive to work out. For a bank's staff the set is the
  * sellers their institution is partnered with — several organisations, none of them their own — which is why
  * this is a set rather than the single tenant id axis carries.
  */
@@ -47,11 +47,17 @@ public class UserPrincipal implements UserDetails {
     private final String userTypeCode;
     private final String actorClass;
 
-    /** The seller organisation this user belongs to. Null for platform staff, lender staff and buyers. */
+    /** The seller organisation this user belongs to. Null for platform staff and buyers. */
     private final Long tenantId;
     private final String tenantName;
 
-    /** The lending institution this user belongs to. Null for everyone but lender staff. */
+    /**
+     * The bank, when it owns the rows this caller works with.
+     *
+     * <p>Null for everybody signing in today: no user type is bound to an institution any more. The field
+     * stays because `institution_id` is still the second ownership axis on fifteen tables — a bank owns a
+     * development outright — and the visibility rules read it from here.
+     */
     private final Long institutionId;
     private final String institutionName;
 
@@ -60,7 +66,7 @@ public class UserPrincipal implements UserDetails {
 
     /**
      * The organisations whose rows this caller may read. Empty when {@link #unrestrictedTenants} is true
-     * (callers must check that first — see {@code TenantScope}), and legitimately empty for a lender with no
+     * (callers must check that first — see {@code TenantScope}), and legitimately empty for the bank with no
      * approved partnership and for every buyer.
      */
     private final List<Long> visibleTenantIds;
@@ -182,10 +188,6 @@ public class UserPrincipal implements UserDetails {
 
     public boolean isSellerStaff() {
         return AppConstant.ACTOR_SELLER.equals(actorClass);
-    }
-
-    public boolean isLenderStaff() {
-        return AppConstant.ACTOR_LENDER.equals(actorClass);
     }
 
     /** The session class whose idle window governs this user (plan section 5). */

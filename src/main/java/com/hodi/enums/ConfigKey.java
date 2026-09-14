@@ -28,7 +28,7 @@ public enum ConfigKey {
     SESSION_TIMEOUT_MINUTES_ADMIN(
             "security.session.timeout.minutes.admin", "INTEGER", "AUTH", "20",
             "Back-office session timeout (minutes)",
-            "Idle window for platform, seller and lender back-office sessions.", false, false),
+            "Idle window for every back-office session.", false, false),
     SESSION_TIMEOUT_MINUTES_BUYER(
             "security.session.timeout.minutes.buyer", "INTEGER", "AUTH", "1440",
             "Buyer session timeout (minutes)",
@@ -263,12 +263,12 @@ public enum ConfigKey {
             "affordability.dti.ceiling.percent", "INTEGER", "AFFORDABILITY", "40",
             "Debt-to-income ceiling (%)",
             "The share of net monthly income a repayment may take before the mock assessor calls a "
-                    + "household stretched. Kenyan lenders commonly sit between 35 and 50.", false, false),
+                    + "household stretched. Kenyan banks commonly sit between 35 and 50.", false, false),
     AFFORDABILITY_MARGINAL_BAND(
             "affordability.marginal.band.percent", "INTEGER", "AFFORDABILITY", "10",
             "Marginal band (%)",
             "How far past the ceiling still counts as MARGINAL rather than NOT_ELIGIBLE. A hard line at "
-                    + "the ceiling turns a shilling into a refusal, which is not how a lender reads it.",
+                    + "the ceiling turns a shilling into a refusal, which is not how a bank reads it.",
             false, false),
     AFFORDABILITY_DEFAULT_RATE(
             "affordability.default.rate.percent", "STRING", "AFFORDABILITY", "13.5",

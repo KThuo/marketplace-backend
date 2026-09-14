@@ -17,12 +17,12 @@ import java.time.OffsetDateTime;
  * belong to, and it is a different kind of row: it has phases, a budget, a completion date that has moved
  * twice, and — when a bank financed it rather than a seller listing it — no marketplace presence whatsoever.
  *
- * <h2>Exactly one principal, and it may be a lender</h2>
+ * <h2>Exactly one principal, and it may be the bank</h2>
  *
  * <p>{@link #tenantId} or {@link #institutionId}, never both and never neither. A bank financing a
  * developer's block owns that record: they created it and it is their exposure being tracked.
  * {@code auction_lots} solved the same problem the same way, and this class follows it — including the
- * consequence, which is that visibility cannot come from {@code TenantScope}. A lender is not a tenant and has
+ * consequence, which is that visibility cannot come from {@code TenantScope}. The bank is not a tenant and has
  * no visible-tenant set describing it, so {@code DevelopmentService} carries a hand-written specification
  * instead.
  *

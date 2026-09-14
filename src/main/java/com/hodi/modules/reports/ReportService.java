@@ -42,7 +42,7 @@ import java.util.Map;
  * <h2>Scoping is spliced, not remembered</h2>
  *
  * <p>Every view carries {@code tenant_id}, and {@code TenantScope.sqlPredicate} produces the predicate.
- * Platform staff get {@code TRUE}, a seller gets their own id, a lender gets the sellers they are partnered
+ * Platform staff get {@code TRUE}, a seller gets their own id, the bank gets the sellers they are partnered
  * with, and somebody with nothing in view gets {@code FALSE} — which returns an empty report rather than
  * everybody's.
  *
@@ -283,7 +283,7 @@ public class ReportService {
      * <p>Landscape A4 and a column budget, because a fourteen-column report cannot be a readable portrait
      * page. When the chosen columns do not fit, the ones that do are printed and <em>the page says which
      * were left out</em> — silently cutting columns off the edge of a document somebody may forward to a
-     * lender is the failure mode worth the extra paragraph.
+     * bank is the failure mode worth the extra paragraph.
      *
      * <p>No formula guard: a PDF does not execute its cells. The guard exists for spreadsheets.
      */

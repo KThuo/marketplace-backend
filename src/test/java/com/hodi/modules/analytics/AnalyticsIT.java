@@ -60,7 +60,7 @@ class AnalyticsIT {
         List<Long> tenants = jdbc.queryForList("select id from tenants where status <> 5 order by id limit 2", Long.class);
         mine = tenants.getFirst();
         theirs = tenants.get(1);
-        institutionId = jdbc.queryForObject("select id from lending_institutions order by id limit 1", Long.class);
+        institutionId = jdbc.queryForObject("select id from banks order by id limit 1", Long.class);
 
         development = developments.save(Development.builder()
                 .reference(RrnGenerator.generate("DV")).tenantId(mine).sellingTenantId(mine)
@@ -102,11 +102,21 @@ class AnalyticsIT {
         signIn(UserPrincipal.of(user, profile, Set.of("DASHBOARD_VIEW", "DEVELOPMENTS_FINANCE_VIEW"), List.of(tenant), false, true));
     }
 
-    private void signInAsLender(Long institution) {
-        User user = User.builder().id(2L).username("figures-lender").password("x").email("l@example.invalid")
+    /*
+     * A caller bound to the bank that owns the row.
+     *
+     * <p>The profile type is a literal rather than a constant from AppConstant, and deliberately so: no
+     * user type produces an institution-bound principal any more, so there is no actor class to name. What
+     * is still in the code is the branch in OwnerScopeSql and DevelopmentVisibility that scopes on
+     * institution_id, because bank-owned developments are real rows. This keeps that branch guarded —
+     * anything but PLATFORM reaches it, and PLATFORM short-circuits to TRUE, which is what a platform
+     * caller should get and is not what this is testing.
+     */
+    private void signInAsBank(Long institution) {
+        User user = User.builder().id(2L).username("figures-bank").password("x").email("l@example.invalid")
                 .firstName("Len").lastName("Der").status(AppConstant.STATUS_ACTIVE).enabled(true).build();
-        UserProfile profile = UserProfile.builder().id(2L).userId(2L).profileType(AppConstant.ACTOR_LENDER)
-                .userTypeCode("LENDER_ADMIN").institutionId(institution).status(AppConstant.STATUS_ACTIVE).build();
+        UserProfile profile = UserProfile.builder().id(2L).userId(2L).profileType("BANK")
+                .userTypeCode("BANK_ADMIN").institutionId(institution).status(AppConstant.STATUS_ACTIVE).build();
         signIn(UserPrincipal.of(user, profile, Set.of("DASHBOARD_VIEW", "DEVELOPMENTS_FINANCE_VIEW"), List.of(), false, true));
     }
 
@@ -175,8 +185,8 @@ class AnalyticsIT {
     }
 
     @Test
-    @DisplayName("a lender's figures cover its own financed project and not a seller's")
-    void lenderScope() {
+    @DisplayName("the bank's figures cover its own financed project and not a seller's")
+    void bankScope() {
         Development financed = developments.save(Development.builder()
                 .reference(RrnGenerator.generate("DV")).institutionId(institutionId).sellingTenantId(theirs)
                 .name("Bank Court").developmentType("APARTMENT").currency("KES")
@@ -185,13 +195,13 @@ class AnalyticsIT {
                 + " institution_id, created_by, updated_by) values (?, ?, 2000000, 'KES', ?, ?, 'test', 'test')",
                 RrnGenerator.generate("DD"), financed.getId(), LocalDate.now(), institutionId);
 
-        signInAsLender(institutionId);
+        signInAsBank(institutionId);
         SummaryView s = analytics.summary(window, null);
         assertTrue(s.drawn().value().compareTo(new BigDecimal("2000000")) >= 0);
         DevelopmentsView d = analytics.developments(window, null);
         assertTrue(d.rows().stream().anyMatch(r -> r.name().equals("Bank Court")));
         assertTrue(d.rows().stream().noneMatch(r -> r.name().equals("Figures Court")),
-                "the seller's own project is not the lender's to add up");
+                "the seller's own project is not the bank's to add up");
 
         OverallView overall = dashboard.overall(null, HashIdUtil.encodeId(financed.getId()));
         assertMoney("2000000", overall.totals().drawn());

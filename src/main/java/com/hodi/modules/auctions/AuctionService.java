@@ -38,7 +38,7 @@ import java.util.List;
  *
  * <h2>Who sees a lot before it is published</h2>
  *
- * <p>The principal who brought it — a lender realising security, or a seller consigning stock — and the
+ * <p>The principal who brought it — the bank realising security, or a seller consigning stock — and the
  * platform. The same shape as the valuation scope, and for the same reason: the column that decides is on
  * this table, so the rule lives beside it.
  */
@@ -97,7 +97,7 @@ public class AuctionService {
         UserPrincipal caller = AuthContext.require();
         if (caller.getTenantId() == null && caller.getInstitutionId() == null) {
             throw new HodiException(
-                    "A lot is brought by the lender or the seller selling it.", HttpStatus.FORBIDDEN);
+                    "A lot is brought by the bank or the seller selling it.", HttpStatus.FORBIDDEN);
         }
 
         AuctionLot lot = AuctionLot.builder()

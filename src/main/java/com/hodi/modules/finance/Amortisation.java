@@ -21,7 +21,7 @@ import java.math.RoundingMode;
  * away most of the precision the exponent just created.
  *
  * <p>A zero rate is handled explicitly rather than left to fall out of the formula: at {@code i = 0} the
- * annuity divides by zero, and an interest-free product is a real thing a lender may offer.
+ * annuity divides by zero, and an interest-free product is a real thing the bank may offer.
  */
 public final class Amortisation {
 
