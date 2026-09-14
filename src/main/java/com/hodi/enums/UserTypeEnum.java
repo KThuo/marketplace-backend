@@ -26,7 +26,7 @@ public enum UserTypeEnum {
 
     // ── Platform (no organisation) ────────────────────────────────────────────
     SUPER_ADMIN("Super Administrator",
-            "Full platform control — sellers, lending institutions, modules, global configuration",
+            "Full platform control — sellers, lending, modules, global configuration",
             AppConstant.ACTOR_PLATFORM, 10),
     SUPPORT_ADMIN("Support Administrator",
             "Read-mostly troubleshooting across organisations",
@@ -37,7 +37,7 @@ public enum UserTypeEnum {
 
     // ── Seller organisations (users.tenant_id set) ────────────────────────────
     SELLER_OWNER("Seller Owner",
-            "Full control of one seller organisation: staff, user groups, settings, portfolio, lender partnerships",
+            "Full control of one seller organisation: staff, user groups, settings, portfolio",
             AppConstant.ACTOR_SELLER, 40),
     LISTING_MANAGER("Listing Manager",
             "Property records and media for their organisation",
@@ -46,20 +46,38 @@ public enum UserTypeEnum {
             "Buyer enquiries, viewings and conversations",
             AppConstant.ACTOR_SELLER, 60),
 
-    // ── Lending institutions (users.institution_id set) ───────────────────────
+    // ── The bank (platform) ───────────────────────────────────────────────────
     /**
-     * Runs one institution. Cross-tenant by nature, and bounded by partnership rather than by grant: the
-     * widest set this type can ever see is the sellers their institution has an active partnership with.
+     * The bank's own staff, and they are platform staff.
+     *
+     * <p>These three were {@code ACTOR_LENDER}: one institution among several, reading the portfolios of the
+     * sellers it had an approved partnership with. That model had a marketplace of competing lenders in it.
+     * There is one lender, and they own the product — so the bank is not a participant in the platform, it
+     * <em>is</em> the platform, and its people see every seller because that is what running the thing means.
+     *
+     * <p>Moving them to {@code ACTOR_PLATFORM} is the whole of the behavioural change:
+     * {@code PrincipalFactory} reads {@code isPlatformActor()} before it reads anything else, so visibility
+     * stops being derived from {@code tenant_lender_partnerships} and becomes unrestricted. No query changed;
+     * the branch that consulted partnerships is simply no longer reached by these types.
+     *
+     * <p>The lending work itself is untouched. Mortgage products, affordability, valuations and the valuer
+     * panel all remain — they are the product now rather than one participant's feature, and these are the
+     * people who configure them.
+     *
+     * <p>{@code actor_class} is stored on {@code user_types} and copied onto every {@code user_profiles} row
+     * at provisioning, and the seeder refuses to rewrite either — so this enum edit governs new rows only and
+     * V20260914120000 moves the ones that already exist. Changing one without the other would leave live
+     * users classified by whichever the code happened to read.
      */
-    LENDER_ADMIN("Lender Administrator",
-            "Full control of one lending institution: staff, user groups, seller partnerships",
-            AppConstant.ACTOR_LENDER, 70),
+    LENDER_ADMIN("Bank Administrator",
+            "Full control of the bank's platform: staff, user groups, lending configuration",
+            AppConstant.ACTOR_PLATFORM, 70),
     MORTGAGE_OFFICER("Mortgage Officer",
-            "Works finance cases against the portfolios of partnered sellers",
-            AppConstant.ACTOR_LENDER, 80),
+            "Works finance cases against seller portfolios",
+            AppConstant.ACTOR_PLATFORM, 80),
     CREDIT_ANALYST("Credit Analyst",
             "Assessment and decisioning on finance cases",
-            AppConstant.ACTOR_LENDER, 90),
+            AppConstant.ACTOR_PLATFORM, 90),
 
     /**
      * Somebody looking to buy, signing in on their own behalf.

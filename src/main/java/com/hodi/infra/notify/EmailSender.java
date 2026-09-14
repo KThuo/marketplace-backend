@@ -37,7 +37,7 @@ import java.util.Locale;
 public class EmailSender {
 
     /** The platform's own local part, for mail sent with no organisation bound. */
-    private static final String PLATFORM_LOCAL_PART = "hodi";
+    private static final String PLATFORM_LOCAL_PART = "coopbank";
 
     private final ConfigurationService configs;
     private final TenantRepository tenants;

@@ -14,8 +14,8 @@
     <groupId>com.hodi</groupId>
     <artifactId>hodi-core</artifactId>
     <version>1.0.0</version>
-    <name>Hodi Marketplace Core</name>
-    <description>Hodi Market Place — property selling and mortgage platform, backend</description>
+    <name>Co-op Bank Property Core</name>
+    <description>Co-op Bank Property — property selling and mortgage platform, backend</description>
 
     <properties>
         <java.version>23</java.version>
