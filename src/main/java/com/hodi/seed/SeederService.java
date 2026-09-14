@@ -512,7 +512,7 @@ public class SeederService {
          * a decision an organisation grants deliberately rather than inherits from a default.
          */
         List<String> lenderStaff = List.of(
-                "DASHBOARD_VIEW", "INSTITUTION_SELF_VIEW", "PARTNERSHIPS_VIEW",
+                "DASHBOARD_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW",
                 "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW", "APPROVALS_VIEW",
                 "DEVELOPMENTS_FINANCE_VIEW");
@@ -534,7 +534,7 @@ public class SeederService {
          * afternoon worse. Writes stay with the organisation that owns the row.
          */
         List<String> platformReadOnly = List.of(
-                "DASHBOARD_VIEW", "TENANTS_VIEW", "INSTITUTIONS_VIEW", "PARTNERSHIPS_VIEW",
+                "DASHBOARD_VIEW", "TENANTS_VIEW",
                 "PROPERTIES_VIEW", "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW",
                 "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
                 "APPROVALS_VIEW", "RATINGS_VIEW", "AGENTS_VIEW", "VENDORS_VIEW",

@@ -22,7 +22,6 @@ import com.hodi.modules.usertypes.UserTypeRepository;
 import com.hodi.modules.appmodules.AppModule;
 import com.hodi.modules.appmodules.AppModuleRepository;
 import com.hodi.modules.kyc.KycPolicy;
-import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.permissions.Permission;
 import com.hodi.modules.permissions.PermissionRepository;
 import com.hodi.security.TenantScope;
@@ -83,7 +82,6 @@ public class TenantService {
     private final UserTypeRepository userTypes;
     private final PermissionRepository permissions;
     private final AppModuleRepository appModules;
-    private final PartnershipRepository partnerships;
     private final TenantModuleService tenantModules;
     private final KycPolicy kycPolicy;
     private final PasswordService passwords;
@@ -100,7 +98,7 @@ public class TenantService {
             String country, String currency, String timezone,
             String onboardingStatus, OffsetDateTime activatedAt, OffsetDateTime suspendedAt,
             String suspensionReason,
-            long staffCount, long activePartnerships,
+            long staffCount,
             Integer status, String statusFlag, OffsetDateTime createdAt, String createdBy) {}
 
     public record CreateTenantRequest(
@@ -643,7 +641,6 @@ public class TenantService {
                 tenant.getSuspendedAt(),
                 tenant.getSuspensionReason(),
                 profiles.countByTenant(tenant.getId(), AppConstant.STATUS_DELETED),
-                partnerships.findActiveInstitutionIdsForTenant(tenant.getId()).size(),
                 tenant.getStatus(),
                 tenant.getStatusFlag(),
                 tenant.getCreatedAt(),

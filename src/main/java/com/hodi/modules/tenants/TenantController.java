@@ -23,20 +23,20 @@ public class TenantController {
     /**
      * The organisation list, scoped by who is asking.
      *
-     * <p>{@code TENANTS_VIEW} is platform-only, but a lender's staff need this list too — it is how they
-     * see which sellers they may work. So the gate also admits {@code PARTNERSHIPS_VIEW}, and
-     * {@code TenantScope} narrows the rows to the partnered set. The permission says "you may look at
-     * organisations"; the scope says which ones.
+     * <p>{@code TENANTS_VIEW} is platform-only, and the bank's staff are platform staff, so it is the only
+     * gate needed. It used to admit {@code PARTNERSHIPS_VIEW} as well, because a lender needed the list to
+     * see which sellers it had been partnered with; there is nothing to partner with now, and the permission
+     * that expressed it is gone.
      */
     @GetMapping("/list")
-    @PreAuthorize("hasAnyAuthority('TENANTS_VIEW','PARTNERSHIPS_VIEW')")
+    @PreAuthorize("hasAuthority('TENANTS_VIEW')")
     public ApiResponse<PagedResponse<TenantResponse>> list(
             @ModelAttribute TenantService.TenantListRequest request) {
         return ApiResponse.success(service.list(request));
     }
 
     @GetMapping("/find/{hashId}")
-    @PreAuthorize("hasAnyAuthority('TENANTS_VIEW','PARTNERSHIPS_VIEW')")
+    @PreAuthorize("hasAuthority('TENANTS_VIEW')")
     public ApiResponse<TenantResponse> find(@PathVariable String hashId) {
         return ApiResponse.success(service.find(hashId));
     }

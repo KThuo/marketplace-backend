@@ -3,12 +3,12 @@ package com.hodi.modules.finance;
 import com.hodi.modules.finance.FinanceDtos.FinanceOption;
 import com.hodi.modules.finance.FinanceDtos.FinancePanel;
 import com.hodi.modules.finance.FinanceDtos.PublicProductResponse;
-import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
 import com.hodi.common.exception.ResourceNotFoundException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,12 +19,13 @@ import java.util.List;
 /**
  * The finance beside the listing — the platform's headline, in one class.
  *
- * <h2>Which lenders appear is not a new rule</h2>
+ * <h2>Which products appear</h2>
  *
- * <p>It is the partnership table, which already answers "which lenders may work this seller's portfolio". The
- * arrangement that governs the portfolio governs the rates shown against it, so a lender who has not
- * partnered with this seller does not appear however good their rate — and a seller who has partnered with
- * nobody shows an honest empty panel rather than the whole market.
+ * <p>Every published one. This used to be filtered through the partnership table — a lender who had not
+ * partnered with this seller did not appear however good their rate — because the panel was showing a market
+ * of competing banks and had to say which of them had a right to this seller's portfolio. There is one bank,
+ * it runs the platform, and it lends against everything listed on it, so the filter has nothing left to
+ * decide and its absence is the rule rather than an omission.
  *
  * <h2>Everything here is computed on read</h2>
  *
@@ -43,7 +44,6 @@ public class FinanceMatchService {
                     + "lending.";
 
     private final PropertyRepository properties;
-    private final PartnershipRepository partnerships;
     private final MortgageProductRepository products;
 
     /**
@@ -58,23 +58,21 @@ public class FinanceMatchService {
         Property property = properties.findLiveByReference(reference == null ? "" : reference.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Listing", reference));
 
-        List<Long> institutionIds =
-                partnerships.findActiveInstitutionIdsForTenant(property.getTenantId());
-        if (institutionIds.isEmpty()) {
-            // An empty `in ()` is invalid SQL and "every lender" would be the wrong answer anyway.
-            return new FinancePanel(property.getReference(), property.getPrice(), property.getCurrency(),
-                    0, List.of(), DISCLAIMER);
-        }
-
-        List<MortgageProduct> onOffer = products.findOnOfferFor(institutionIds);
+        List<MortgageProduct> onOffer = products.findOnOffer(Pageable.unpaged());
         List<FinanceOption> options = new ArrayList<>(onOffer.size());
         for (MortgageProduct product : onOffer) {
             FinanceOption option = cost(product, property.getPrice(), requestedTerm, netMonthlyIncome);
             if (option != null) options.add(option);
         }
 
+        /*
+         * The lender count is now "how many banks have a product on offer" rather than "how many have
+         * partnered with this seller". With one bank it is 0 or 1, and 0 is the honest answer when nothing
+         * has been published yet — the panel renders empty rather than promising finance that does not exist.
+         */
+        long lenders = onOffer.stream().map(MortgageProduct::getInstitutionId).distinct().count();
         return new FinancePanel(property.getReference(), property.getPrice(), property.getCurrency(),
-                institutionIds.size(), options, DISCLAIMER);
+                (int) lenders, options, DISCLAIMER);
     }
 
     /**

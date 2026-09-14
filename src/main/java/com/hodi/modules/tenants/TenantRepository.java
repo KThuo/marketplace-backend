@@ -21,12 +21,4 @@ public interface TenantRepository extends JpaRepository<Tenant, Long>, JpaSpecif
     List<Tenant> findByStatusNotOrderByNameAsc(Integer status);
 
     long countByOnboardingStatus(String onboardingStatus);
-
-    /** Sellers a lender could ask to partner with — active, and not already partnered. */
-    @Query("select t from Tenant t where t.onboardingStatus = 'ACTIVE' and t.status <> 5 "
-            + "and t.id not in (select p.tenantId from Partnership p "
-            + "                 where p.institutionId = :institutionId and p.revokedAt is null "
-            + "                   and p.status <> 5) "
-            + "order by t.name")
-    List<Tenant> findPartnerableBy(Long institutionId);
 }

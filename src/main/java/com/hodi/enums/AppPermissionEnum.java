@@ -48,21 +48,18 @@ public enum AppPermissionEnum {
     TENANT_SELF_VIEW("See this organisation's own profile and settings", AppModuleEnum.TENANTS),
     TENANT_SELF_UPDATE("Change this organisation's own profile", AppModuleEnum.TENANTS),
 
-    // ── LENDING INSTITUTIONS ──────────────────────────────────────────────────
-    INSTITUTIONS_VIEW("See lending institutions", AppModuleEnum.INSTITUTIONS, true),
-    INSTITUTIONS_CREATE("Register a lending institution", AppModuleEnum.INSTITUTIONS, true),
-    INSTITUTIONS_UPDATE("Change a lending institution's details", AppModuleEnum.INSTITUTIONS, true),
-    INSTITUTIONS_DEACTIVATE("Deactivate a lending institution", AppModuleEnum.INSTITUTIONS, true),
-    INSTITUTIONS_ACTIVATE("Activate a lending institution", AppModuleEnum.INSTITUTIONS, true),
-    /** A lender reading their own institution record. Tenant-side equivalent of TENANT_SELF_VIEW. */
-    INSTITUTION_SELF_VIEW("See this institution's own profile", AppModuleEnum.INSTITUTIONS),
-    INSTITUTION_SELF_UPDATE("Change this institution's own profile", AppModuleEnum.INSTITUTIONS),
-
-    // ── PARTNERSHIPS ──────────────────────────────────────────────────────────
-    /**
-     * Reading the partnership list. Held by all three parties, and the row set each of them sees differs —
-     * the platform sees every partnership, a seller sees their own, a lender sees theirs. That narrowing is
-     * {@code TenantScope}'s job, not this permission's.
+    /*
+     * The INSTITUTIONS_*, INSTITUTION_SELF_* and PARTNERSHIPS_* codes used to sit here and just below.
+     *
+     * They gated a directory of lending institutions and the negotiation by which one of them was granted
+     * sight of a seller's portfolio. Both modules are gone from AppModuleEnum: there is one bank, it runs
+     * the platform, and its people are platform staff — so there is no list of rivals to administer and
+     * nothing to request, approve or revoke.
+     *
+     * Removing them from this enum is not enough on its own. SeederService only ever adds and reconciles;
+     * it never retires a row whose enum entry has disappeared, so the permissions would stay on every group
+     * that holds them and the workspace navigation — which filters on the effective permission set — would
+     * go on showing "Lenders" and "Partnerships". V20260914140000 is what actually removes them.
      */
     // ── PROPERTY LISTINGS ─────────────────────────────────────────────────────
     PROPERTIES_VIEW("See the organisation's listings", AppModuleEnum.PROPERTIES),
@@ -93,16 +90,6 @@ public enum AppPermissionEnum {
      * watch what is waiting without being able to move any of it.
      */
     APPROVALS_VIEW("See what is waiting for approval", AppModuleEnum.APPROVALS),
-
-    PARTNERSHIPS_VIEW("See partnerships", AppModuleEnum.PARTNERSHIPS),
-    PARTNERSHIPS_REQUEST("Propose a partnership", AppModuleEnum.PARTNERSHIPS),
-    /**
-     * Approving is separated from requesting on purpose, and it is the permission that actually widens who
-     * can read a seller's portfolio. Whoever holds this is deciding that another organisation's staff may
-     * see this one's data.
-     */
-    PARTNERSHIPS_APPROVE("Approve a proposed partnership", AppModuleEnum.PARTNERSHIPS),
-    PARTNERSHIPS_REVOKE("Revoke an active partnership", AppModuleEnum.PARTNERSHIPS),
 
     // ── USER TYPES ────────────────────────────────────────────────────────────
     USER_TYPES_VIEW("See user types", AppModuleEnum.USER_TYPES, true),

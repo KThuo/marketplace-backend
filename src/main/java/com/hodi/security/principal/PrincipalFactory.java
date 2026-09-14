@@ -3,7 +3,6 @@ package com.hodi.security.principal;
 import com.hodi.enums.ConfigKey;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.common.exception.UnauthorizedException;
-import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.users.User;
@@ -27,25 +26,23 @@ import java.util.List;
  *   <li><strong>Seller staff</strong> — exactly their own organisation. Not "their own plus anything they
  *       were granted": there is no mechanism to widen it, which is the property that makes seller isolation
  *       true by construction.
- *   <li><strong>Lender staff</strong> — the sellers their institution has an <strong>active</strong>
- *       partnership with, read fresh here on every principal build. A revoked partnership therefore stops
- *       granting access on the caller's next request rather than when their token happens to expire, which
- *       matters because revoking a partnership is exactly the moment somebody wants access gone.
+ *   <li><strong>The bank's staff</strong> — unrestricted, because they are platform staff. They used to be
+ *       scoped to the sellers their institution had an active partnership with; there is one bank and it
+ *       runs the platform, so there is nobody for it to partner with.
  *   <li><strong>Buyers</strong> — empty. A buyer never reads rows by organisation; their own rows are found
  *       by filtering on their own user id (see {@link AuthContext#requireUserId()}).
  * </ul>
  *
- * <p>An institution with no approved partnerships yields an empty set, and that is correct rather than
- * broken: {@code TenantScope} turns an empty set into a predicate matching nothing, and
- * {@code TenantScope.isStranded()} lets the UI explain why. The failure mode being avoided is the opposite
- * one — an empty set read as "no restriction", which would hand a brand-new lender the whole platform.
+ * <p>A profile that resolves to no organisation at all yields an empty set, and that is correct rather than
+ * broken: {@code TenantScope} turns an empty set into a predicate matching nothing. The failure mode being
+ * avoided is the opposite one — an empty set read as "no restriction", which would hand the whole platform
+ * to whoever fell through.
  */
 @Component
 @RequiredArgsConstructor
 public class PrincipalFactory {
 
     private final EffectivePermissionResolver permissions;
-    private final PartnershipRepository partnerships;
     private final UserProfileRepository profiles;
     private final ConfigurationService configs;
 
@@ -78,10 +75,15 @@ public class PrincipalFactory {
     private List<Long> resolveVisibleTenants(UserProfile profile, boolean unrestricted) {
         if (unrestricted) return List.of();
         if (profile.getTenantId() != null) return List.of(profile.getTenantId());
-        if (profile.getInstitutionId() != null) {
-            return partnerships.findActiveTenantIdsForInstitution(profile.getInstitutionId());
-        }
-        // Buyers, and any staff profile not yet attached to an organisation.
+        /*
+         * No institution branch any more, and its absence is the safe direction.
+         *
+         * It used to return the sellers an institution had an active partnership with. The bank's staff are
+         * platform actors now, so they take the `unrestricted` return above and never reach here; a profile
+         * that still carries an institution id and is NOT a platform actor is a leftover, and it falls
+         * through to the empty set — seeing nothing — rather than to a set somebody has to justify.
+         */
+        // Buyers, and any staff profile not attached to an organisation.
         return List.of();
     }
 

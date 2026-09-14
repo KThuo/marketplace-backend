@@ -16,7 +16,6 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import com.hodi.modules.institutions.LendingInstitutionRepository;
-import com.hodi.modules.partnerships.PartnershipRepository;
 import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.security.principal.AuthContext;
@@ -55,7 +54,6 @@ public class DashboardService {
 
     private final TenantRepository tenants;
     private final LendingInstitutionRepository institutions;
-    private final PartnershipRepository partnerships;
     private final UserProfileRepository profiles;
     private final RefreshTokenRepository refreshTokens;
     private final AnalyticsQueries figures;
@@ -92,9 +90,10 @@ public class DashboardService {
         if (caller.isSellerStaff()) {
             return new DashboardResponse("SELLER", greeting, withProjectCards(sellerCards(caller)));
         }
-        if (caller.isLenderStaff()) {
-            return new DashboardResponse("LENDER", greeting, withProjectCards(lenderCards(caller)));
-        }
+        /*
+         * No LENDER branch. Its staff are platform actors now, so they take the PLATFORM arm above — which
+         * is the right dashboard for somebody who runs the place rather than one who was let into it.
+         */
         return new DashboardResponse("BUYER", greeting, buyerCards(caller));
     }
 
@@ -177,19 +176,8 @@ public class DashboardService {
             cards.add(new Card("suspended", "Suspended", String.valueOf(suspended),
                     "need attention", "warning", "/platform/tenants?status=suspended"));
         }
-        cards.add(new Card("institutions", "Lending institutions",
-                String.valueOf(institutions.findByStatusNotOrderByNameAsc(
-                        AppConstant.STATUS_DELETED).size()),
-                "registered", "neutral", "/platform/institutions"));
-        cards.add(new Card("partnerships", "Active partnerships",
-                String.valueOf(partnerships.countActive()),
-                "seller ↔ lender", "positive", "/app/partnerships"));
-
-        long pending = partnerships.countPending();
-        if (pending > 0) {
-            cards.add(new Card("pendingPartnerships", "Awaiting approval", String.valueOf(pending),
-                    "partnership proposals", "warning", "/app/partnerships?state=pending"));
-        }
+        // No institutions or partnerships card. Both counted a marketplace of banks and the negotiations
+        // between them and sellers; there is one bank, and it is the one reading this dashboard.
         cards.add(new Card("staff", "Platform staff",
                 String.valueOf(profiles.countLiveByUserTypeCode("SUPER_ADMIN")
                         + profiles.countLiveByUserTypeCode("SUPPORT_ADMIN")
@@ -210,49 +198,9 @@ public class DashboardService {
                         caller.getTenantId(), AppConstant.STATUS_DELETED)),
                 "people with access", "neutral", "/app/users"));
 
-        int lenders = partnerships.findActiveInstitutionIdsForTenant(caller.getTenantId()).size();
-        cards.add(new Card("lenders", "Finance partners", String.valueOf(lenders),
-                lenders == 0 ? "none yet — add one to offer finance" : "can see your portfolio",
-                lenders == 0 ? "warning" : "positive", "/app/partnerships"));
-
-        long pending = partnerships.countPendingForTenant(caller.getTenantId());
-        if (pending > 0) {
-            cards.add(new Card("pending", "Awaiting your decision", String.valueOf(pending),
-                    "partnership proposals", "warning", "/app/partnerships?state=pending"));
-        }
-        return cards;
-    }
-
-    // ── lender ────────────────────────────────────────────────────────────────
-
-    private List<Card> lenderCards(UserPrincipal caller) {
-        List<Card> cards = new ArrayList<>();
-        int sellers = caller.getVisibleTenantIds().size();
-
-        /*
-         * The card that explains a stranded lender.
-         *
-         * With no approved partnership, TenantScope returns an empty set and every portfolio list is
-         * legitimately empty — which looks exactly like a broken deployment. This says so in words, which is
-         * the whole reason TenantScope.isStranded() exists.
-         */
-        cards.add(new Card("sellers", "Seller portfolios", String.valueOf(sellers),
-                sellers == 0
-                        ? "no partnerships yet — nothing will be visible until one is approved"
-                        : "you can work these",
-                sellers == 0 ? "warning" : "positive",
-                "/app/partnerships"));
-
-        cards.add(new Card("staff", "Your team",
-                String.valueOf(profiles.countByInstitution(
-                        caller.getInstitutionId(), AppConstant.STATUS_DELETED)),
-                "people with access", "neutral", "/app/users"));
-
-        long pending = partnerships.countPendingForInstitution(caller.getInstitutionId());
-        if (pending > 0) {
-            cards.add(new Card("pending", "Awaiting your decision", String.valueOf(pending),
-                    "partnership proposals", "warning", "/app/partnerships?state=pending"));
-        }
+        // The "Finance partners" card is gone: a seller no longer chooses a lender, because there is one
+        // and it runs the platform. Nothing replaces it — a card saying "your finance partner is the bank"
+        // would be a constant.
         return cards;
     }
 
