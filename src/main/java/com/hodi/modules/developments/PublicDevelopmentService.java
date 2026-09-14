@@ -392,7 +392,9 @@ public class PublicDevelopmentService {
                 resolved, images, spec.inherited(),
                 development.getReference(), development.getName(),
                 type == null ? null : type.getReference(),
-                type == null ? null : type.getName());
+                type == null ? null : type.getName(),
+                development.getTown(), development.getCounty(),
+                development.getLatitude(), development.getLongitude());
     }
 
     /**

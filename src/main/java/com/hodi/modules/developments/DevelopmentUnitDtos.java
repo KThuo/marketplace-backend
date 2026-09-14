@@ -155,7 +155,19 @@ public final class DevelopmentUnitDtos {
             String developmentReference,
             String developmentName,
             String unitTypeReference,
-            String unitTypeName) {}
+            String unitTypeName,
+            /*
+             * Where the home is, read from the development rather than from the unit row.
+             *
+             * A unit copies its project's coordinates when it is generated, so the two normally agree — but
+             * a developer who moves the project's pin afterwards updates one row, not two hundred. Reading
+             * the development is the answer that cannot go stale, and a flat on the fourth floor has no
+             * coordinate of its own worth distinguishing from the site's anyway.
+             */
+            String town,
+            String county,
+            BigDecimal latitude,
+            BigDecimal longitude) {}
 
     /** A feature, in words a buyer reads rather than the code we store. */
     public record PublicFeature(String code, String name, String category) {}
