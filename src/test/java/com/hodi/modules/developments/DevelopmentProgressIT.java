@@ -31,6 +31,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -354,5 +355,83 @@ class DevelopmentProgressIT {
         assertThrows(ResourceNotFoundException.class, () -> listingProgress.update(
                 HashIdUtil.encodeId(propertyId), saved.id(),
                 new SaveUpdateRequest("Hijacked", null, (short) 10, null, LocalDate.now())));
+    }
+
+    // ── the post's own page ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a published public post is readable by its reference")
+    void postPageServesAPublishedPublicPost() {
+        UpdateResponse saved = progress.create(id(live), post("Slab cast", "SLAB",
+                AppConstant.AUDIENCE_PUBLIC));
+        progress.setPublished(id(live), saved.id(), true);
+        String reference = updates.findById(HashIdUtil.decodeId(saved.id())).orElseThrow().getReference();
+
+        var detail = publicService.post(reference);
+        assertEquals("Slab cast", detail.title());
+        assertEquals(live.getReference(), detail.developmentReference());
+        assertEquals("Open Gardens", detail.developmentName());
+    }
+
+    @Test
+    @DisplayName("every post gets a reference, and two posts never share one")
+    void everyPostIsAddressable() {
+        String a = updates.findById(HashIdUtil.decodeId(
+                progress.create(id(live), post("One", "SLAB")).id())).orElseThrow().getReference();
+        String b = updates.findById(HashIdUtil.decodeId(
+                progress.create(id(live), post("Two", "SLAB")).id())).orElseThrow().getReference();
+
+        assertTrue(a.startsWith("PU"), "a post's reference says what it is: " + a);
+        assertNotEquals(a, b);
+    }
+
+    @Test
+    @DisplayName("a draft post has no page")
+    void unpublishedPostIsNotReadable() {
+        UpdateResponse saved = progress.create(id(live), post("Not yet", "SLAB",
+                AppConstant.AUDIENCE_PUBLIC));
+        String reference = updates.findById(HashIdUtil.decodeId(saved.id())).orElseThrow().getReference();
+
+        assertThrows(ResourceNotFoundException.class, () -> publicService.post(reference));
+    }
+
+    @Test
+    @DisplayName("a detailed update has no page, however published it is")
+    void stakeholderPostIsNotReadable() {
+        UpdateResponse saved = progress.create(id(live), post("For the bank", "SLAB",
+                AppConstant.AUDIENCE_STAKEHOLDERS));
+        progress.setPublished(id(live), saved.id(), true);
+        String reference = updates.findById(HashIdUtil.decodeId(saved.id())).orElseThrow().getReference();
+
+        assertThrows(ResourceNotFoundException.class, () -> publicService.post(reference),
+                "a build report written for the people financing it is not a blog post");
+    }
+
+    /**
+     * The check that is not about the post at all.
+     *
+     * <p>The post stays published; the project it belongs to stops being live. Its own flags cannot express
+     * that, so a page that trusted them would go on serving a withdrawn project's updates to anybody holding
+     * the address — which is the whole failure mode of giving a row a public URL.
+     */
+    @Test
+    @DisplayName("withdrawing the project takes its posts' pages with it")
+    void postOnAWithdrawnProjectIsNotReadable() {
+        UpdateResponse saved = progress.create(id(live), post("Slab cast", "SLAB",
+                AppConstant.AUDIENCE_PUBLIC));
+        progress.setPublished(id(live), saved.id(), true);
+        String reference = updates.findById(HashIdUtil.decodeId(saved.id())).orElseThrow().getReference();
+        assertNotNull(publicService.post(reference), "readable while the project is live");
+
+        live.setListingState(AppConstant.LISTING_WITHDRAWN);
+        developments.save(live);
+
+        assertThrows(ResourceNotFoundException.class, () -> publicService.post(reference));
+    }
+
+    @Test
+    @DisplayName("a reference nobody issued is not found rather than refused")
+    void unknownReferenceIsNotFound() {
+        assertThrows(ResourceNotFoundException.class, () -> publicService.post("PU000000ZZZZ"));
     }
 }

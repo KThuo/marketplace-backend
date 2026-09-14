@@ -3,10 +3,12 @@ package com.hodi.modules.developments;
 import com.hodi.common.ApiResponse;
 import com.hodi.common.dto.PagedDataRequest;
 import com.hodi.common.PagedResponse;
+import com.hodi.modules.developments.PublicDevelopmentService.PublicPostDetail;
 import com.hodi.modules.developments.PublicDevelopmentService.PublicProgressItem;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,5 +33,20 @@ public class PublicProgressController {
     @GetMapping
     public ApiResponse<PagedResponse<PublicProgressItem>> feed(@ModelAttribute PagedDataRequest request) {
         return ApiResponse.success(service.progressFeed(request));
+    }
+
+    /**
+     * One post, on its own page.
+     *
+     * <p>By reference rather than by hash id, like every other public route here: this is the address that
+     * gets pasted into a message, and it has to survive being read back over the phone.
+     *
+     * <p>Under the feed rather than under the project, because the feed is where the link is followed from
+     * and a post is one thing whichever project it belongs to. The project's own timeline is still
+     * {@code /public/developments/{reference}/posts}, and both now carry the reference this resolves.
+     */
+    @GetMapping("/{reference}")
+    public ApiResponse<PublicPostDetail> post(@PathVariable String reference) {
+        return ApiResponse.success(service.post(reference));
     }
 }

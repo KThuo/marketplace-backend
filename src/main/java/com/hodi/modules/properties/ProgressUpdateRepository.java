@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface ProgressUpdateRepository extends JpaRepository<ProgressUpdate, Long> {
 
@@ -66,4 +67,22 @@ public interface ProgressUpdateRepository extends JpaRepository<ProgressUpdate, 
             + "order by u.reportedOn desc, u.id desc")
     Page<ProgressUpdate> findPublicFeed(
             @Param("developmentIds") List<Long> developmentIds, Pageable pageable);
+
+    boolean existsByReference(String reference);
+
+    /**
+     * One post, for its own page.
+     *
+     * <p>The three conditions the feed applies, applied here too and in the query rather than after it. A
+     * post page is reachable by anybody who has the address, so "published", "written for the public" and
+     * "still not archived" have to be part of finding it — a filter applied afterwards is one somebody can
+     * forget, and what leaks is a detailed build report meant for the people financing the project.
+     *
+     * <p>What this does <em>not</em> check is whether the development is still live, because that is a fact
+     * about another table. {@code PublicDevelopmentService} re-checks it, and must: a post on a withdrawn
+     * project is not public any more, however published the post itself remains.
+     */
+    @Query("select u from ProgressUpdate u where u.reference = :reference "
+            + "and u.published = true and u.audience = 'PUBLIC' and u.status <> 5")
+    Optional<ProgressUpdate> findPublicByReference(@Param("reference") String reference);
 }

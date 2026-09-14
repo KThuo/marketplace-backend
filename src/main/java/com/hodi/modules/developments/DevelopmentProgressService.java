@@ -2,6 +2,7 @@ package com.hodi.modules.developments;
 
 import com.hodi.modules.properties.Property;
 import com.hodi.common.AppConstant;
+import com.hodi.common.util.RrnGenerator;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.infra.storage.StorageService;
@@ -78,6 +79,7 @@ public class DevelopmentProgressService {
         visibility.assertMayWriteProgress(development, caller);
 
         ProgressUpdate update = ProgressUpdate.builder()
+                .reference(nextReference())
                 .developmentId(development.getId())
                 // Cached from the development, not from the caller: a collaborator posting on a bank's project
                 // must not make the row theirs, or their own organisation would inherit sight of it.
@@ -297,7 +299,8 @@ public class DevelopmentProgressService {
     private UpdateResponse toResponse(ProgressUpdate u) {
         return new UpdateResponse(
                 HashIdUtil.encodeId(u.getId()), u.getTitle(), u.getBody(), u.getPercentComplete(),
-                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.getAudience(),
+                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()),
+                u.getImageCount() == null ? 0 : u.getImageCount(), u.getAudience(),
                 u.isPublished(), u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
     }
 
@@ -308,7 +311,7 @@ public class DevelopmentProgressService {
                 .map(storage::urlFor)
                 .filter(java.util.Objects::nonNull)
                 .toList();
-        return new PublicPost(u.getTitle(), u.getBody(), u.getReportedOn(),
+        return new PublicPost(u.getReference(), u.getTitle(), u.getBody(), u.getReportedOn(),
                 storage.urlFor(u.getImageKey()), images);
     }
 
@@ -334,4 +337,20 @@ public class DevelopmentProgressService {
              * silence is "not for strangers".
              */
             String audience) {}
+
+    /**
+     * A fresh public reference, retried on the rare clash.
+     *
+     * <p>{@code RrnGenerator} mixes a per-VM counter with a random tail, so a collision is statistically
+     * negligible and not impossible — and the column is UNIQUE, so an unretried clash would surface as a
+     * constraint violation on somebody's post rather than as a second attempt.
+     */
+    private String nextReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = RrnGenerator.generate("PU");
+            if (!repository.existsByReference(candidate)) return candidate;
+        }
+        throw new HodiException("Could not allocate a reference for that post. Try again.",
+                HttpStatus.CONFLICT);
+    }
 }

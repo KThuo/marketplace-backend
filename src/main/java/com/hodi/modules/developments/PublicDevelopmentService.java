@@ -152,6 +152,7 @@ public class PublicDevelopmentService {
         return PagedResponse.from(page, u -> {
             Development d = byId.get(u.getDevelopmentId());
             return new PublicProgressItem(
+                    u.getReference(),
                     d == null ? null : d.getReference(),
                     d == null ? null : d.getName(),
                     d == null ? null : d.getTown(),
@@ -182,6 +183,8 @@ public class PublicDevelopmentService {
      * {@code PublicPropertyResponse}.
      */
     public record PublicProgressItem(
+            /** What the post's own page is addressed by — the card links on this. */
+            String reference,
             String developmentReference,
             String developmentName,
             String town,
@@ -211,10 +214,65 @@ public class PublicDevelopmentService {
     private DevelopmentDtos.PublicPost latestPost(Development d) {
         return progress.findPublicForDevelopment(d.getId()).stream().findFirst()
                 .map(u -> new DevelopmentDtos.PublicPost(
-                        u.getTitle(), u.getBody(), u.getReportedOn(),
+                        u.getReference(), u.getTitle(), u.getBody(), u.getReportedOn(),
                         storage.urlFor(u.getImageKey()), imagesFor(u)))
                 .orElse(null);
     }
+
+    /**
+     * One post, for its own page.
+     *
+     * <p>Two checks, not one, and the second is the one worth stating. The repository already refuses a post
+     * that is unpublished, written for stakeholders or archived. This then re-checks that the <em>project</em>
+     * is still live — a fact about another table that the post's own flags cannot express. A developer who
+     * withdraws a project expects its posts to go with it, and a post page reachable by anyone holding the
+     * address is exactly where "published once" would otherwise mean "public forever".
+     *
+     * <p>Not found rather than forbidden, for both. A stranger guessing references should not be able to tell
+     * a post that exists and is private from one that does not exist.
+     */
+    @Transactional(readOnly = true)
+    public PublicPostDetail post(String reference) {
+        ProgressUpdate update = progress.findPublicByReference(reference == null ? "" : reference.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Post", reference));
+
+        Development development = update.getDevelopmentId() == null ? null
+                : developments.findById(update.getDevelopmentId()).orElse(null);
+        // The same two conditions live() applies in SQL, applied here to the one row already loaded.
+        if (development == null
+                || !AppConstant.LISTING_LIVE.equals(development.getListingState())
+                || java.util.Objects.equals(development.getStatus(), AppConstant.STATUS_DELETED)) {
+            throw new ResourceNotFoundException("Post", reference);
+        }
+
+        return new PublicPostDetail(
+                update.getReference(),
+                development.getReference(), development.getName(),
+                development.getTown(), development.getCounty(),
+                update.getTitle(), update.getBody(), update.getReportedOn(),
+                storage.urlFor(update.getImageKey()),
+                imagesFor(update));
+    }
+
+    /**
+     * A post on its own page: the words, every photograph, and enough of the project to write a header.
+     *
+     * <p>The same shape as {@link PublicProgressItem} rather than a narrower one, so the feed card and the
+     * page it opens are rendered from the same fields and cannot disagree about a date or a title. The
+     * difference is what the client does with {@code body} and {@code imageUrls} — a card truncates one and
+     * counts the other; the page shows both in full.
+     */
+    public record PublicPostDetail(
+            String reference,
+            String developmentReference,
+            String developmentName,
+            String town,
+            String county,
+            String title,
+            String body,
+            java.time.LocalDate reportedOn,
+            String imageUrl,
+            List<String> imageUrls) {}
 
     private List<String> imagesFor(ProgressUpdate update) {
         return media.findPublicForOwner(AppConstant.MEDIA_OWNER_PROGRESS_UPDATE, update.getId()).stream()

@@ -1,6 +1,7 @@
 package com.hodi.modules.properties;
 
 import com.hodi.common.AppConstant;
+import com.hodi.common.util.RrnGenerator;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.infra.storage.StorageService;
@@ -54,6 +55,14 @@ public class ProgressUpdateService {
             String milestone,
             LocalDate reportedOn,
             String imageUrl,
+            /**
+             * How many photographs the post holds, so the workspace list can say so.
+             *
+             * <p>Without it the attach button could only offer "Replace", which was wrong twice over: a post
+             * carries up to twelve photographs and adding one never replaces anything. A count is the
+             * difference between a button that lies and one that says "3 photos".
+             */
+            int imageCount,
             /*
              * Who it was written for, on the workspace response so a list can mark which posts are out in
              * public. "Published" does not say: a published detailed update is still not public, and that is
@@ -94,6 +103,7 @@ public class ProgressUpdateService {
     public UpdateResponse create(String propertyHashId, SaveUpdateRequest request) {
         Property property = ownProperty(propertyHashId);
         ProgressUpdate update = ProgressUpdate.builder()
+                .reference(nextReference())
                 // The subject, and only one of the two may be set — ck_progress_subject.
                 .propertyId(property.getId())
                 .tenantId(property.getTenantId())
@@ -231,7 +241,24 @@ public class ProgressUpdateService {
     private UpdateResponse toResponse(ProgressUpdate u) {
         return new UpdateResponse(
                 HashIdUtil.encodeId(u.getId()), u.getTitle(), u.getBody(), u.getPercentComplete(),
-                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()), u.getAudience(),
+                u.getMilestone(), u.getReportedOn(), storage.urlFor(u.getImageKey()),
+                u.getImageCount() == null ? 0 : u.getImageCount(), u.getAudience(),
                 u.isPublished(), u.getPublishedAt(), u.getCreatedAt(), u.getCreatedBy());
+    }
+
+    /**
+     * A fresh public reference, retried on the rare clash.
+     *
+     * <p>{@code RrnGenerator} mixes a per-VM counter with a random tail, so a collision is statistically
+     * negligible and not impossible — and the column is UNIQUE, so an unretried clash would surface as a
+     * constraint violation on somebody's post rather than as a second attempt.
+     */
+    private String nextReference() {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            String candidate = RrnGenerator.generate("PU");
+            if (!repository.existsByReference(candidate)) return candidate;
+        }
+        throw new HodiException("Could not allocate a reference for that post. Try again.",
+                HttpStatus.CONFLICT);
     }
 }

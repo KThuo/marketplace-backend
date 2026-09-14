@@ -58,6 +58,19 @@ public class ProgressUpdate {
     @Column(name = "tenant_id") private Long tenantId;
     @Column(name = "institution_id") private Long institutionId;
 
+    /**
+     * The post's public address.
+     *
+     * <p>A post has a page of its own now, and a page needs something to be linked by. A reference rather
+     * than the hash id for the reason every other public route on this platform uses one: it is pasted into
+     * a message and read back over the phone, and {@code PU260914H4KQ} survives that where an opaque hash
+     * does not.
+     *
+     * <p>Allocated by whoever creates the row — a development's timeline and a listing's diary share this
+     * table, so both writers allocate one. V20260914150000 backfilled the rows that predate it.
+     */
+    @Column(nullable = false, unique = true, length = 32) private String reference;
+
     @Column(nullable = false, length = 180) private String title;
     @Column(columnDefinition = "TEXT") private String body;
 

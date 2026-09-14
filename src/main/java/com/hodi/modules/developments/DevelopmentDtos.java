@@ -175,6 +175,8 @@ public final class DevelopmentDtos {
      * nulled — a nullable field is one somebody fills in later without noticing where it goes.
      */
     public record PublicPost(
+            /** What the post's own page is addressed by. */
+            String reference,
             String title,
             String body,
             LocalDate reportedOn,
