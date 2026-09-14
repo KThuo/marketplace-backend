@@ -56,6 +56,21 @@ public class SignatureService {
     /** The terms as currently in force, with the hash the signature will be recorded against. */
     public record Terms(String version, String text, String sha256) {}
 
+    /**
+     * The terms as currently in force, with the platform's name filled in.
+     *
+     * <p>The stored text says {@code {{platformName}}} rather than naming the platform, because the name is
+     * configuration and a re-brand should not leave the old one in a document somebody is being asked to
+     * sign. It is substituted here, before the text is returned.
+     *
+     * <p>The hash is taken <strong>after</strong> substitution, and that is the part that matters: the hash
+     * is the record of what a person read and agreed to, so it has to be a hash of the words they actually
+     * saw. Hashing the template would produce a signature against text nobody was shown.
+     *
+     * <p>One consequence worth being clear about: renaming the platform changes the hash of the terms in
+     * force, so the next signature records a different one. Signatures already captured keep the hash they
+     * were taken against, which is what makes the old agreements still verifiable.
+     */
     public Terms currentTerms() {
         String version = configs.getString(ConfigKey.AGENT_TERMS_VERSION);
         String text = configs.getString(ConfigKey.AGENT_TERMS_TEXT);
@@ -63,7 +78,8 @@ public class SignatureService {
             throw new HodiException("The agent terms have not been configured yet.",
                     HttpStatus.SERVICE_UNAVAILABLE);
         }
-        return new Terms(version, text, sha256(text));
+        String shown = text.replace("{{platformName}}", configs.getString(ConfigKey.COMPANY_NAME));
+        return new Terms(version, shown, sha256(shown));
     }
 
     /**

@@ -399,6 +399,9 @@ public class AgentService {
                         .format(signature.getCapturedAt().toLocalDateTime());
 
         Map<String, String> values = new LinkedHashMap<>();
+        // The platform's own name is configuration like every other brand value, so the template asks for it
+        // rather than spelling it out. terms.text() has already had its own copy substituted.
+        values.put("platformName", configs.getString(ConfigKey.COMPANY_NAME));
         values.put("agentName", agent.getFullName());
         values.put("agency", agent.isSelfEmployed() ? "Self-employed" : agent.getAgencyName());
         values.put("licence", agent.getLicenceNumber() == null ? "None recorded" : agent.getLicenceNumber());

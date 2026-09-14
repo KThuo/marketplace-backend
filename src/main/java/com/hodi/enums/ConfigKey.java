@@ -107,28 +107,24 @@ public enum ConfigKey {
     // One marketplace, one brand. Per-seller theming only becomes meaningful alongside vanity seller
     // hosts; when that lands, flipping these to overridable is the whole change.
     //
-    // The greens below are the bank's family rather than values taken from a brand guide — nobody has
-    // handed us one. They are seeded defaults for a fresh database and every one of them is editable
-    // from Settings, so correcting them against the real guide is an afternoon on the settings screen
-    // and not a release. They replace the navy the platform shipped with, which was nobody's brand.
+    // These are SEED VALUES for a database that does not have the key yet, and nothing more. Every one of
+    // them is edited from Settings, and the running platform's colours come from the configurations table
+    // rather than from here — so re-branding a deployment is an afternoon on that screen, not a release.
     //
-    // The accent is #00883C rather than the brighter #009A44 the bank's marketing uses, and the reason
-    // is contrast. themeStore derives the button ramp from this value by shading it, and a primary
-    // button carries white text: #009A44 gives 3.68:1 at rest and 4.41:1 on hover, both under AA, so
-    // every primary action on the platform would have failed. #00883C is the nearest green in the same
-    // family that clears it, at 4.58 / 5.47 / 6.08 — the same monotonic shape the teal it replaces had.
-    // A lighter green is still available for marketing surfaces through the accent-light token.
+    // They must stay in step with the defaults in the frontend's styles/theme.css, which are what the
+    // browser paints before the theme store has fetched anything. A default here that disagrees with the
+    // one there is a visible colour shift between first paint and hydration.
     THEME_PRIMARY(
-            "theme.primary", "STRING", "THEME", "#04351F",
+            "theme.primary", "STRING", "THEME", "#0B2545",
             "Primary colour", "Ink surfaces — sidebar, auth panel, body text.", false, true),
     THEME_ACCENT(
-            "theme.accent", "STRING", "THEME", "#00883C",
+            "theme.accent", "STRING", "THEME", "#1B7F79",
             "Accent colour", "Primary actions and links.", false, true),
     THEME_ACCENT_LIGHT(
-            "theme.accent.light", "STRING", "THEME", "#6BBA8E",
+            "theme.accent.light", "STRING", "THEME", "#4FB3A9",
             "Light accent", "Gradient terminus and headline accents.", false, true),
     THEME_INK(
-            "theme.ink", "STRING", "THEME", "#04351F",
+            "theme.ink", "STRING", "THEME", "#0B2545",
             "Ink base",
             "The configured ink is --ink-800; 850 and 900 are darker derivations computed at runtime. "
                     + "CSS defaults that disagree cause a colour shift between first paint and hydration.",
@@ -152,23 +148,38 @@ public enum ConfigKey {
             "ui.field.hints", "BOOLEAN", "THEME", "true",
             "Show field hints", "Render the helper text under form fields.", false, true),
 
-    // ── GENERAL ───────────────────────────────────────────────────────────────
+    // ── BRANDING ──────────────────────────────────────────────────────────────
+    //
+    // Who the platform says it is: the name, and the three ways to reach it. Their own category rather
+    // than sitting in GENERAL with session windows and rounding, because they are what somebody changes
+    // when they are re-branding and they should be one screenful when they do — the same grouping axis
+    // uses, for the same reason.
+    //
+    // The name has a default and the contacts do not, and that asymmetry is deliberate. A platform with
+    // no name renders a blank browser tab, so it needs one to start from. A platform with no published
+    // telephone number should show nothing at all — a seeded placeholder is worse than an absence,
+    // because it looks like a real detail right up until somebody tries it.
+    //
+    // Platform-only, unlike axis where they are per-tenant. Axis's tenants are separate businesses with
+    // their own storefronts; this platform's sellers work inside one marketplace, and their own contact
+    // details already live on the tenant row. A seller overriding "platform name" would be renaming the
+    // marketplace in its own browser title.
     COMPANY_NAME(
-            "company.name", "STRING", "GENERAL", "Co-op Bank Property",
-            // The four COMPANY_* keys stay platform-only, unlike axis where they are per-tenant. Axis's
-            // tenants are separate businesses with their own storefronts; this platform's sellers work inside one
-            // marketplace, and their own contact details already live on the tenant row. A seller overriding
-            // "platform name" would be renaming the marketplace in its own browser title.
-            "Platform name", "Shown in the browser title, emails and the brand lockup.", false, false),
+            "company.name", "STRING", "BRANDING", "Hodi Market Place",
+            "Platform name",
+            "Shown in the browser title, the brand lockup, emails and the documents an agent signs.",
+            false, false),
     COMPANY_EMAIL(
-            "company.email", "STRING", "GENERAL", "hello@coopbank.local",
-            "Contact email", "Public contact address.", false, false),
+            "company.email", "STRING", "BRANDING", "",
+            "Contact email", "Public contact address. Hidden while blank.", false, false),
     COMPANY_PHONE(
-            "company.phone", "STRING", "GENERAL", "",
-            "Contact phone", "Public contact number.", false, false),
+            "company.phone", "STRING", "BRANDING", "",
+            "Contact phone", "Public contact number. Hidden while blank.", false, false),
     COMPANY_ADDRESS(
-            "company.address", "STRING", "GENERAL", "",
-            "Contact address", "Public postal address.", false, false),
+            "company.address", "STRING", "BRANDING", "",
+            "Contact address", "Public postal address. Hidden while blank.", false, false),
+
+    // ── GENERAL ───────────────────────────────────────────────────────────────
     PUBLIC_URL(
             "platform.public.url", "STRING", "GENERAL", "http://localhost:3020",
             "Public base URL",
@@ -187,12 +198,12 @@ public enum ConfigKey {
             "Notify API key", "Gateway credential. Encrypted at rest and masked in responses.",
             true, true),
     NOTIFY_SMS_SENDER_ID(
-            "notify.sms.sender.id", "STRING", "NOTIFY", "COOPBANK",
+            "notify.sms.sender.id", "STRING", "NOTIFY", "HODI",
             "SMS sender id",
             "The name a text appears to come from. Overridable because a seller may legitimately want "
                     + "their own, billed to their own gateway account.", false, true),
     NOTIFY_EMAIL_DOMAIN(
-            "notify.email.domain", "STRING", "NOTIFY", "coopbank.local",
+            "notify.email.domain", "STRING", "NOTIFY", "hodi.local",
             "Outbound email domain",
             "Only the domain is configured; the local part is derived from who is sending, so a seller "
                     + "onboarded a minute ago already sends under their own name. Every derived address "
@@ -338,15 +349,17 @@ public enum ConfigKey {
                     + "anything other than the sale you were instructed on.\n"
                     + "4. You are responsible for the accuracy of every listing you publish, including its "
                     + "price, its description and its photographs.\n"
-                    + "5. Co-op Bank Property introduces buyers and sellers. It is not a party to any sale, it "
+                    + "5. {{platformName}} introduces buyers and sellers. It is not a party to any sale, it "
                     + "holds no deposit, and it gives no valuation or legal advice.\n"
                     + "6. Your registration may be suspended if a listing is found to be materially "
                     + "inaccurate, if a licence lapses, or if a client complains and the complaint is upheld.\n"
                     + "7. You may end this agreement at any time by writing to the platform, and your live "
                     + "listings will be withdrawn.",
             "Agent terms",
-            "The text an agent is shown and signs. Its SHA-256 is stored with every signature, so editing "
-                    + "this does not change what anybody has already accepted.", false, false),
+            "The text an agent is shown and signs. {{platformName}} is filled in from the platform name, so "
+                    + "re-branding does not leave the old name in a document somebody is signing. Its "
+                    + "SHA-256 is stored with every signature, so editing this does not change what anybody "
+                    + "has already accepted.", false, false),
     /**
      * The agreement generated on approval.
      *
@@ -357,12 +370,12 @@ public enum ConfigKey {
     AGENT_AGREEMENT_TEMPLATE(
             "agent.agreement.template", "TEXT", "AGENT",
             "AGENCY AGREEMENT\n"
-                    + "Co-op Bank Property and {{agentName}}\n"
+                    + "{{platformName}} and {{agentName}}\n"
                     + "Reference {{reference}} · effective {{date}} · terms version {{termsVersion}}\n\n"
                     + "Agent: {{agentName}}\n"
                     + "Agency: {{agency}}\n"
                     + "Licence: {{licence}}\n\n"
-                    + "The agent named above has applied to list property on Co-op Bank Property, has been "
+                    + "The agent named above has applied to list property on {{platformName}}, has been "
                     + "approved by the platform, and accepted the following terms:\n\n"
                     + "{{terms}}\n\n"
                     + "Signed by {{signedBy}} on {{signedAt}}.",
