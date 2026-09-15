@@ -70,6 +70,8 @@ public class PropertyService {
     private final com.hodi.modules.media.MediaAssetRepository mediaAssets;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
+    private final com.hodi.modules.developments.UnitFeatureRepository features;
+    private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
     private final StorageService storage;
     private final AuditService audit;
 
@@ -128,6 +130,8 @@ public class PropertyService {
         applyOwnership(property, request, caller);
 
         Property saved = repository.save(property);
+        // After the save, because a feature row points at the listing's id and a draft has none until now.
+        applyAmenities(saved, request);
         audit.record(AppConstant.ACTION_CREATE, "Property", saved.getId(), null, snapshot(saved));
         log.info("Listing {} drafted by {} for {}", saved.getReference(), AuthContext.username(),
                 tenant.getSlug());
@@ -143,6 +147,7 @@ public class PropertyService {
         String before = snapshot(property);
         apply(property, request);
         applyOwnership(property, request, AuthContext.require());
+        applyAmenities(property, request);
         property.setStatus(AppConstant.STATUS_EDITED);
         property.setStatusFlag(AppConstant.FLAG_EDITED);
         property.setUpdatedBy(AuthContext.username());
@@ -405,6 +410,63 @@ public class PropertyService {
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * Replaces what the listing comes with.
+     *
+     * <p>The whole set, not a delta: the request says what the listing has now, and reconciling two lists
+     * client-side is a calculation that goes wrong the first time somebody unticks and reticks the same box.
+     *
+     * <p>Null leaves them alone. A screen that does not edit amenities has to be able to save a listing
+     * without wiping them, and an absent field meaning "clear it" is how that happens by accident.
+     *
+     * <p>The rows are deleted rather than archived. A feature somebody unticked is a mistake being
+     * corrected, not a fact with a history worth keeping — unlike a listing, which is why this is the one
+     * place in the module that hard-deletes.
+     */
+    /** Every amenity the platform knows, in the catalogue's own order. Feeds the picker. */
+    @Transactional(readOnly = true)
+    public java.util.List<PropertyDtos.PublicAmenity> amenityCatalogue() {
+        return featureConfigs.findLive().stream()
+                .map(c -> new PropertyDtos.PublicAmenity(
+                        c.getCode(), c.getName(), c.getCategory(), c.getIcon()))
+                .toList();
+    }
+
+    /** The codes this listing currently carries, so the form opens with them ticked. */
+    @Transactional(readOnly = true)
+    public java.util.List<String> amenityCodesFor(Long propertyId) {
+        return features.findForUnit(propertyId).stream()
+                .map(com.hodi.modules.developments.UnitFeature::getFeatureCode)
+                .toList();
+    }
+
+    private void applyAmenities(Property property, SavePropertyRequest request) {
+        if (request.amenityCodes() == null) return;
+
+        java.util.LinkedHashSet<String> wanted = request.amenityCodes().stream()
+                .filter(c -> c != null && !c.isBlank())
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+
+        java.util.Set<String> known = featureConfigs.findLive().stream()
+                .map(com.hodi.modules.developments.UnitFeatureConfig::getCode)
+                .collect(java.util.stream.Collectors.toSet());
+        java.util.List<String> unknown = wanted.stream().filter(c -> !known.contains(c)).toList();
+        if (!unknown.isEmpty()) {
+            throw new HodiException("These are not amenities on this platform: "
+                    + String.join(", ", unknown), HttpStatus.BAD_REQUEST);
+        }
+
+        features.deleteAll(features.findForUnit(property.getId()));
+        for (String code : wanted) {
+            features.save(com.hodi.modules.developments.UnitFeature.builder()
+                    .unitId(property.getId())
+                    .featureCode(code)
+                    .createdBy(AuthContext.username())
+                    .build());
+        }
+    }
+
     private void apply(Property property, SavePropertyRequest request) {
         property.setTitle(request.title().trim());
         property.setDescription(blankToNull(request.description()));
@@ -539,7 +601,8 @@ public class PropertyService {
                 p.getStatus(),
                 p.getStatusFlag(),
                 p.getCreatedAt(),
-                p.getCreatedBy());
+                p.getCreatedBy(),
+                amenityCodesFor(p.getId()));
     }
 
     private java.util.Optional<AgentProfile> agentOf(Property p) {

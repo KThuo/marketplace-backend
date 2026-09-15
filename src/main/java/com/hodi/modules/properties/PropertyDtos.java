@@ -76,7 +76,9 @@ public final class PropertyDtos {
             Integer status,
             String statusFlag,
             OffsetDateTime createdAt,
-            String createdBy) {}
+            String createdBy,
+            /** What it comes with, as codes, so the form opens with them already ticked. */
+            java.util.List<String> amenityCodes) {}
 
     public record MediaResponse(
             String id,
@@ -139,7 +141,16 @@ public final class PropertyDtos {
              */
             String listingOwnership,
             String clientOwnerName,
-            String clientOwnerPhone) {}
+            String clientOwnerPhone,
+            /**
+             * What the place comes with, as catalogue codes.
+             *
+             * <p>The whole set every time, not a delta: a save says what the listing has now, and working out
+             * what was added and what was removed from two lists is a calculation the client should not be
+             * doing. Null leaves them alone, which is how a screen that does not edit amenities saves a
+             * listing without wiping them.
+             */
+            java.util.List<String> amenityCodes) {}
 
     public record SubmitRequest(String note) {}
 
@@ -228,7 +239,23 @@ public final class PropertyDtos {
              * kind, its features and its state. Null on a house and on a typology card. The unit's page reads
              * this endpoint like any other listing's, which is the point.
              */
-            com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitDetail unit) {}
+            com.hodi.modules.developments.DevelopmentUnitDtos.PublicUnitDetail unit,
+            /**
+             * What the place comes with, in the order somebody reading a listing cares about them.
+             *
+             * <p>Both levels where there are two: a unit's own and its typology's, because a buyer does not
+             * distinguish them and a list showing one and not the other describes half a home.
+             */
+            java.util.List<PublicAmenity> amenities) {}
+
+    /**
+     * One amenity, as a buyer reads it.
+     *
+     * <p>Carries the icon key rather than a URL. An amenity list is read by scanning, and a column of
+     * identical bullets has to be read word by word — the glyph is what makes "borehole" findable at a
+     * glance. The client maps the key to its own icon set and falls back on one it does not know.
+     */
+    public record PublicAmenity(String code, String name, String category, String icon) {}
 
     /**
      * The marketplace's filters — the BRD's facets.

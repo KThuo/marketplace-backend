@@ -51,6 +51,8 @@ public class PublicPropertyService {
     private final StorageService storage;
     private final EntityManager entityManager;
     private final com.hodi.modules.developments.PublicDevelopmentService publicDevelopments;
+    private final com.hodi.modules.developments.UnitFeatureRepository features;
+    private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
 
     @Transactional(readOnly = true)
     public PagedResponse<PublicPropertyResponse> search(PublicSearchRequest request) {
@@ -300,7 +302,35 @@ public class PublicPropertyService {
                 p.isUnitTypeListing() ? p.getUnitsAvailable() : null,
                 p.isUnitTypeListing() ? p.getUnitsTotal() : null,
                 p.isUnitTypeListing() ? p.getConstructionStatus() : null,
-                p.isUnit() ? publicDevelopments.unitDetail(p) : null);
+                p.isUnit() ? publicDevelopments.unitDetail(p) : null,
+                amenitiesFor(p));
+    }
+
+    /**
+     * What the place comes with — the listing's own, and its typology's when it is a unit.
+     *
+     * <p>Both levels, because a buyer does not distinguish them: a flat's balcony is recorded on the flat
+     * and the block's borehole on the kind of home, and a list showing one and not the other describes half
+     * a home. Deduplicated by code, because a feature recorded in both places is still one amenity.
+     *
+     * <p>Ordered by the catalogue's own sort order, which puts water and power first — in this market they
+     * are asked about before the bedrooms.
+     */
+    private List<PropertyDtos.PublicAmenity> amenitiesFor(Property p) {
+        java.util.List<Long> unitTypeIds = p.getUnitTypeId() == null
+                ? java.util.List.of() : java.util.List.of(p.getUnitTypeId());
+        java.util.Set<String> codes = new java.util.LinkedHashSet<>();
+        features.findForUnit(p.getId()).forEach(f -> codes.add(f.getFeatureCode()));
+        for (Long typeId : unitTypeIds) {
+            features.findForUnitType(typeId).forEach(f -> codes.add(f.getFeatureCode()));
+        }
+        if (codes.isEmpty()) return java.util.List.of();
+
+        return featureConfigs.findLive().stream()
+                .filter(c -> codes.contains(c.getCode()))
+                .map(c -> new PropertyDtos.PublicAmenity(
+                        c.getCode(), c.getName(), c.getCategory(), c.getIcon()))
+                .toList();
     }
 
     private static String blankToNull(String value) {

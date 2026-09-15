@@ -28,6 +28,15 @@ public class UnitFeatureConfig {
     @Column(columnDefinition = "TEXT") private String description;
     /** A display heading — KITCHEN, OUTDOOR, FIXTURES. Free text: refusing a new one helps nobody. */
     @Column(length = 32) private String category;
+
+    /**
+     * A key into the client's icon set — {@code water}, {@code lift}, {@code cctv}.
+     *
+     * <p>A key rather than an uploaded image: there is nothing to store or resize, and every listing then
+     * shows the same borehole. An unknown or null key renders a neutral fallback, so a key that reaches the
+     * database before the client knows it degrades rather than breaks.
+     */
+    @Column(length = 40) private String icon;
     @Column(name = "sort_order", nullable = false) @Builder.Default private Integer sortOrder = 100;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;

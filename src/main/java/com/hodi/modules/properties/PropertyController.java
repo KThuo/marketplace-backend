@@ -44,6 +44,19 @@ public class PropertyController {
         return ApiResponse.success(service.list(request));
     }
 
+    /**
+     * The amenity vocabulary, for the picker on the listing form.
+     *
+     * <p>Gated on being able to see listings rather than edit them: the catalogue is the platform's own
+     * list of words and there is nothing in it about anybody's property. The icon key rides along so the
+     * picker can show the glyph a buyer will see rather than a tick-box with a name.
+     */
+    @GetMapping("/amenities")
+    @PreAuthorize("hasAnyAuthority('PROPERTIES_VIEW','PROPERTIES_CREATE','PROPERTIES_UPDATE')")
+    public ApiResponse<List<PropertyDtos.PublicAmenity>> amenities() {
+        return ApiResponse.success(service.amenityCatalogue());
+    }
+
     @GetMapping("/find/{hashId}")
     @PreAuthorize("hasAuthority('PROPERTIES_VIEW')")
     public ApiResponse<PropertyResponse> find(@PathVariable String hashId) {
