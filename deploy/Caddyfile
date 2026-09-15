@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+# marketplace.qnex.io — the SPA, and the two paths that belong to the application behind it.
+#
+# Kept in the repository because the difference between this file and vite.config.ts is the whole
+# difference between "works on localhost" and "works on test", and that difference was invisible:
+# nothing in either repository said what the server in front of them had to forward.
+#
+# Reconcile this with what is on the box rather than replacing it wholesale — the TLS, logging and
+# upstream address here are placeholders for whatever is already configured.
+# ─────────────────────────────────────────────────────────────────────────────────────────────────
+
+marketplace.qnex.io {
+	root * /srv/hodimp/dist
+	encode gzip zstd
+
+	# ── what belongs to the application ──────────────────────────────────────────────────────────
+	#
+	# Both of these, not just /api. `/media/*` is MediaController, and it is where every photograph
+	# on the platform is served from: StorageService.urlFor returns "/media/<key>" — a relative URL,
+	# deliberately, so it works behind any host without configuration.
+	#
+	# Relative is only correct if the host forwards it. Without the second line /media/x.jpg fell
+	# through to the SPA fallback below and returned index.html with a 200, so every <img> on test
+	# loaded 1,791 bytes of HTML and rendered as a broken image. It worked on localhost because
+	# vite.config.ts proxies /api *and* /media to :8085 — if you add a third proxied prefix there,
+	# it has to be added here too.
+	reverse_proxy /api/* localhost:8085
+	reverse_proxy /media/* localhost:8085
+
+	header {
+		# ── Content-Security-Policy ───────────────────────────────────────────────────────────────
+		#
+		# script-src ... https://maps.googleapis.com
+		#   utils/googleMaps.ts appends a <script> for the Maps JS API. The API's own XHRs were
+		#   already allowed through connect-src, but the script that makes them was not, so the map
+		#   never loaded at all — every address field and map preview was dead on test.
+		#
+		# font-src ... data:
+		#   Sora is self-hosted and inlined as data: URIs in the built CSS, which is why the console
+		#   filled with "Loading the font 'data:font/woff2;base64,…' violates ... font-src 'self'".
+		#   No external font host is needed — the bytes are already in the stylesheet.
+		#
+		# img-src ... blob:
+		#   An agent's signature is fetched with the session's Authorization header and rendered from
+		#   a blob: URL (services/agents.ts), because the endpoint writes an audit row and must not be
+		#   re-requested whenever a browser feels like it. Without blob: that image is blocked.
+		#
+		# style-src / img-src https:
+		#   Left as they were. Maps injects inline styles and pulls tiles from gstatic, both already
+		#   covered.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://marketplace.qnex.io https://*.googleapis.com wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# X-XSS-Protection is deliberately absent. It is a dead header in every current browser and the
+		# filter it enabled introduced vulnerabilities of its own; the CSP above is what replaced it.
+	}
+
+	# The SPA fallback, last: anything not claimed above is a client-side route.
+	try_files {path} /index.html
+	file_server
+}
