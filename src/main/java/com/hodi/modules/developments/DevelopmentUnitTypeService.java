@@ -50,6 +50,7 @@ public class DevelopmentUnitTypeService {
     private final MediaAssetRepository media;
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
+    private final DevelopmentPublication publication;
     private final AuditService audit;
     private final StorageService storage;
 
@@ -92,7 +93,18 @@ public class DevelopmentUnitTypeService {
         assertCodeFree(development.getId(), request.code(), type.getId());
 
         String before = snapshot(type);
+        java.math.BigDecimal priceBefore = type.getListPrice();
         apply(type, request);
+        /*
+         * A price the bank has not seen must not be the price on the marketplace.
+         *
+         * Only when it actually moved: re-approving a live project because somebody fixed a typo in a
+         * typology's description would make the rule the thing people work around.
+         */
+        if (priceChanged(priceBefore, type.getListPrice())) {
+            publication.requireReapproval(development.getId(),
+                    "The price of " + type.getName() + " changed.");
+        }
         type.setStatus(AppConstant.STATUS_EDITED);
         type.setStatusFlag(AppConstant.FLAG_EDITED);
         type.setUpdatedBy(AuthContext.username());
@@ -115,6 +127,13 @@ public class DevelopmentUnitTypeService {
      * <p>Idempotent — calling it twice returns the listing that already exists rather than colliding with the
      * unique index, because a person clicking a button twice is not an error worth a 409.
      */
+    /** Whether a price moved, treating null and a changed figure alike and 9500000 == 9500000.00. */
+    static boolean priceChanged(java.math.BigDecimal before, java.math.BigDecimal after) {
+        if (before == null && after == null) return false;
+        if (before == null || after == null) return true;
+        return before.compareTo(after) != 0;
+    }
+
     /** The marketplace card for one typology, drafted. The one definition both paths build. */
     private Property cardFor(Development development, DevelopmentUnitType type) {
         return Property.builder()

@@ -71,6 +71,7 @@ public class DevelopmentUnitService {
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
+    private final DevelopmentPublication publication;
     private final PayCodeAllocator payCodes;
     private final AuditService audit;
     private final com.hodi.modules.bookings.UnitBookingRepository bookings;
@@ -258,6 +259,15 @@ public class DevelopmentUnitService {
         // Claimed before the next batch in the run is planned, so two types cannot both take B-1-01.
         slots.forEach(slot -> taken.add(slot.label().toUpperCase()));
 
+        /*
+         * Inventory added to a live project goes back to the bank with it.
+         *
+         * What buyers were shown — "60 of 70 left" — stops being true the moment another thirty appear, and
+         * the bank is the one selling them. Nothing happens to a draft project, which has no public face.
+         */
+        publication.requireReapproval(development.getId(),
+                slots.size() + " unit" + (slots.size() == 1 ? "" : "s") + " added to " + type.getName() + ".");
+
         repository.saveAll(batch);
         inventory.recountUnitType(type.getId());
 
@@ -280,10 +290,15 @@ public class DevelopmentUnitService {
         assertLabelFree(development.getId(), request.unitLabel(), unit.getId());
 
         String before = snapshot(unit);
+        java.math.BigDecimal priceBefore = unit.getPrice();
         Long previousType = unit.getUnitTypeId();
         unit.setUnitTypeId(type.getId());
         unit.setPhaseId(resolvePhase(development, request.phaseHashId()));
         apply(unit, request);
+        if (DevelopmentUnitTypeService.priceChanged(priceBefore, unit.getPrice())) {
+            publication.requireReapproval(development.getId(),
+                    "The price of unit " + unit.getUnitLabel() + " changed.");
+        }
         unit.setStatus(AppConstant.STATUS_EDITED);
         unit.setStatusFlag(AppConstant.FLAG_EDITED);
         unit.setUpdatedBy(AuthContext.username());

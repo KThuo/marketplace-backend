@@ -104,6 +104,26 @@ public class ApprovalService {
      * @param scopeTenantId      the seller whose queue this belongs in, or null
      * @param scopeInstitutionId the institution whose queue this belongs in, or null
      */
+    /**
+     * Raises a request, or leaves the one already waiting alone.
+     *
+     * <p>{@link #submit} refuses a duplicate, and that is right when somebody presses Submit twice: the
+     * second press is a mistake and should say so. It is wrong when the request is raised as a consequence
+     * of something else — a seller changing three unit prices in a row has made one project stale, not
+     * three, and the second change must not fail with "that is already waiting for a decision" over an
+     * edit they did not know was raising anything.
+     *
+     * <p>The note of the first one stands. It is the earliest thing that made the project stale, and the
+     * checker is looking at the project rather than at one edit in a sequence.
+     */
+    @Transactional
+    public void submitIfAbsent(String entityType, Long entityId, String action,
+                               Long scopeTenantId, Long scopeInstitutionId,
+                               String subjectLabel, String note) {
+        if (repository.findPending(entityType, entityId, action).isPresent()) return;
+        submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId, subjectLabel, note);
+    }
+
     @Transactional
     public ApprovalWorkflow submit(String entityType, Long entityId, String action,
                                    Long scopeTenantId, Long scopeInstitutionId,

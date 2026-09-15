@@ -1,7 +1,6 @@
 package com.hodi.modules.developments;
 
 import com.hodi.common.AppConstant;
-import com.hodi.modules.properties.Property;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
@@ -63,7 +62,7 @@ public class DevelopmentService {
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final TenantRepository tenants;
-    private final com.hodi.modules.properties.PropertyRepository properties;
+    private final DevelopmentPublication publication;
     private final BankRepository institutions;
     private final ApprovalService approvals;
     private final AuditService audit;
@@ -168,17 +167,14 @@ public class DevelopmentService {
          * public face to take down, so it is left where it is.
          */
         boolean wasLive = development.isLive();
-        if (wasLive) {
-            development.setListingState(AppConstant.LISTING_PENDING);
-            development.setPublishedAt(null);
-        }
         Development saved = repository.save(development);
         // Its unit rows are properties too, and they carry the project's state, name and place.
         inventory.syncUnitRows(saved);
         if (wasLive) {
-            approvals.submit(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
-                    AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(saved), null,
-                    saved.getReference() + " — " + saved.getName(),
+            // Through the one method, so the typology cards come down with it. They used to stay live on a
+            // project that had gone back to PENDING, which left the marketplace showing cards for a project
+            // whose page was no longer there.
+            publication.requireReapproval(saved.getId(),
                     "Edited while live; needs re-approval before it goes back on the marketplace.");
         }
 
@@ -226,7 +222,7 @@ public class DevelopmentService {
         inventory.syncUnitRows(saved);
 
         approvals.submit(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
-                AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(saved), null,
+                AppConstant.APPROVAL_ACTION_PUBLISH, DevelopmentPublication.ownerScopeId(saved), null,
                 saved.getReference() + " — " + saved.getName(),
                 request == null ? null : request.note());
 
@@ -285,25 +281,9 @@ public class DevelopmentService {
          * creates them. A second queue for a decision the bank has just made on the thing they belong to is
          * a queue that only ever gets rubber-stamped.
          */
-        publishTypologies(saved, AppConstant.LISTING_LIVE, saved.getPublishedAt());
+        publication.moveTypologies(saved, AppConstant.LISTING_LIVE, saved.getPublishedAt());
         audit.record(AppConstant.ACTION_APPROVE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} is live", saved.getReference());
-    }
-
-    /**
-     * Moves every typology card with the project it belongs to.
-     *
-     * <p>A card that has been sold out or withdrawn on its own is left alone — its state is its own fact and
-     * outlives the project's, the same rule {@code unitListingStateFor} applies to a sold unit.
-     */
-    private void publishTypologies(Development development, String state, OffsetDateTime publishedAt) {
-        for (Property card : properties.findTypologiesForDevelopment(development.getId())) {
-            if (AppConstant.LISTING_SOLD.equals(card.getListingState())) continue;
-            card.setListingState(state);
-            card.setPublishedAt(publishedAt);
-            card.setUpdatedBy(AuthContext.username());
-            properties.save(card);
-        }
     }
 
     /** Refused, and back to the drafter. */
@@ -319,7 +299,7 @@ public class DevelopmentService {
         inventory.syncUnitRows(saved);
         // The cards go back with it: a live typology card on a project that is no longer live is the
         // marketplace showing something the bank has just refused.
-        publishTypologies(saved, AppConstant.LISTING_DRAFT, null);
+        publication.moveTypologies(saved, AppConstant.LISTING_DRAFT, null);
         audit.record(AppConstant.ACTION_UPDATE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} sent back: {}", saved.getReference(), reason);
     }
@@ -583,12 +563,6 @@ public class DevelopmentService {
      * <p>A queue row carries a tenant id. An institution-owned development has none, and the approval is the
      * marketing organisation's business anyway — they are the ones publishing it.
      */
-    private Long ownerScopeId(Development development) {
-        return development.getSellingTenantId() != null
-                ? development.getSellingTenantId()
-                : development.getTenantId();
-    }
-
     private String nextReference() {
         for (int attempt = 0; attempt < 5; attempt++) {
             String candidate = RrnGenerator.generate("DV");

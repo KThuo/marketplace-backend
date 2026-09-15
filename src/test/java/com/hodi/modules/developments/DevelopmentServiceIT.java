@@ -4,6 +4,7 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.modules.developments.DevelopmentPhaseDtos.SavePhaseRequest;
 import com.hodi.common.util.RrnGenerator;
+import com.hodi.modules.developments.DevelopmentUnitTypeDtos.SaveUnitTypeRequest;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
@@ -49,6 +50,7 @@ class DevelopmentServiceIT {
     @Autowired com.hodi.modules.properties.PropertyRepository properties;
     @Autowired DevelopmentPhaseRepository phases;
     @Autowired DevelopmentPhaseService phaseService;
+    @Autowired DevelopmentUnitTypeService typeService;
     @Autowired JdbcTemplate jdbc;
 
     @AfterEach
@@ -424,5 +426,68 @@ class DevelopmentServiceIT {
         var created = service.create(request("Self Marketed", "Nairobi"));
 
         assertEquals(tenantName(tenantId), created.sellingTenantName());
+    }
+
+    // ── the bank sees a price before buyers do ────────────────────────────────
+
+    /**
+     * A seller repricing a live project sends it back to the bank.
+     *
+     * <p>The seller sells through the bank, so a figure the bank has not seen must not be the figure on the
+     * marketplace. The live page comes down while it waits, which is the point rather than a side effect:
+     * leaving it up with the old price would prevent nothing.
+     */
+    @Test
+    @DisplayName("repricing a typology on a live project sends it back for approval")
+    void repricingALiveProjectNeedsTheBankAgain() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+        var development = service.create(request("Repriced Heights", "Nairobi"));
+        Long id = HashIdUtil.decodeId(development.id());
+
+        var type = typeService.create(development.id(), new SaveUnitTypeRequest(
+                "2BED", "Two bedroom", "Ninety-two square metres.", "APARTMENT",
+                (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
+                new java.math.BigDecimal("9500000"), null, 40, 10));
+
+        service.submit(development.id(), null);
+        service.applyPublication(id);
+        assertEquals(AppConstant.LISTING_LIVE, developments.findById(id).orElseThrow().getListingState());
+
+        typeService.update(development.id(), type.id(), new SaveUnitTypeRequest(
+                "2BED", "Two bedroom", "Ninety-two square metres.", "APARTMENT",
+                (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
+                new java.math.BigDecimal("11000000"), null, 40, 10));
+
+        assertEquals(AppConstant.LISTING_PENDING, developments.findById(id).orElseThrow().getListingState(),
+                "a price the bank has not seen is not the price on the marketplace");
+        assertTrue(properties.findTypologiesForDevelopment(id).stream()
+                        .noneMatch(c -> AppConstant.LISTING_LIVE.equals(c.getListingState())),
+                "the cards come down with the project, or Browse shows a card for a page that is gone");
+    }
+
+    @Test
+    @DisplayName("editing something that is not the price leaves a live project alone")
+    void aDescriptionEditDoesNotPullItDown() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+        var development = service.create(request("Steady Heights", "Nairobi"));
+        Long id = HashIdUtil.decodeId(development.id());
+
+        var type = typeService.create(development.id(), new SaveUnitTypeRequest(
+                "2BED", "Two bedroom", "First wording.", "APARTMENT",
+                (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
+                new java.math.BigDecimal("9500000"), null, 40, 10));
+
+        service.submit(development.id(), null);
+        service.applyPublication(id);
+
+        typeService.update(development.id(), type.id(), new SaveUnitTypeRequest(
+                "2BED", "Two bedroom", "Better wording, same price.", "APARTMENT",
+                (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
+                new java.math.BigDecimal("9500000"), null, 40, 10));
+
+        assertEquals(AppConstant.LISTING_LIVE, developments.findById(id).orElseThrow().getListingState(),
+                "re-approving over a typo would make the rule the thing people work around");
     }
 }
