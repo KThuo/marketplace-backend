@@ -330,7 +330,8 @@ public class RulesAssistantProvider implements AssistantProvider {
 
     private static String money(BigDecimal value) {
         if (value == null) return "—";
-        return "Ksh " + java.text.NumberFormat.getIntegerInstance(Locale.UK).format(value);
+        // "KES", not the "Ksh" symbol — the same code the rows hold and the client renders.
+        return "KES " + java.text.NumberFormat.getIntegerInstance(Locale.UK).format(value);
     }
 
     private static String capitalise(String value) {
