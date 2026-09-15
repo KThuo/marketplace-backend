@@ -46,7 +46,11 @@ public enum AppModuleEnum {
             true, 10,
             // PLATFORM_AUDITOR reads only: their template holds TENANTS_VIEW and nothing else here. An
             // auditor who cannot resolve an organisation's name is reading a trail of ids.
-            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER"),
+            //
+            // BANK_ADMIN because seller applications are decided here (SELLERS_VIEW, SELLERS_DECIDE) and
+            // the bank's administrators are who decide them. Only new databases read this list — the
+            // seeder never rewrites the column — so V20260915140000 moves it on existing ones.
+            "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,BANK_ADMIN"),
     /*
      * INSTITUTIONS and PARTNERSHIPS used to sit here, and they are gone rather than switched off.
      *

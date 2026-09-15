@@ -93,8 +93,17 @@ Both paths converge on the same captured identity. The difference is recorded
 Seller type (which selects the KYC checklist version), trading name, registration number, address.
 
 **Step 4 — Documents**
-`kyc_requirement_configs` for that seller type, rendered as a checklist. Reuses the existing
-`POST /api/v1/kyc/my-pack/documents`. A new `FileDrop.vue` replaces four ad-hoc file inputs across the app.
+`kyc_requirement_configs` for that seller type, rendered as a checklist.
+
+**Not** the compliance pack, which was the plan and turned out to be impossible: `KycService.openPack`
+refuses a profile with no tenant — *"KYC applies to seller organisations. This profile has none."* — and an
+applicant has none until approval, which is the decision the documents exist to inform. The pack is right
+for a seller who already exists and is renewing; it cannot serve the person becoming one.
+
+So the application carries its own join table and the files still go into the same vault through
+`DocumentService.store`, whose signature already allows a null tenant for *"a document about a person"*.
+That keeps the SHA-256, the per-document ACL and the audited read. A new `FileDrop.vue` replaces four
+ad-hoc file inputs across the app.
 
 **Step 5 — Review and submit**
 Everything back, then submit. Application → `SUBMITTED`, pack → `SUBMITTED`.
@@ -151,14 +160,17 @@ migrations, `TenantService.createForSeller`, `SecurityConfig` permit, `AppPermis
 
 ---
 
-## 7. Decisions needed
+## 7. Decisions — settled
 
-1. **Who starts an application** — the seller (public, as agents do) or a bank officer on their behalf?
-   The plan assumes public, because point 1 says "send creds".
-2. **Does the Co-op path shorten the review**, or is it pre-fill with the same approval at the end?
-   The plan assumes pre-fill only.
-3. **Does an existing Co-op account skip AML/IPRS?** The plan assumes yes — the bank has already done
-   both to open the account.
+1. **The seller starts it**, from a public page, as agents do. A bank officer creating a seller already
+   exists (`TENANTS_CREATE` → `TenantService.create`) and stays; this is the self-service route beside it.
+2. **The Co-op path shortens the review.** A validated account is the bank's own identification of the
+   person, already performed, so the application carries that verdict into the queue rather than asking a
+   reviewer to establish identity a second time. The bank still approves — what shortens is what they have
+   to check, not whether they check.
+3. **A validated Co-op account skips AML and IPRS.** The bank ran both to open the account. Recorded as
+   `SKIPPED_COOP_VERIFIED` against the application rather than omitted, so the queue shows why there is no
+   AML row instead of leaving a reviewer to wonder.
 
 ---
 

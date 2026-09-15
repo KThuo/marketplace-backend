@@ -309,6 +309,28 @@ public class TenantService {
     }
 
     /**
+     * The organisation an approved seller lists into, with its owner group ready for them.
+     *
+     * <p>Unlike {@link #create}, no owner account is minted: a seller who applied already has one — the
+     * account they registered with and completed the application in — and the caller attaches their
+     * existing profile to the group this returns. Creating a second user with a temporary password would
+     * hand somebody a new credential for an account they are already signed into.
+     *
+     * <p>{@code sellerType} comes from the application rather than being assumed, because it is what
+     * decides the KYC checklist and the tenant is the row that remembers it.
+     */
+    @Transactional
+    public OrganisationForSeller createForSeller(String name, String contactName, String email,
+                                                 String phone, String sellerType) {
+        Tenant tenant = createOrganisationFor(name, contactName, email, phone,
+                AppConstant.ORG_KIND_SELLER, sellerType);
+        return new OrganisationForSeller(tenant, createOwnerGroup(tenant));
+    }
+
+    /** A new organisation and the group its owner belongs in — both needed to attach an existing person. */
+    public record OrganisationForSeller(Tenant tenant, UserGroup ownerGroup) {}
+
+    /**
      * The organisation an approved vendor publishes into (M10).
      *
      * <p>The agent's method with one word different, and kept separate rather than parameterised because

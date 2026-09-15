@@ -142,6 +142,14 @@ public enum AppPermissionEnum {
      */
     USERS_APPROVE("Approve a new user account", AppModuleEnum.USERS),
 
+    // ── SELLER APPLICATIONS ───────────────────────────────────────────────────
+    /*
+     * The bank's side of seller onboarding. Platform-only throughout: deciding who may sell through Co-op
+     * is Co-op's decision, and there is no organisation to delegate it to — the applicant has none yet.
+     */
+    SELLERS_VIEW("See seller applications", AppModuleEnum.TENANTS, true),
+    SELLERS_DECIDE("Approve or refuse a seller application", AppModuleEnum.TENANTS, true),
+
     // ── SETTINGS ──────────────────────────────────────────────────────────────
     APP_SETTINGS_VIEW("See settings", AppModuleEnum.APP_SETTINGS),
     APP_SETTINGS_UPDATE("Change global settings", AppModuleEnum.APP_SETTINGS, true),

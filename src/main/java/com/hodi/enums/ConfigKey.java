@@ -288,6 +288,39 @@ public enum ConfigKey {
             "ocp.api.key", "STRING", "AFFORDABILITY", "",
             "OCP API key", "Credential for the credit microservice.", true, false),
 
+    /*
+     * ── seller onboarding's three outside checks ─────────────────────────────────────────────────
+     *
+     * Empty, and declared anyway, for the reason written on OCP_BASE_URL above: the real provider is then
+     * a class and two rows rather than a migration. Each provider reports itself unconfigured while its
+     * base URL is blank, which is what puts "not connected yet" in front of the applicant instead of a
+     * silent pass.
+     */
+    COOP_ACCOUNT_BASE_URL(
+            "coop.account.base.url", "STRING", "INTEGRATION", "",
+            "Co-op account validation URL",
+            "Core-banking endpoint that validates an account number and returns the holder. Blank means "
+                    + "the step is shown as pending integration.", false, false),
+    COOP_ACCOUNT_API_KEY(
+            "coop.account.api.key", "STRING", "INTEGRATION", "",
+            "Co-op account validation key", "Credential for account validation.", true, false),
+    AML_BASE_URL(
+            "aml.base.url", "STRING", "INTEGRATION", "",
+            "AML screening URL",
+            "Screening service for a seller applying without a Co-op account. Blank means the step is "
+                    + "shown as pending integration.", false, false),
+    AML_API_KEY(
+            "aml.api.key", "STRING", "INTEGRATION", "",
+            "AML screening key", "Credential for the screening service.", true, false),
+    IPRS_BASE_URL(
+            "iprs.base.url", "STRING", "INTEGRATION", "",
+            "IPRS lookup URL",
+            "Registry lookup confirming an ID number belongs to the person named. Blank means the step "
+                    + "is shown as pending integration.", false, false),
+    IPRS_API_KEY(
+            "iprs.api.key", "STRING", "INTEGRATION", "",
+            "IPRS lookup key", "Credential for the registry lookup.", true, false),
+
     /**
      * The seller types for which clearance is a precondition to listing.
      *

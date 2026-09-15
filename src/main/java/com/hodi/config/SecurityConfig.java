@@ -127,6 +127,16 @@ public class SecurityConfig {
              * catalogue into until the platform approves it.
              */
             "/api/v1/public/vendors/apply",
+            /*
+             * Somebody asking to sell property through the bank (seller onboarding §1).
+             *
+             * The same three conditions again, and here they are the whole design: no organisation exists
+             * until the bank approves, the profile's KYC standing fails the listing gate, and the account
+             * carries no group at all — so it resolves not one permission. What this endpoint creates is a
+             * person who can sign in and finish their own application, which is the point of issuing
+             * credentials before the decision rather than after it.
+             */
+            "/api/v1/public/sellers/apply",
     };
 
     private final PublicMarketplaceFilter publicMarketplaceFilter;
