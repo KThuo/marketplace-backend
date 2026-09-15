@@ -253,4 +253,91 @@ class DevelopmentUnitServiceIT {
         return typeRepository.findById(
                 com.hodi.security.hashid.HashIdUtil.decodeId(typeId)).orElseThrow();
     }
+
+    // ── the price a generated unit carries ────────────────────────────────────
+
+    /**
+     * The generator's price field is a prefill, not a decision.
+     *
+     * <p>UnitSpec resolves a null price to the type's and marks it inherited, which is what makes repricing
+     * a typology move its units. Echoing the prefill back would write the figure onto all seventy rows and
+     * break that link invisibly — the numbers agree on the day they are written and diverge the first time
+     * somebody changes the type.
+     */
+    @Test
+    @DisplayName("a generated unit takes the type's price rather than a copy of it")
+    void unchangedPrefillLeavesThePriceInherited() {
+        units.generate(developmentId, new GenerateUnitsRequest(
+                typeId, null, 3, "B", (short) 1, (short) 3, null, new BigDecimal("9500000")));
+
+        // Scoped to this test's project: findAll() also returns whatever demo rows the database holds,
+        // and those are priced.
+        List<Property> written = unitRepository.findAll().stream()
+                .filter(u -> com.hodi.security.hashid.HashIdUtil.decodeId(developmentId)
+                        .equals(u.getDevelopmentId()))
+                .toList();
+        assertFalse(written.isEmpty());
+        assertTrue(written.stream().allMatch(u -> u.getPrice() == null),
+                "the same figure as the type's is not a per-unit price");
+    }
+
+    @Test
+    @DisplayName("a price that differs from the type's is kept as that unit's own")
+    void aDifferentPriceIsStored() {
+        units.generate(developmentId, new GenerateUnitsRequest(
+                typeId, null, 2, "P", (short) 20, (short) 2, null, new BigDecimal("14000000")));
+
+        List<Property> written = unitRepository.findAll().stream()
+                .filter(u -> com.hodi.security.hashid.HashIdUtil.decodeId(developmentId)
+                        .equals(u.getDevelopmentId()))
+                .filter(u -> "P".equals(u.getBlock()))
+                .toList();
+        assertEquals(2, written.size());
+        assertTrue(written.stream().allMatch(u -> new BigDecimal("14000000").compareTo(u.getPrice()) == 0));
+    }
+
+    // ── several types in one run ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("a run generates several types at once")
+    void severalTypesInOneRun() {
+        String second = typeService.create(developmentId, new SaveUnitTypeRequest(
+                "3BED", "Three bedroom", "Bigger.", "APARTMENT",
+                (short) 3, (short) 2, (short) 1, new BigDecimal("120"), null,
+                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10)).id();
+
+        int written = units.generateMany(developmentId, List.of(
+                new GenerateUnitsRequest(typeId, null, 4, "B", (short) 1, (short) 2, null, null),
+                new GenerateUnitsRequest(second, null, 3, "C", (short) 1, (short) 3, null, null)));
+
+        assertEquals(7, written);
+        assertEquals(7, units.list(developmentId, new UnitListRequest()).getTotalElements());
+    }
+
+    /**
+     * The check only a run can make.
+     *
+     * <p>Each batch is free of clashes on its own — nothing with those labels exists yet — and together they
+     * produce B-1-01 twice. Neither preview would catch it, and a client looping the single-type endpoint
+     * would write the first batch before failing on the second.
+     */
+    @Test
+    @DisplayName("two types in one run cannot take the same label, and nothing is written")
+    void aRunRefusesLabelsThatCollideAcrossTypes() {
+        String second = typeService.create(developmentId, new SaveUnitTypeRequest(
+                "3BED", "Three bedroom", "Bigger.", "APARTMENT",
+                (short) 3, (short) 2, (short) 1, new BigDecimal("120"), null,
+                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10)).id();
+
+        HodiException thrown = assertThrows(HodiException.class,
+                () -> units.generateMany(developmentId, List.of(
+                        new GenerateUnitsRequest(typeId, null, 2, "B", (short) 1, (short) 2, null, null),
+                        new GenerateUnitsRequest(second, null, 2, "B", (short) 1, (short) 2, null, null))));
+
+        // The second batch is refused because the first has claimed the labels — which is the whole point
+        // of threading one set through the run. Whether the first batch survives is the transaction's job,
+        // and this class is @Transactional, so the service joins the test's own and there is nothing here
+        // to observe a rollback with.
+        assertTrue(thrown.getMessage().contains("already in this development"), thrown.getMessage());
+    }
 }

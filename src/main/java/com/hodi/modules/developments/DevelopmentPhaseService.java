@@ -190,16 +190,31 @@ public class DevelopmentPhaseService {
         if (request.percentComplete() != null) phase.setPercentComplete(request.percentComplete());
 
         /*
-         * A phase at 100% is a phase that finished, and the database refuses the pair unless they agree.
+         * A phase at 100% is a phase that finished: ck_phase_complete makes it a biconditional, so the two
+         * fields cannot disagree. They are reconciled here rather than refused, because a validation error
+         * about a second field somebody did not think they were filling in is a worse answer.
          *
-         * Rather than reject the save, the two are reconciled here in the direction that is almost always
-         * meant: somebody typing 100% has finished the phase today, and somebody entering a completion date
-         * has finished it. The alternative is a validation error about a second field the person did not think
-         * they were filling in.
+         * WHICH ONE WINS is the part that was wrong. Both directions were applied unconditionally, and the
+         * date's ran second — so once a phase had a completion date, every later save forced the percentage
+         * back to 100 and there was no way to type 60. A phase that slipped could not be recorded as having
+         * slipped, which is the one thing this field exists for.
+         *
+         * The typed percentage wins now. Somebody who edits it is telling us where the phase is, and a date
+         * already on the row is the stale half of the pair — so dropping below 100 clears it. The date only
+         * decides when no percentage was sent at all, which the form never does but an API caller may.
          */
-        if (phase.getPercentComplete() == 100 && phase.getActualCompletionOn() == null) {
-            phase.setActualCompletionOn(java.time.LocalDate.now());
+        if (request.percentComplete() != null) {
+            if (phase.getPercentComplete() == 100) {
+                // Their own date if they gave one, today if they only moved the slider.
+                if (phase.getActualCompletionOn() == null) {
+                    phase.setActualCompletionOn(java.time.LocalDate.now());
+                }
+            } else {
+                phase.setActualCompletionOn(null);
+            }
+            return;
         }
+
         if (phase.getActualCompletionOn() != null && phase.getPercentComplete() != 100) {
             phase.setPercentComplete((short) 100);
         }

@@ -2,6 +2,7 @@ package com.hodi.modules.developments;
 
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
+import com.hodi.modules.developments.DevelopmentPhaseDtos.SavePhaseRequest;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
 import com.hodi.modules.profiles.UserProfile;
@@ -46,6 +47,7 @@ class DevelopmentServiceIT {
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
     @Autowired DevelopmentPhaseRepository phases;
+    @Autowired DevelopmentPhaseService phaseService;
     @Autowired JdbcTemplate jdbc;
 
     @AfterEach
@@ -321,5 +323,52 @@ class DevelopmentServiceIT {
 
         assertEquals("SELLER", created.ownerKind());
         assertEquals(tenantName(tenantId), created.ownerName());
+    }
+
+    // ── a phase percentage other than 100 ─────────────────────────────────────
+
+    private SavePhaseRequest phase(String name, Short percent, java.time.LocalDate done) {
+        return new SavePhaseRequest(name, null, (short) 1, null, null, null, null, done,
+                null, null, null, percent, null, null);
+    }
+
+    /**
+     * The bug: a phase that reached 100% could never be moved back down.
+     *
+     * <p>ck_phase_complete makes percentage and completion date a biconditional, and the service reconciled
+     * the pair in both directions unconditionally — with the date's rule running second, so it always won.
+     * Once a phase had a completion date, every later save forced the percentage back to 100, and a phase
+     * that slipped could not be recorded as having slipped.
+     */
+    @Test
+    @DisplayName("a completed phase can be corrected back down, and the completion date goes with it")
+    void percentageBelowOneHundredIsKept() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+        var development = service.create(request("Phased Project", "Nairobi"));
+
+        var finished = phaseService.create(development.id(),
+                phase("Foundation", (short) 100, java.time.LocalDate.now()));
+        assertEquals(100, finished.percentComplete());
+
+        var corrected = phaseService.update(development.id(), finished.id(),
+                phase("Foundation", (short) 60, java.time.LocalDate.now()));
+
+        assertEquals(60, corrected.percentComplete(), "the percentage somebody typed is the one that counts");
+        assertNull(corrected.actualCompletionOn(),
+                "a phase at 60% has not been completed, and ck_phase_complete would refuse the pair");
+    }
+
+    @Test
+    @DisplayName("reaching 100% stamps a completion date when none was given")
+    void oneHundredStampsTheDate() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+        var development = service.create(request("Phased Again", "Nairobi"));
+
+        var created = phaseService.create(development.id(), phase("Roofing", (short) 100, null));
+
+        assertEquals(100, created.percentComplete());
+        assertNotNull(created.actualCompletionOn());
     }
 }

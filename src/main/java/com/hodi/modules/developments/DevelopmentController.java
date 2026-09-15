@@ -232,6 +232,23 @@ public class DevelopmentController {
         return ApiResponse.success(written + " units added", Map.of("created", written));
     }
 
+    /**
+     * Several types in one run.
+     *
+     * <p>Its own endpoint rather than the client looping, because a run is refused or written whole. Two
+     * batches can each be clash-free alone and still collide with each other, which no single preview sees
+     * — and a loop that wrote the first and failed on the second would leave half a project behind.
+     */
+    @PostMapping("/{hashId}/units/generate-batch")
+    @PreAuthorize("hasAuthority('UNITS_MANAGE')")
+    @RequestAction("GENERATE_UNITS_BATCH")
+    public ApiResponse<Map<String, Integer>> generateUnitsBatch(@PathVariable String hashId,
+                                                                @Valid @RequestBody
+                                                                List<GenerateUnitsRequest> requests) {
+        int written = units.generateMany(hashId, requests);
+        return ApiResponse.success(written + " units added", Map.of("created", written));
+    }
+
     @PostMapping("/{hashId}/units")
     @PreAuthorize("hasAuthority('UNITS_MANAGE')")
     @RequestAction("ADD_UNIT")

@@ -179,7 +179,44 @@ public class DevelopmentUnitService {
         UserPrincipal caller = AuthContext.require();
         Development development = requireVisible(developmentHashId);
         visibility.assertMayWriteUnits(development, caller);
+        return generateOne(development, request, takenLabels(development.getId()));
+    }
 
+    /**
+     * Several types in one run — "70 two-beds, 40 three-beds, 12 penthouses".
+     *
+     * <p>One transaction, and one set of taken labels threaded through all of them. That shared set is the
+     * whole reason this is not a loop the client could have written itself: two batches can each be free of
+     * clashes on their own and still collide with <em>each other</em>, and neither preview would see it. A
+     * client looping over the single-type endpoint would write the first batch, then fail on the second and
+     * leave half a project behind — which is exactly what the single-type path already refuses to do within
+     * one batch.
+     */
+    @Transactional
+    public int generateMany(String developmentHashId, List<GenerateUnitsRequest> requests) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        if (requests == null || requests.isEmpty()) {
+            throw new HodiException("There is nothing in this run to generate.", HttpStatus.BAD_REQUEST);
+        }
+
+        Set<String> taken = takenLabels(development.getId());
+        int written = 0;
+        for (GenerateUnitsRequest request : requests) {
+            written += generateOne(development, request, taken);
+        }
+        return written;
+    }
+
+    /** Every label already in the development, upper-cased, as a set a run can add to as it goes. */
+    private Set<String> takenLabels(Long developmentId) {
+        return repository.labelsForDevelopment(developmentId).stream()
+                .map(String::toUpperCase).collect(Collectors.toCollection(HashSet::new));
+    }
+
+    private int generateOne(Development development, GenerateUnitsRequest request, Set<String> taken) {
         DevelopmentUnitType type = requireType(development, request.unitTypeHashId());
         Long phaseId = resolvePhase(development, request.phaseHashId());
 
@@ -189,10 +226,8 @@ public class DevelopmentUnitService {
                     "That pattern gives the same label to more than one unit. Add {n} or {i} to it.",
                     HttpStatus.BAD_REQUEST);
         }
-        Set<String> existing = repository.labelsForDevelopment(development.getId()).stream()
-                .map(String::toUpperCase).collect(Collectors.toCollection(HashSet::new));
         List<String> clashes = slots.stream().map(UnitLabels.Slot::label)
-                .filter(label -> existing.contains(label.toUpperCase())).toList();
+                .filter(label -> taken.contains(label.toUpperCase())).toList();
         if (!clashes.isEmpty()) {
             throw new HodiException(
                     "These labels are already in this development: " + String.join(", ",
@@ -213,13 +248,16 @@ public class DevelopmentUnitService {
                     .title(development.getName() + " · " + slot.label())
                     .block(slot.block())
                     .floorNo(slot.floorNo())
-                    .price(request.listPrice())
+                    .price(priceOverride(request.listPrice(), type))
                     .currency(type.getCurrency())
                     .saleState(AppConstant.UNIT_AVAILABLE)
                     .constructionStatus(AppConstant.BUILD_PLANNED)
                     .createdBy(AuthContext.username())
                     .build());
         }
+        // Claimed before the next batch in the run is planned, so two types cannot both take B-1-01.
+        slots.forEach(slot -> taken.add(slot.label().toUpperCase()));
+
         repository.saveAll(batch);
         inventory.recountUnitType(type.getId());
 
@@ -432,6 +470,25 @@ public class DevelopmentUnitService {
      * organisation where there is one, else the project's own; a bank's project that nobody is marketing yet
      * has neither, and the row is the institution's until it does.
      */
+    /**
+     * A generated unit's own price, or null to take its type's.
+     *
+     * <p>{@code UnitSpec} already resolves a null price to the type's and marks the figure inherited, which
+     * is what makes repricing a typology move its units. Writing the figure onto all two hundred rows broke
+     * that link — and it broke it invisibly, because the numbers agreed on the day they were written and
+     * only diverged the first time somebody changed the type.
+     *
+     * <p>The generator's price field is prefilled from the type so somebody can see what the units will
+     * cost. A prefill echoed back unchanged is not a decision, so it is stored as null; only a figure that
+     * actually differs is a per-unit price worth recording.
+     */
+    private static BigDecimal priceOverride(BigDecimal asked, DevelopmentUnitType type) {
+        if (asked == null) return null;
+        BigDecimal typePrice = type.getListPrice();
+        if (typePrice != null && asked.compareTo(typePrice) == 0) return null;
+        return asked;
+    }
+
     private Property.PropertyBuilder unitRow(Development development, DevelopmentUnitType type) {
         return Property.builder()
                 .listingKind(AppConstant.LISTING_KIND_UNIT)
