@@ -69,11 +69,20 @@ class UserApprovalIT {
     }
 
     private void signInAsPlatform(long id, String username) {
+        signInAsPlatform(id, username, "BANK_ADMIN");
+    }
+
+    /**
+     * @param userTypeCode the caller's kind. It decides the outcome of {@code create}: a SUPER_ADMIN's
+     *                     creations go live immediately, everybody else's wait for the bank. The default
+     *                     above is BANK_ADMIN, because that is the path these tests are about.
+     */
+    private void signInAsPlatform(long id, String username, String userTypeCode) {
         User user = User.builder().id(id).username(username).password("x")
                 .email(username + "@example.invalid").firstName("Pat").lastName("Platform")
                 .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
         UserProfile profile = UserProfile.builder().id(id).userId(id)
-                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
+                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode(userTypeCode)
                 .status(AppConstant.STATUS_ACTIVE).build();
         UserPrincipal principal = UserPrincipal.of(user, profile,
                 Set.of("USERS_CREATE", "USERS_UPDATE", "USERS_ACTIVATE", "USERS_DEACTIVATE",
@@ -243,6 +252,44 @@ class UserApprovalIT {
         assertThrows(HodiException.class, () ->
                 approvals.decide(hash, new DecisionRequest(AppConstant.APPROVAL_APPROVED, null)));
         assertFalse(reload("ada.sellercheck").isEnabled());
+    }
+
+    // ── where the rule runs out ───────────────────────────────────────────────
+
+    /**
+     * The super administrator's own creations go live, and raise nothing.
+     *
+     * <p>The case that forces it: on a fresh platform there is one account. It creates the first bank
+     * user, and {@code ck_approval_maker_checker} means it cannot approve that user — so without this the
+     * account sits disabled with nobody in existence who could let it in.
+     */
+    @Test
+    @DisplayName("a super administrator's new user is live immediately")
+    void superAdminCreationsAreLive() {
+        signInAsPlatform(9001L, "superadmin-test", "SUPER_ADMIN");
+
+        TemporaryPasswordResponse issued = service.create(newStaff("ada.super"));
+
+        assertFalse(issued.awaitingApproval(), "the screen must not tell them to wait for an approval");
+        User created = reload("ada.super");
+        assertTrue(created.isEnabled());
+        assertEquals(AppConstant.STATUS_ACTIVE, created.getStatus());
+        // Still a temporary credential: going live is not the same as keeping the password they were given.
+        assertTrue(created.isMustChangePassword());
+        assertTrue(approvals.pendingFor(AppConstant.APPROVAL_ENTITY_USER, created.getId(),
+                AppConstant.APPROVAL_ACTION_CREATE).isEmpty(),
+                "nothing should be queued that nobody could ever decide");
+    }
+
+    @Test
+    @DisplayName("a bank administrator's new user still waits")
+    void bankAdminCreationsStillWait() {
+        signInAsPlatform(9002L, "bankadmin-test", "BANK_ADMIN");
+
+        service.create(newStaff("ada.bank"));
+
+        assertFalse(reload("ada.bank").isEnabled());
+        assertEquals(AppConstant.APPROVAL_PENDING, waitingFor("ada.bank").getState());
     }
 
     // ── the doors round the gate ──────────────────────────────────────────────

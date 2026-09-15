@@ -79,8 +79,16 @@ import java.util.List;
 public class UserService {
 
     private static final SecureRandom RANDOM = new SecureRandom();
-    private static final String TEMP_ALPHABET =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+    /*
+     * No I, O, l or 1, and no 0: a temporary password is read aloud or copied off a screen, and those are
+     * the characters that get copied wrong. The classes are split out because the generator has to place
+     * one of each deliberately — see temporaryPassword().
+     */
+    private static final String UPPER   = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+    private static final String LOWER   = "abcdefghijkmnopqrstuvwxyz";
+    private static final String DIGITS  = "23456789";
+    private static final String SYMBOLS = "#$%&*+-=?@";
+    private static final String TEMP_ALPHABET = UPPER + LOWER + DIGITS;
 
     private final UserRepository repository;
     private final UserProfileRepository profiles;
@@ -246,6 +254,21 @@ public class UserService {
         // may hold, live, and not a shared template. Looking it up above only told us which type it names.
         UserGroup group = resolveGroup(request.userGroupId(), type, affiliation);
 
+        /*
+         * The super administrator's own creations go live immediately.
+         *
+         * Not an exemption from Maker/Checker so much as an admission of where it runs out. The rule needs
+         * two people, and on a fresh platform there is one: the super administrator creates the first bank
+         * user, cannot approve it — ck_approval_maker_checker is a database CHECK and will not bend — and
+         * nobody else exists who could. The account would sit disabled with no path out of it.
+         *
+         * So the account is created live and the audit trail records who did it. That is the same reading
+         * ApprovalService already takes of a one-person team: let the platform decide rather than let one
+         * person decide twice. Everybody else — a seller's owner, a bank administrator — still goes to the
+         * queue, which is every path that actually creates staff in normal operation.
+         */
+        boolean selfApproved = "SUPER_ADMIN".equals(caller.getUserTypeCode());
+
         String temporary = temporaryPassword();
         User user = User.builder()
                 .firstName(request.firstName().trim())
@@ -262,9 +285,9 @@ public class UserService {
                  * would make "never approved" and "deactivated" indistinguishable on the list and in the
                  * trail, and would let `activate` treat one as the other.
                  */
-                .enabled(false)
-                .status(AppConstant.STATUS_NEW)
-                .statusFlag(AppConstant.FLAG_NEW)
+                .enabled(selfApproved)
+                .status(selfApproved ? AppConstant.STATUS_ACTIVE : AppConstant.STATUS_NEW)
+                .statusFlag(selfApproved ? AppConstant.FLAG_ACTIVE : AppConstant.FLAG_NEW)
                 .createdBy(AuthContext.username())
                 .build();
         // Through PasswordService so the temporary credential satisfies the same policy as a chosen one, and
@@ -278,12 +301,15 @@ public class UserService {
         UserProfile profile = userProfiles.provisionFirst(saved.getId(), type, group,
                 affiliation.tenantId(), affiliation.tenantName(),
                 affiliation.institutionId(), affiliation.institutionName());
-        submitForApproval(saved, profile,
-                "Created by " + AuthContext.username() + " as " + describe(profile) + ".");
+        if (!selfApproved) {
+            submitForApproval(saved, profile,
+                    "Created by " + AuthContext.username() + " as " + describe(profile) + ".");
+        }
         audit.record(AppConstant.ACTION_CREATE, "User", saved.getId(), null, snapshot(saved, profile));
-        log.info("Created {} user {} in {} — waiting for approval", type.getActorClass(),
-                saved.getUsername(), affiliation.label());
-        return new TemporaryPasswordResponse(saved.getUsername(), temporary, true);
+        log.info("Created {} user {} in {} — {}", type.getActorClass(), saved.getUsername(),
+                affiliation.label(),
+                selfApproved ? "live, created by a super administrator" : "waiting for approval");
+        return new TemporaryPasswordResponse(saved.getUsername(), temporary, !selfApproved);
     }
 
     /**
@@ -829,15 +855,36 @@ public class UserService {
      * gets read down a phone. The symbol and digit are appended rather than left to chance so the value
      * cannot fail the very policy check that is about to run on it.
      */
+    /**
+     * A temporary password that satisfies the policy every time.
+     *
+     * <p>It did not. The old version drew ten characters from a mixed alphabet and then upper-cased
+     * position zero "in case ten draws happened to miss" — but the alphabet contains digits, and
+     * {@code Character.toUpperCase('7')} is {@code '7'}. Draw a digit first and the password reached
+     * {@code PasswordService.validate} with no uppercase letter in it, which throws.
+     *
+     * <p>So creating a user failed at random, roughly one time in seven, with "Password must contain an
+     * uppercase letter" — a message about a password the administrator never typed and cannot see, on a
+     * form with no password field. It surfaced here as a flaky test; in front of somebody it would have
+     * looked like the platform intermittently refusing to create staff for no reason.
+     *
+     * <p>One of each required class is now placed deliberately and the remainder drawn at random, then
+     * the whole thing is shuffled so the guaranteed characters are not always in the same positions —
+     * which is what turns a guarantee into something that does not also narrow the search space.
+     */
     private static String temporaryPassword() {
-        StringBuilder sb = new StringBuilder(14);
-        for (int i = 0; i < 10; i++) {
-            sb.append(TEMP_ALPHABET.charAt(RANDOM.nextInt(TEMP_ALPHABET.length())));
+        List<Character> chars = new ArrayList<>(14);
+        chars.add(UPPER.charAt(RANDOM.nextInt(UPPER.length())));
+        chars.add(LOWER.charAt(RANDOM.nextInt(LOWER.length())));
+        chars.add(DIGITS.charAt(RANDOM.nextInt(DIGITS.length())));
+        chars.add(SYMBOLS.charAt(RANDOM.nextInt(SYMBOLS.length())));
+        while (chars.size() < 14) {
+            chars.add(TEMP_ALPHABET.charAt(RANDOM.nextInt(TEMP_ALPHABET.length())));
         }
-        sb.append('#');
-        sb.append(RANDOM.nextInt(10));
-        // Guarantee an uppercase, in case ten draws happened to miss.
-        sb.setCharAt(0, Character.toUpperCase(sb.charAt(0)));
+        java.util.Collections.shuffle(chars, RANDOM);
+
+        StringBuilder sb = new StringBuilder(chars.size());
+        chars.forEach(sb::append);
         return sb.toString();
     }
 
