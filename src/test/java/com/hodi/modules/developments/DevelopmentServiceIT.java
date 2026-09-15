@@ -24,6 +24,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -152,7 +153,8 @@ class DevelopmentServiceIT {
         var created = service.create(request("Garden City Phase 2", "Nairobi"));
         Long id = HashIdUtil.decodeId(created.id());
         addTypology(id);
-        service.submit(created.id(), null);
+        service.submit(created.id(),
+                new com.hodi.modules.developments.DevelopmentDtos.SubmitRequest(null));
 
         service.applyPublication(id);
 
@@ -170,7 +172,8 @@ class DevelopmentServiceIT {
         var created = service.create(request("Sent Back Villas", "Nairobi"));
         Long id = HashIdUtil.decodeId(created.id());
         addTypology(id);
-        service.submit(created.id(), null);
+        service.submit(created.id(),
+                new com.hodi.modules.developments.DevelopmentDtos.SubmitRequest(null));
 
         service.applyRefusal(id, "The block plan does not match the unit schedule.");
 
@@ -229,13 +232,30 @@ class DevelopmentServiceIT {
         var created = service.create(request("Stubborn Heights", "Nairobi"));
         Long id = HashIdUtil.decodeId(created.id());
         addTypology(id);
-        service.submit(created.id(), null);
+        service.submit(created.id(),
+                new com.hodi.modules.developments.DevelopmentDtos.SubmitRequest(null));
         service.applyPublication(id);
 
         assertThrows(HodiException.class, () -> service.archive(created.id()));
     }
 
     /** Platform staff: no organisation of their own, which is the whole point of these tests. */
+    /** Platform staff who may also decide — the strongest caller there is, and still not exempt. */
+    private void signInAsPlatformApprover() {
+        User user = User.builder().id(11L).username("superadmin-approver").password("x")
+                .email("pa@example.invalid").firstName("Pat").lastName("Platform")
+                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
+        UserProfile profile = UserProfile.builder().id(11L).userId(11L)
+                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
+                .status(AppConstant.STATUS_ACTIVE).build();
+        UserPrincipal principal = UserPrincipal.of(user, profile,
+                Set.of("DEVELOPMENTS_CREATE", "DEVELOPMENTS_UPDATE", "DEVELOPMENTS_SUBMIT",
+                        "DEVELOPMENTS_APPROVE"),
+                List.of(), true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
     private void signInAsPlatform() {
         User user = User.builder().id(9L).username("superadmin").password("x")
                 .email("p@example.invalid").firstName("Pat").lastName("Platform")
@@ -551,5 +571,47 @@ class DevelopmentServiceIT {
                 AppConstant.APPROVAL_ACTION_PUBLISH).orElseThrow();
         assertTrue(waiting.getSubmissionNote().contains("bedrooms"),
                 "the note should describe the last change, not the first: " + waiting.getSubmissionNote());
+    }
+
+    /**
+     * The super administrator's exemption is user creation, and user creation only.
+     *
+     * <p>A {@code SUPER_ADMIN} creating a staff account skips the queue, because on a fresh platform
+     * there is nobody else who could ever approve it. That reasoning is about people; it does not extend
+     * to a project going on the marketplace, where a second pair of eyes always exists and the whole
+     * arrangement is that the bank provides it.
+     *
+     * <p>This is a regression test rather than a feature test. Nothing in {@code DevelopmentService}
+     * knows what kind of user the caller is, and this exists so that stays true — the cheapest way to
+     * widen the user-creation exemption by accident is to reach for the same condition here.
+     */
+    @Test
+    @DisplayName("a super administrator still cannot approve the development they submitted")
+    void superAdminGetsNoExemptionOnDevelopments() {
+        // With DEVELOPMENTS_APPROVE, so what refuses them is the maker/checker rule itself rather than a
+        // missing permission — the weaker refusal would pass this test while proving nothing.
+        signInAsPlatformApprover();
+        Long tenantId = tenantId();
+
+        var created = service.create(ownedBy("Platform Submitted", AppConstant.DEV_OWNER_SELLER,
+                HashIdUtil.encodeId(tenantId)));
+        Long id = HashIdUtil.decodeId(created.id());
+        // A project with nothing to buy cannot be submitted, so give it something first.
+        typeService.create(created.id(), typeSpec("Ninety-two square metres.", (short) 2, "9500000"));
+        service.submit(created.id(), null);
+
+        var waiting = approvals.pendingFor(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, id,
+                AppConstant.APPROVAL_ACTION_PUBLISH).orElseThrow();
+        assertEquals(AppConstant.APPROVAL_PENDING, waiting.getState(),
+                "submitting must still raise a request, whoever the caller is");
+
+        var refused = assertThrows(HodiException.class, () -> approvals.decide(
+                HashIdUtil.encodeId(waiting.getId()),
+                new com.hodi.modules.approvals.ApprovalService.DecisionRequest(
+                        AppConstant.APPROVAL_APPROVED, null)));
+        assertTrue(refused.getMessage().contains("You submitted this"),
+                "expected the maker/checker refusal, got: " + refused.getMessage());
+        assertFalse(developments.findById(id).orElseThrow().isLive(),
+                "the project must not have reached the marketplace");
     }
 }

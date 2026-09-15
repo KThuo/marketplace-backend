@@ -234,7 +234,10 @@ class UserApprovalIT {
     void onlyTheBankDecides() {
         signInAsMaker();
         service.create(newStaff("ada.sellercheck"));
-        String hash = HashIdUtil.encodeId(waitingFor("ada.sellercheck").getId());
+        // The numeric id, not the hash. HashIdUtil salts with the current username, so a hash minted as
+        // the maker decodes to a different number once the seller is signed in — which is how this test
+        // first failed, and only in a full run where the sequence had climbed high enough to overflow.
+        Long workflowId = waitingFor("ada.sellercheck").getId();
 
         Long tenantId = jdbc.queryForObject(
                 "select id from tenants where status <> 5 order by id limit 1", Long.class);
@@ -249,8 +252,8 @@ class UserApprovalIT {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(seller, null, seller.getAuthorities()));
 
-        assertThrows(HodiException.class, () ->
-                approvals.decide(hash, new DecisionRequest(AppConstant.APPROVAL_APPROVED, null)));
+        assertThrows(HodiException.class, () -> approvals.decide(
+                HashIdUtil.encodeId(workflowId), new DecisionRequest(AppConstant.APPROVAL_APPROVED, null)));
         assertFalse(reload("ada.sellercheck").isEnabled());
     }
 
