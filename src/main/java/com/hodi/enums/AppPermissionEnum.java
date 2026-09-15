@@ -204,17 +204,26 @@ public enum AppPermissionEnum {
      * A sales agent books units all day and should not be able to write down that money arrived; the person
      * who reconciles the bank statement does exactly that and books nothing. Folding the two together would
      * mean everybody who can take a name can also move a balance.
+     *
+     * Platform-only, because the bank collects. A seller sells through Co-op and money never reaches them
+     * directly, so writing down that it arrived is not theirs to do — they read the receipts like everybody
+     * else. This was not platform-only, and the blanket grant in TenantService.createOwnerGroup therefore
+     * handed every seller owner the ability to record and reverse money against their own bookings.
      */
-    PAYMENTS_RECEIVE("Record money received against a booking", AppModuleEnum.PAYMENTS),
-    /** Reversing money already receipted. Separate from recording it: a void changes a balance a buyer has seen. */
-    PAYMENTS_VOID("Void a payment, with a reason", AppModuleEnum.PAYMENTS),
+    PAYMENTS_RECEIVE("Record money received against a booking", AppModuleEnum.PAYMENTS, true),
+    /** Reversing money already receipted. The bank's, for the same reason as recording it. */
+    PAYMENTS_VOID("Void a payment, with a reason", AppModuleEnum.PAYMENTS, true),
     PAYMENT_TYPES_VIEW("See payment methods and the accounts money is collected into",
             AppModuleEnum.PAYMENTS),
     /**
-     * Where an organisation's money lands. The highest-consequence configuration change in the product,
-     * which is why every write under it also takes a one-time code sent to the organisation itself.
+     * Where the money lands. The highest-consequence configuration change in the product, which is why
+     * every write under it also takes a one-time code sent to the organisation itself.
+     *
+     * <p>Platform-only for the same reason as receiving it, and more sharply: the account money is
+     * collected into is the bank's, and a seller who could change it could redirect funds that are not
+     * theirs to redirect. The one-time code was protecting the wrong perimeter on its own.
      */
-    PAYMENT_TYPES_MANAGE("Set up, change and withdraw payment accounts", AppModuleEnum.PAYMENTS),
+    PAYMENT_TYPES_MANAGE("Set up, change and withdraw payment accounts", AppModuleEnum.PAYMENTS, true),
     /**
      * The catalogue is shared by every organisation on the platform, so switching a channel on or off is
      * the platform's decision and nobody else's.

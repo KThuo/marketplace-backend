@@ -700,13 +700,31 @@ public class SeederService {
     private int topUpOrganisationOwnerGroups() {
         Map<String, AppModule> modules = appModules.findAll().stream()
                 .collect(Collectors.toMap(AppModule::getCode, Function.identity(), (a, b) -> a));
-        List<Permission> grantable = permissions.findByPlatformOnlyFalseAndStatusNot(
-                AppConstant.STATUS_DELETED);
+        List<Permission> everything = permissions.findByStatusNot(AppConstant.STATUS_DELETED);
+        /*
+         * "Platform only" means a platform actor, not a group with no organisation on it.
+         *
+         * The bank's own administrator group carries an institution_id, so it was being filtered here
+         * exactly as a seller's owner group was — and a BANK_ADMIN is actor class PLATFORM. Co-op runs this
+         * platform; its staff are the platform's staff, and a rule that reads "platform only" while denying
+         * them is describing a column rather than an authority.
+         *
+         * The test is therefore the group's user type. A seller's owner still gets nothing that was never
+         * theirs to hold, which is what this filter was for.
+         */
+        Map<String, String> actorByType = userTypes.findAll().stream()
+                .collect(Collectors.toMap(UserType::getCode, UserType::getActorClass, (a, b) -> a));
 
         int added = 0;
         for (UserGroup group : userGroups.findSystemGroups()) {
             // The platform and buyer groups are global and have their own top-ups above.
             if (group.getTenantId() == null && group.getInstitutionId() == null) continue;
+
+            boolean platformActor = AppConstant.ACTOR_PLATFORM
+                    .equals(actorByType.get(group.getUserTypeCode()));
+            List<Permission> grantable = platformActor
+                    ? everything
+                    : everything.stream().filter(p -> !p.isPlatformOnly()).toList();
 
             List<Permission> due = grantable.stream()
                     .filter(p -> {
