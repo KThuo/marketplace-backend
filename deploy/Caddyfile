@@ -45,15 +45,24 @@ marketplace.qnex.io {
 		#   a blob: URL (services/agents.ts), because the endpoint writes an audit row and must not be
 		#   re-requested whenever a browser feels like it. Without blob: that image is blocked.
 		#
+		# frame-src https://www.google.com
+		#   MapPreview renders the map on every public listing, development and unit page as an
+		#   <iframe> pointed at maps/embed/v1/place. frame-src falls back to child-src and then to
+		#   default-src 'self', so without this every map preview on the marketplace is a blank box.
+		#
 		# style-src / img-src https:
 		#   Left as they were. Maps injects inline styles and pulls tiles from gstatic, both already
 		#   covered.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://marketplace.qnex.io https://*.googleapis.com wss:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://maps.googleapis.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://marketplace.qnex.io https://*.googleapis.com wss:; frame-src https://www.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 		X-Content-Type-Options "nosniff"
 		Referrer-Policy "strict-origin-when-cross-origin"
-		Permissions-Policy "geolocation=(), microphone=(), camera=()"
+		# geolocation=(self), not (). LocationPicker offers "Use my location" for somebody filling the
+		# form in while standing on the plot, and an empty allowlist denies it to this origin too — the
+		# button was there and the browser refused it before the permission prompt ever appeared. The
+		# user is still asked; this only says the page may do the asking.
+		Permissions-Policy "geolocation=(self), microphone=(), camera=()"
 		# X-XSS-Protection is deliberately absent. It is a dead header in every current browser and the
 		# filter it enabled introduced vulnerabilities of its own; the CSP above is what replaced it.
 	}
