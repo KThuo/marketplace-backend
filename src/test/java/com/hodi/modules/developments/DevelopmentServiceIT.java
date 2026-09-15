@@ -51,6 +51,7 @@ class DevelopmentServiceIT {
     @Autowired DevelopmentPhaseRepository phases;
     @Autowired DevelopmentPhaseService phaseService;
     @Autowired DevelopmentUnitTypeService typeService;
+    @Autowired com.hodi.modules.approvals.ApprovalService approvals;
     @Autowired JdbcTemplate jdbc;
 
     @AfterEach
@@ -489,5 +490,66 @@ class DevelopmentServiceIT {
 
         assertEquals(AppConstant.LISTING_LIVE, developments.findById(id).orElseThrow().getListingState(),
                 "re-approving over a typo would make the rule the thing people work around");
+    }
+
+    private SaveUnitTypeRequest typeSpec(String desc, short beds, String price) {
+        return new SaveUnitTypeRequest("2BED", "Two bedroom", desc, "APARTMENT",
+                beds, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
+                new java.math.BigDecimal(price), null, 40, 10);
+    }
+
+    /** Takes a live project and returns its id, with one typology already on it. */
+    private Long liveProjectWithAType(String name, java.util.concurrent.atomic.AtomicReference<String> typeId) {
+        var development = service.create(request(name, "Nairobi"));
+        Long id = HashIdUtil.decodeId(development.id());
+        typeId.set(typeService.create(development.id(), typeSpec("Ninety-two square metres.",
+                (short) 2, "9500000")).id());
+        service.submit(development.id(), null);
+        service.applyPublication(id);
+        return id;
+    }
+
+    /**
+     * A two-bed becoming a three-bed is the same kind of change as a price move.
+     *
+     * <p>The card a buyer decided on now describes a different home, so the bank looks again.
+     */
+    @Test
+    @DisplayName("changing the bedrooms on a live typology sends it back for approval")
+    void changingTheBedroomsNeedsTheBankAgain() {
+        signInAsSeller(tenantId());
+        var typeId = new java.util.concurrent.atomic.AtomicReference<String>();
+        Long id = liveProjectWithAType("Bedroom Heights", typeId);
+
+        typeService.update(HashIdUtil.encodeId(id), typeId.get(),
+                typeSpec("Ninety-two square metres.", (short) 3, "9500000"));
+
+        assertEquals(AppConstant.LISTING_PENDING, developments.findById(id).orElseThrow().getListingState(),
+                "a two-bed that became a three-bed is a different home from the one buyers were shown");
+    }
+
+    /**
+     * The checker is shown what changed last.
+     *
+     * <p>A seller editing twice before anybody looks has made one project stale, not two — and the earliest
+     * reason is the least current description of what is wrong with it.
+     */
+    @Test
+    @DisplayName("a second edit restates the waiting request rather than failing")
+    void theLatestChangeIsTheOneTheCheckerSees() {
+        signInAsSeller(tenantId());
+        var typeId = new java.util.concurrent.atomic.AtomicReference<String>();
+        Long id = liveProjectWithAType("Twice Edited", typeId);
+
+        typeService.update(HashIdUtil.encodeId(id), typeId.get(),
+                typeSpec("Ninety-two square metres.", (short) 2, "11000000"));
+        // The second edit must not fail with "that is already waiting for a decision".
+        typeService.update(HashIdUtil.encodeId(id), typeId.get(),
+                typeSpec("Ninety-two square metres.", (short) 3, "11000000"));
+
+        var waiting = approvals.pendingFor(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, id,
+                AppConstant.APPROVAL_ACTION_PUBLISH).orElseThrow();
+        assertTrue(waiting.getSubmissionNote().contains("bedrooms"),
+                "the note should describe the last change, not the first: " + waiting.getSubmissionNote());
     }
 }

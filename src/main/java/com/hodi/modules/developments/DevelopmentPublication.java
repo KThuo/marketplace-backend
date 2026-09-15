@@ -47,25 +47,44 @@ public class DevelopmentPublication {
      * leaving the page up with the old figure while the new one waits would prevent nothing. A draft or
      * private project has no public face, so nothing happens to it.
      *
-     * <p>Tolerant of a request already waiting: three price edits in a row have made one project stale, not
-     * three, and the second must not fail over an edit nobody knew was raising anything.
+     * <p>Tolerant of a request already waiting: three edits in a row have made one project stale, not three,
+     * and the second must not fail over an edit nobody knew was raising anything. The waiting request is
+     * restated rather than left alone — the checker is shown what changed last, because that is the most
+     * current description of what is wrong with the project.
      *
      * @param reason what the checker is shown, in the words of whatever changed
      */
     @Transactional
     public void requireReapproval(Long developmentId, String reason) {
         Development development = developments.findById(developmentId).orElse(null);
-        if (development == null || !development.isLive()) return;
+        if (development == null) return;
 
-        development.setListingState(AppConstant.LISTING_PENDING);
-        development.setPublishedAt(null);
-        development.setUpdatedBy(AuthContext.username());
-        Development saved = developments.save(development);
+        boolean live = development.isLive();
+        boolean alreadyWaiting = AppConstant.LISTING_PENDING.equals(development.getListingState());
+        /*
+         * A draft or private project has no public face and nothing waiting, so an edit to it is just an
+         * edit. Everything else is either on the marketplace or on its way back to it.
+         */
+        if (!live && !alreadyWaiting) return;
 
-        inventory.syncUnitRows(saved);
-        moveTypologies(saved, AppConstant.LISTING_DRAFT, null);
+        Development saved = development;
+        if (live) {
+            development.setListingState(AppConstant.LISTING_PENDING);
+            development.setPublishedAt(null);
+            development.setUpdatedBy(AuthContext.username());
+            saved = developments.save(development);
 
-        approvals.submitIfAbsent(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
+            inventory.syncUnitRows(saved);
+            moveTypologies(saved, AppConstant.LISTING_DRAFT, null);
+        }
+
+        /*
+         * Restated even when the project is already waiting, and that is the case this method got wrong
+         * first time: it returned early on anything not live, so a second edit before anybody looked left
+         * the checker reading the first reason. Two edits make one project stale, and the description of
+         * what is wrong with it should be the newer one.
+         */
+        approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_DEVELOPMENT, saved.getId(),
                 AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(saved), null,
                 saved.getReference() + " — " + saved.getName(), reason);
         log.info("Development {} needs approval again: {}", saved.getReference(), reason);

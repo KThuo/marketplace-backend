@@ -93,17 +93,23 @@ public class DevelopmentUnitTypeService {
         assertCodeFree(development.getId(), request.code(), type.getId());
 
         String before = snapshot(type);
-        java.math.BigDecimal priceBefore = type.getListPrice();
+        String materialBefore = material(type);
         apply(type, request);
         /*
-         * A price the bank has not seen must not be the price on the marketplace.
+         * What the bank has not seen must not be what the marketplace shows.
          *
-         * Only when it actually moved: re-approving a live project because somebody fixed a typo in a
-         * typology's description would make the rule the thing people work around.
+         * Wider than the price, because a two-bed becoming a three-bed is the same kind of change: the card
+         * a buyer decided on now describes a different home. Bedrooms, bathrooms, parking, floor area,
+         * balcony area, service charge and the kind of property all count, and so does the price.
+         *
+         * Narrower than "anything": the code, the name, the description, the planned count and the sort
+         * order are not here. Re-approving because somebody fixed a typo would make the rule the thing
+         * people work around, and a rule people work around protects nobody.
          */
-        if (priceChanged(priceBefore, type.getListPrice())) {
+        String materialAfter = material(type);
+        if (!materialBefore.equals(materialAfter)) {
             publication.requireReapproval(development.getId(),
-                    "The price of " + type.getName() + " changed.");
+                    changeNote(type, materialBefore, materialAfter));
         }
         type.setStatus(AppConstant.STATUS_EDITED);
         type.setStatusFlag(AppConstant.FLAG_EDITED);
@@ -127,11 +133,43 @@ public class DevelopmentUnitTypeService {
      * <p>Idempotent — calling it twice returns the listing that already exists rather than colliding with the
      * unique index, because a person clicking a button twice is not an error worth a 409.
      */
-    /** Whether a price moved, treating null and a changed figure alike and 9500000 == 9500000.00. */
-    static boolean priceChanged(java.math.BigDecimal before, java.math.BigDecimal after) {
-        if (before == null && after == null) return false;
-        if (before == null || after == null) return true;
-        return before.compareTo(after) != 0;
+    /**
+     * The facts about a typology a buyer decided on, as one string.
+     *
+     * <p>A fingerprint rather than eight comparisons, so adding a field to the record is one edit here
+     * rather than a condition somebody forgets. {@code plain} normalises the money and the areas, because
+     * {@code BigDecimal.equals} says 9500000 and 9500000.00 differ — and a save that re-read the same
+     * price from the database would otherwise look like a change and pull a live project down.
+     */
+    static String material(DevelopmentUnitType t) {
+        return String.join("|",
+                String.valueOf(t.getPropertyType()),
+                String.valueOf(t.getBedrooms()),
+                String.valueOf(t.getBathrooms()),
+                String.valueOf(t.getParkingSpaces()),
+                plain(t.getFloorAreaSqm()),
+                plain(t.getBalconyAreaSqm()),
+                plain(t.getListPrice()),
+                plain(t.getServiceCharge()));
+    }
+
+    static String plain(java.math.BigDecimal value) {
+        return value == null ? "-" : value.stripTrailingZeros().toPlainString();
+    }
+
+    /** What the checker is told, in the words of whatever actually moved. */
+    private static String changeNote(DevelopmentUnitType type, String before, String after) {
+        String[] was = before.split("\\|", -1);
+        String[] now = after.split("\\|", -1);
+        String[] fields = {"the kind of property", "bedrooms", "bathrooms", "parking",
+                "floor area", "balcony area", "the price", "the service charge"};
+        java.util.List<String> moved = new java.util.ArrayList<>();
+        for (int i = 0; i < fields.length && i < was.length && i < now.length; i++) {
+            if (!was[i].equals(now[i])) moved.add(fields[i]);
+        }
+        return moved.isEmpty()
+                ? type.getName() + " changed."
+                : "On " + type.getName() + ", " + String.join(" and ", moved) + " changed.";
     }
 
     /** The marketplace card for one typology, drafted. The one definition both paths build. */

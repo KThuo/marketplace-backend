@@ -290,14 +290,21 @@ public class DevelopmentUnitService {
         assertLabelFree(development.getId(), request.unitLabel(), unit.getId());
 
         String before = snapshot(unit);
-        java.math.BigDecimal priceBefore = unit.getPrice();
+        /*
+         * What a buyer was shown about this one home.
+         *
+         * Its price, and which typology it is — moving a unit from the two-beds to the three-beds changes
+         * every figure a buyer reads off it, because the rest are inherited from the type. The label, the
+         * floor and the notes are not here: they are how the home is referred to, not what it is.
+         */
+        String materialBefore = unitMaterial(unit);
         Long previousType = unit.getUnitTypeId();
         unit.setUnitTypeId(type.getId());
         unit.setPhaseId(resolvePhase(development, request.phaseHashId()));
         apply(unit, request);
-        if (DevelopmentUnitTypeService.priceChanged(priceBefore, unit.getPrice())) {
+        if (!materialBefore.equals(unitMaterial(unit))) {
             publication.requireReapproval(development.getId(),
-                    "The price of unit " + unit.getUnitLabel() + " changed.");
+                    "Unit " + unit.getUnitLabel() + " changed — its price or its kind of home.");
         }
         unit.setStatus(AppConstant.STATUS_EDITED);
         unit.setStatusFlag(AppConstant.FLAG_EDITED);
@@ -485,6 +492,11 @@ public class DevelopmentUnitService {
      * organisation where there is one, else the project's own; a bank's project that nobody is marketing yet
      * has neither, and the row is the institution's until it does.
      */
+    /** The two facts about one unit a buyer reads: what it costs, and which kind of home it is. */
+    private static String unitMaterial(Property unit) {
+        return DevelopmentUnitTypeService.plain(unit.getPrice()) + "|" + unit.getUnitTypeId();
+    }
+
     /**
      * A generated unit's own price, or null to take its type's.
      *

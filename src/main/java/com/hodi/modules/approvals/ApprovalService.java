@@ -105,23 +105,42 @@ public class ApprovalService {
      * @param scopeInstitutionId the institution whose queue this belongs in, or null
      */
     /**
-     * Raises a request, or leaves the one already waiting alone.
+     * Raises a request, or restates the one already waiting.
      *
      * <p>{@link #submit} refuses a duplicate, and that is right when somebody presses Submit twice: the
      * second press is a mistake and should say so. It is wrong when the request is raised as a consequence
-     * of something else — a seller changing three unit prices in a row has made one project stale, not
-     * three, and the second change must not fail with "that is already waiting for a decision" over an
-     * edit they did not know was raising anything.
+     * of something else — a seller changing three prices in a row has made one project stale, not three,
+     * and the second change must not fail with "that is already waiting for a decision" over an edit they
+     * did not know was raising anything.
      *
-     * <p>The note of the first one stands. It is the earliest thing that made the project stale, and the
-     * checker is looking at the project rather than at one edit in a sequence.
+     * <p><strong>The latest change is the one the checker sees.</strong> The note is replaced rather than
+     * kept, and the clock restarts, because the queue is a list of things to look at now and the earliest
+     * reason is the least current description of what is wrong with the project. The submitter moves too:
+     * the person whose work is being checked is the one who last touched it, and they are the one the
+     * maker/checker rule should block.
+     *
+     * <p>The gap worth naming: two different people editing the same project between approvals leaves only
+     * the later one blocked from deciding. The row holds one submitter, and the database CHECK compares
+     * against that one. Rare, and better than the alternative of blocking nobody.
      */
     @Transactional
-    public void submitIfAbsent(String entityType, Long entityId, String action,
-                               Long scopeTenantId, Long scopeInstitutionId,
-                               String subjectLabel, String note) {
-        if (repository.findPending(entityType, entityId, action).isPresent()) return;
-        submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId, subjectLabel, note);
+    public void submitOrRestate(String entityType, Long entityId, String action,
+                                Long scopeTenantId, Long scopeInstitutionId,
+                                String subjectLabel, String note) {
+        UserPrincipal caller = AuthContext.require();
+        ApprovalWorkflow waiting = repository.findPending(entityType, entityId, action).orElse(null);
+        if (waiting == null) {
+            submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId, subjectLabel, note);
+            return;
+        }
+
+        waiting.setSubmissionNote(note);
+        waiting.setSubmittedAt(OffsetDateTime.now());
+        waiting.setSubmittedByUserId(caller.getUserId());
+        waiting.setSubmittedByUsername(caller.getUsername());
+        repository.save(waiting);
+        audit.record(AppConstant.AUDIT_APPROVAL_SUBMIT, "ApprovalWorkflow", waiting.getId(), null,
+                entityType + "/" + action + " restated — " + note);
     }
 
     @Transactional
