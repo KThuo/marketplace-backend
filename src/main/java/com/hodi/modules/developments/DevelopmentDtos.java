@@ -36,6 +36,23 @@ public final class DevelopmentDtos {
             @Size(max = 255) String developerName,
             /** Who markets it. Null for a project that is tracked and not offered for sale. */
             String sellingTenantHashId,
+            /*
+             * Who OWNS it, and read only when the caller has no organisation of their own.
+             *
+             * {@code ownerKind} is SELLER or BANK. SELLER needs the organisation named; BANK does not,
+             * because there is one and the server resolves it — asking the client for its id would mean
+             * publishing a directory of banks to look it up in, which is the module that was retired.
+             *
+             * Only platform staff are read. Somebody who belongs to an organisation gets that
+             * organisation, and these are ignored rather than refused: the shortest way to guarantee a
+             * seller cannot assign a project to another seller is for the code never to read what they
+             * sent.
+             *
+             * Not honoured on update. Moving a project between organisations would take its units,
+             * bookings, payments and media with it, which is a transfer rather than an edit.
+             */
+            String ownerKind,
+            String ownerTenantHashId,
             @Size(max = 64) String county,
             @Size(max = 64) String town,
             @Size(max = 128) String estate,

@@ -78,7 +78,7 @@ class DevelopmentServiceIT {
 
     private SaveDevelopmentRequest request(String name, String town) {
         return new SaveDevelopmentRequest(name, "Two hundred units over four blocks.", "APARTMENT",
-                AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders Ltd", null,
+                AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders Ltd", null, null, null,
                 "Nairobi", town, "Kilimani", "Off Argwings Kodhek", null, null,
                 200, null, null, null, null, null, null);
     }
@@ -107,23 +107,12 @@ class DevelopmentServiceIT {
                 "asking a seller to name themselves is a question with one answer");
     }
 
-    @Test
-    @DisplayName("the platform cannot own a development, because somebody has to be building it")
-    void platformCannotCreate() {
-        User user = User.builder().id(9L).username("admin-test").password("x")
-                .email("a@example.invalid").firstName("Ada").lastName("Admin")
-                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
-        UserProfile profile = UserProfile.builder().id(9L).userId(9L)
-                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
-                .status(AppConstant.STATUS_ACTIVE).build();
-        UserPrincipal principal = UserPrincipal.of(user, profile, Set.of(), List.of(), true, true);
-        SecurityContextHolder.getContext().setAuthentication(
-                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
-
-        HodiException thrown = assertThrows(HodiException.class,
-                () -> service.create(request("Platform project", "Nairobi")));
-        assertTrue(thrown.getMessage().contains("building or financing"));
-    }
+    /*
+     * "the platform cannot own a development, because somebody has to be building it" used to be pinned
+     * here. Both halves of that stopped being true — Co-op runs this platform and also builds, and its
+     * staff carry no organisation — so the rule it guarded is gone. What replaced it is guarded below:
+     * platform staff must say whose project it is, and may say the bank.
+     */
 
     @Test
     @DisplayName("the publish gate refuses in turn: no town, then no unit type")
@@ -238,5 +227,99 @@ class DevelopmentServiceIT {
         service.applyPublication(id);
 
         assertThrows(HodiException.class, () -> service.archive(created.id()));
+    }
+
+    /** Platform staff: no organisation of their own, which is the whole point of these tests. */
+    private void signInAsPlatform() {
+        User user = User.builder().id(9L).username("superadmin").password("x")
+                .email("p@example.invalid").firstName("Pat").lastName("Platform")
+                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
+        UserProfile profile = UserProfile.builder().id(9L).userId(9L)
+                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
+                .status(AppConstant.STATUS_ACTIVE).build();
+        UserPrincipal principal = UserPrincipal.of(user, profile,
+                Set.of("DEVELOPMENTS_CREATE", "DEVELOPMENTS_UPDATE", "DEVELOPMENTS_SUBMIT"),
+                List.of(), true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The same request, with an owner named on it — which only platform staff may do. */
+    private SaveDevelopmentRequest ownedBy(String name, String kind, String tenantHash) {
+        return new SaveDevelopmentRequest(name, "Two hundred units over four blocks.", "APARTMENT",
+                AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders Ltd", null, kind, tenantHash,
+                "Nairobi", "Nairobi", "Kilimani", "Off Argwings Kodhek", null, null,
+                200, null, null, null, null, null, null);
+    }
+
+    // ── who may own one ───────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("platform staff draft on a seller's behalf, and the seller owns it")
+    void platformDraftsForASeller() {
+        Long tenantId = tenantId();
+        signInAsPlatform();
+
+        var created = service.create(ownedBy("Platform Drafted", AppConstant.DEV_OWNER_SELLER, HashIdUtil.encodeId(tenantId)));
+
+        assertEquals("SELLER", created.ownerKind());
+        assertEquals(tenantName(tenantId), created.ownerName());
+    }
+
+    /**
+     * The case the old refusal made impossible.
+     *
+     * <p>Co-op runs the platform and also builds, and its staff carry no organisation — so "a development
+     * belongs to the organisation building or financing it" turned away the only people who could have
+     * drafted this.
+     */
+    @Test
+    @DisplayName("the bank can own a development it is building itself")
+    void platformDraftsForTheBank() {
+        signInAsPlatform();
+
+        var created = service.create(ownedBy("The Bank's Own", AppConstant.DEV_OWNER_BANK, null));
+
+        assertEquals("BANK", created.ownerKind());
+        assertNotNull(created.ownerName());
+    }
+
+    @Test
+    @DisplayName("platform staff naming nobody are told what to choose")
+    void platformMustNameAnOwner() {
+        signInAsPlatform();
+
+        HodiException thrown = assertThrows(HodiException.class,
+                () -> service.create(ownedBy("Ownerless", null, null)));
+        assertTrue(thrown.getMessage().contains("whose project"), thrown.getMessage());
+    }
+
+    @Test
+    @DisplayName("naming a seller without saying which one is refused")
+    void sellerOwnerNeedsAnOrganisation() {
+        signInAsPlatform();
+
+        HodiException thrown = assertThrows(HodiException.class,
+                () -> service.create(ownedBy("Which Seller", AppConstant.DEV_OWNER_SELLER, null)));
+        assertTrue(thrown.getMessage().contains("seller organisation"), thrown.getMessage());
+    }
+
+    /**
+     * The guarantee that matters more than the feature.
+     *
+     * <p>A seller sending an owner is not refused — the fields are simply never read for a caller who has
+     * an organisation of their own. Refusing would work too; not reading is what makes it impossible to
+     * forget a check somewhere else.
+     */
+    @Test
+    @DisplayName("a seller naming another owner is ignored, not obeyed")
+    void aSellerCannotAssignSomebodyElse() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+
+        var created = service.create(ownedBy("Mine Really", AppConstant.DEV_OWNER_BANK, null));
+
+        assertEquals("SELLER", created.ownerKind());
+        assertEquals(tenantName(tenantId), created.ownerName());
     }
 }

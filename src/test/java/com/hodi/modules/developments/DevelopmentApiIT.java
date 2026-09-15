@@ -96,7 +96,7 @@ class DevelopmentApiIT {
     private String body(String name, String town) throws Exception {
         return json.writeValueAsString(new SaveDevelopmentRequest(
                 name, "Two hundred units.", "APARTMENT", AppConstant.DEV_PURPOSE_FOR_SALE,
-                "Acacia Builders", null, "Nairobi", town, "Kilimani", "Off Argwings Kodhek",
+                "Acacia Builders", null, null, null, "Nairobi", town, "Kilimani", "Off Argwings Kodhek",
                 null, null, 200, null, null, null, null, null, null));
     }
 
@@ -141,7 +141,7 @@ class DevelopmentApiIT {
     void validationIsWired() throws Exception {
         String invalid = json.writeValueAsString(new SaveDevelopmentRequest(
                 "  ", null, "APARTMENT", null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null, null));
         mvc.perform(post("/api/v1/developments/create")
                         .with(authentication(as(seller(Set.of("DEVELOPMENTS_CREATE")))))
                         .contentType(MediaType.APPLICATION_JSON)

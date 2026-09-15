@@ -74,7 +74,7 @@ class UnitsAreListingsIT {
 
         developmentId = developmentService.create(new SaveDevelopmentRequest(
                 "Rowhouse Gardens", "Twelve homes.", "APARTMENT", AppConstant.DEV_PURPOSE_FOR_SALE,
-                "Acacia Builders", null, "Nairobi", "Nairobi", "Kilimani", null, null, null,
+                "Acacia Builders", null, null, null, "Nairobi", "Nairobi", "Kilimani", null, null, null,
                 12, null, null, null, null, null, null)).id();
         typeId = typeService.create(developmentId, new SaveUnitTypeRequest(
                 "3BED", "Three bedroom", "A hundred and ten square metres.", "APARTMENT",

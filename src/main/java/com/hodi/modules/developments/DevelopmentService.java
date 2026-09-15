@@ -14,7 +14,9 @@ import com.hodi.modules.developments.DevelopmentDtos.DevelopmentResponse;
 import com.hodi.modules.developments.DevelopmentDtos.SaveDevelopmentRequest;
 import com.hodi.modules.developments.DevelopmentDtos.SubmitRequest;
 import com.hodi.modules.developments.DevelopmentDtos.WithdrawRequest;
+import com.hodi.modules.banks.Bank;
 import com.hodi.modules.banks.BankRepository;
+import com.hodi.modules.tenants.Tenant;
 import com.hodi.modules.tenants.TenantRepository;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
@@ -100,32 +102,23 @@ public class DevelopmentService {
     /**
      * Drafts a development.
      *
-     * <p>The owning principal is whichever organisation the caller belongs to — never a parameter. A platform
-     * administrator has no organisation and is refused, the same rule {@code AuctionService.create} states:
-     * somebody has to be building, and the platform is not.
+     * <p>The owner is derived for anybody who has an organisation and named for anybody who has not — see
+     * {@link #applyOwner}. It used to be derived always, and platform staff were refused outright on the
+     * grounds that "somebody has to be building, and the platform is not". Both halves of that stopped
+     * being true: the bank runs this platform and also builds, and its staff are platform staff carrying
+     * no organisation of their own, so the people who would draft a bank-owned project were exactly the
+     * ones being turned away.
      */
     @Transactional
     public DevelopmentResponse create(SaveDevelopmentRequest request) {
         UserPrincipal caller = AuthContext.require();
-        if (caller.getTenantId() == null && caller.getInstitutionId() == null) {
-            throw new HodiException(
-                    "A development belongs to the organisation building or financing it.",
-                    HttpStatus.FORBIDDEN);
-        }
 
         Development development = Development.builder()
                 .reference(nextReference())
                 .listingState(AppConstant.LISTING_DRAFT)
                 .build();
 
-        if (caller.getInstitutionId() != null) {
-            development.setInstitutionId(caller.getInstitutionId());
-            development.setInstitutionName(caller.getInstitutionName());
-        } else {
-            development.setTenantId(caller.getTenantId());
-            development.setTenantName(caller.getTenantName());
-        }
-
+        applyOwner(development, request, caller);
         apply(development, request, caller);
         development.setCreatedBy(AuthContext.username());
         Development saved = repository.save(development);
@@ -433,6 +426,80 @@ public class DevelopmentService {
     }
 
     /**
+     * Who owns the record: the one place the request's owner fields are ever read.
+     *
+     * <p>Derived for a caller who belongs somewhere, named by a caller who does not. A seller's own values
+     * are ignored rather than refused — the shortest guarantee that one seller cannot assign a project to
+     * another is for this method to never look at what they sent.
+     *
+     * <p>Platform staff say which kind, and name the organisation only when it is a seller. Saying
+     * nothing is the common mistake and gets a sentence about what to choose rather than a constraint
+     * violation from {@code ck_development_owner}, which is a worse way to learn it.
+     *
+     * <p>There is deliberately no third, owner-less state for "the platform built it". The bank has a row
+     * in {@code banks} and {@code institution_id} has always pointed at it, so a project Co-op builds is
+     * bank-owned. Inventing another ownership shape to say what an existing one already says would cost a
+     * migration, a relaxed CHECK and a fourth branch in every visibility rule.
+     */
+    private void applyOwner(Development development, SaveDevelopmentRequest request,
+                            UserPrincipal caller) {
+        if (caller.getInstitutionId() != null) {
+            development.setInstitutionId(caller.getInstitutionId());
+            development.setInstitutionName(caller.getInstitutionName());
+            return;
+        }
+        if (caller.getTenantId() != null) {
+            development.setTenantId(caller.getTenantId());
+            development.setTenantName(caller.getTenantName());
+            return;
+        }
+
+        String kind = blankToNull(request.ownerKind());
+        String tenantHash = blankToNull(request.ownerTenantHashId());
+
+        if (AppConstant.DEV_OWNER_SELLER.equalsIgnoreCase(kind)) {
+            if (tenantHash == null) {
+                throw new HodiException("Choose the seller organisation this project belongs to.",
+                        HttpStatus.BAD_REQUEST);
+            }
+            Tenant owner = tenants.findById(HashIdUtil.decodeId(tenantHash))
+                    .filter(t -> !java.util.Objects.equals(t.getStatus(), AppConstant.STATUS_DELETED))
+                    .orElseThrow(() -> new ResourceNotFoundException("Organisation", tenantHash));
+            development.setTenantId(owner.getId());
+            development.setTenantName(owner.getName());
+            return;
+        }
+
+        if (AppConstant.DEV_OWNER_BANK.equalsIgnoreCase(kind)) {
+            /*
+             * Resolved here rather than named by the caller. There is one bank — it runs the platform —
+             * and asking the client for its id would mean publishing a directory of banks to look it up
+             * in, which is precisely the module that was retired.
+             *
+             * More than one is refused rather than guessed. A deployment that has somehow acquired a
+             * second is not one this can pick for, and silently taking the first would attach a project
+             * to whichever happened to be created earliest.
+             */
+            List<Bank> live = institutions.findByStatusNotOrderByNameAsc(AppConstant.STATUS_DELETED);
+            if (live.isEmpty()) {
+                throw new HodiException("No bank is set up to own a project yet.", HttpStatus.CONFLICT);
+            }
+            if (live.size() > 1) {
+                throw new HodiException(
+                        "There is more than one bank on this platform, so which one owns this project "
+                                + "cannot be assumed.", HttpStatus.CONFLICT);
+            }
+            Bank owner = live.getFirst();
+            development.setInstitutionId(owner.getId());
+            development.setInstitutionName(owner.getName());
+            return;
+        }
+
+        throw new HodiException("Say whose project this is — a seller organisation, or the bank.",
+                HttpStatus.BAD_REQUEST);
+    }
+
+    /**
      * Sets who markets the development.
      *
      * <p>A seller drafting their own project is the selling organisation by default — asking them to name
@@ -491,7 +558,7 @@ public class DevelopmentService {
                 d.getDescription(),
                 d.getDevelopmentType(),
                 d.getPurpose(),
-                d.isInstitutionOwned() ? "BANK" : "SELLER",
+                d.isInstitutionOwned() ? AppConstant.DEV_OWNER_BANK : AppConstant.DEV_OWNER_SELLER,
                 d.principalName(),
                 d.getDeveloperName(),
                 d.getSellingTenantName(),

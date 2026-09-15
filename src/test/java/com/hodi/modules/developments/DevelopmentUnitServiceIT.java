@@ -77,7 +77,7 @@ class DevelopmentUnitServiceIT {
 
         developmentId = developmentService.create(new SaveDevelopmentRequest(
                 "Highrise Apartments", "Two hundred units.", "APARTMENT",
-                AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders", null,
+                AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders", null, null, null,
                 "Nairobi", "Nairobi", "Kilimani", null, null, null,
                 200, null, null, null, null, null, null)).id();
 

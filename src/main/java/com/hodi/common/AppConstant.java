@@ -87,6 +87,15 @@ public final class AppConstant {
     public static final String ONBOARDING_SUSPENDED  = "SUSPENDED";
     public static final String ONBOARDING_TERMINATED = "TERMINATED";
 
+    /**
+     * Who owns a development, on the wire in both directions.
+     *
+     * <p>The same two words the response sends back as {@code ownerKind}, so a client can round-trip what
+     * it was told. Two constants rather than four literals scattered over a service, a DTO and a client.
+     */
+    public static final String DEV_OWNER_SELLER = "SELLER";
+    public static final String DEV_OWNER_BANK   = "BANK";
+
     /*
      * The portfolio-scope constants used to sit here — FULL and SELECTED, the two widths a partnership
      * could grant a bank over a seller's listings. Nothing has read them since the partnership module was
