@@ -115,28 +115,9 @@ public class DevelopmentUnitTypeService {
      * <p>Idempotent — calling it twice returns the listing that already exists rather than colliding with the
      * unique index, because a person clicking a button twice is not an error worth a 409.
      */
-    @Transactional
-    public String listOnMarketplace(String developmentHashId, String typeHashId) {
-        UserPrincipal caller = AuthContext.require();
-        Development development = requireVisible(developmentHashId);
-        visibility.assertMayWriteUnits(development, caller);
-
-        if (development.getSellingTenantId() == null) {
-            throw new HodiException(
-                    "Say which organisation is marketing this development before listing a unit type.",
-                    HttpStatus.BAD_REQUEST);
-        }
-        DevelopmentUnitType type = require(development, typeHashId);
-
-        Optional<Property> existing = properties.findByUnitTypeId(type.getId());
-        if (existing.isPresent()) return existing.get().getReference();
-
-        if (type.getListPrice() == null && type.getFromPrice() == null) {
-            throw new HodiException("Give the unit type a price before listing it.",
-                    HttpStatus.BAD_REQUEST);
-        }
-
-        Property listing = Property.builder()
+    /** The marketplace card for one typology, drafted. The one definition both paths build. */
+    private Property cardFor(Development development, DevelopmentUnitType type) {
+        return Property.builder()
                 // The card for this kind of home: one row, whatever the number of units behind it.
                 .listingKind(AppConstant.LISTING_KIND_TYPOLOGY)
                 .tenantId(development.getSellingTenantId())
@@ -165,7 +146,54 @@ public class DevelopmentUnitTypeService {
                 .developmentName(development.getName())
                 .createdBy(AuthContext.username())
                 .build();
+    }
 
+    /**
+     * Gives every priced unit type a marketplace card, if it has not got one.
+     *
+     * <p>Called from {@code DevelopmentService.submit}, so sending a project for approval also drafts the
+     * cards buyers will actually see. They used to be made by hand, one "Put on the marketplace" click per
+     * typology, and a project whose units were generated but whose cards were never created looked complete
+     * from the inside and showed nothing on Browse — which is the failure this closes.
+     *
+     * <p>Silent about types with no price. A card has to carry a figure, and refusing the whole submission
+     * because one of four typologies is unpriced would be the gate this is removing, wearing a hat.
+     */
+    @Transactional
+    public int ensureListings(Development development) {
+        int drafted = 0;
+        for (DevelopmentUnitType type : repository.findForDevelopment(development.getId())) {
+            if (type.getListPrice() == null && type.getFromPrice() == null) continue;
+            if (properties.findByUnitTypeId(type.getId()).isPresent()) continue;
+            properties.save(cardFor(development, type));
+            inventory.recountUnitType(type.getId());
+            drafted++;
+        }
+        return drafted;
+    }
+
+    @Transactional
+    public String listOnMarketplace(String developmentHashId, String typeHashId) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireVisible(developmentHashId);
+        visibility.assertMayWriteUnits(development, caller);
+
+        if (development.getSellingTenantId() == null) {
+            throw new HodiException(
+                    "Say which organisation is marketing this development before listing a unit type.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        DevelopmentUnitType type = require(development, typeHashId);
+
+        Optional<Property> existing = properties.findByUnitTypeId(type.getId());
+        if (existing.isPresent()) return existing.get().getReference();
+
+        if (type.getListPrice() == null && type.getFromPrice() == null) {
+            throw new HodiException("Give the unit type a price before listing it.",
+                    HttpStatus.BAD_REQUEST);
+        }
+
+        Property listing = cardFor(development, type);
         Property saved = properties.save(listing);
         // Availability and construction status arrive through the one writer, not by being set here.
         inventory.recountUnitType(type.getId());

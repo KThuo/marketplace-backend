@@ -46,6 +46,7 @@ class DevelopmentServiceIT {
     @Autowired DevelopmentService service;
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
+    @Autowired com.hodi.modules.properties.PropertyRepository properties;
     @Autowired DevelopmentPhaseRepository phases;
     @Autowired DevelopmentPhaseService phaseService;
     @Autowired JdbcTemplate jdbc;
@@ -370,5 +371,58 @@ class DevelopmentServiceIT {
 
         assertEquals(100, created.percentComplete());
         assertNotNull(created.actualCompletionOn());
+    }
+
+    // ── one approval publishes the project, its cards and its units ───────────
+
+    /**
+     * What used to take four round trips.
+     *
+     * <p>A project with two typologies needed one DEVELOPMENT/PUBLISH plus one PROPERTY/PUBLISH per card,
+     * and the cards had to be created by hand first — so a project could pass every gate, go live, and show
+     * nothing on Browse, because Browse shows the cards. Submitting drafts them; approving publishes them.
+     */
+    @Test
+    @DisplayName("submitting drafts the marketplace cards, and one approval publishes everything")
+    void oneApprovalPublishesTheProjectAndItsCards() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+        var development = service.create(request("Palm Court", "Nairobi"));
+        Long id = HashIdUtil.decodeId(development.id());
+
+        unitTypes.save(DevelopmentUnitType.builder()
+                .developmentId(id).reference(RrnGenerator.generate("UT"))
+                .code("2BED").name("Two bedroom").propertyType("APARTMENT")
+                .listPrice(new java.math.BigDecimal("9500000")).build());
+        unitTypes.save(DevelopmentUnitType.builder()
+                .developmentId(id).reference(RrnGenerator.generate("UT"))
+                .code("3BED").name("Three bedroom").propertyType("APARTMENT")
+                .listPrice(new java.math.BigDecimal("14000000")).build());
+
+        // No selling organisation was ever named, and that used to be the refusal.
+        service.submit(development.id(), null);
+
+        var cards = properties.findTypologiesForDevelopment(id);
+        assertEquals(2, cards.size(), "submitting drafts a card for each priced typology");
+        assertTrue(cards.stream().allMatch(c -> AppConstant.LISTING_DRAFT.equals(c.getListingState())));
+
+        service.applyPublication(id);
+
+        assertTrue(properties.findTypologiesForDevelopment(id).stream()
+                        .allMatch(c -> AppConstant.LISTING_LIVE.equals(c.getListingState())),
+                "one approval, and the cards buyers see are live");
+        assertEquals(AppConstant.LISTING_LIVE,
+                developments.findById(id).orElseThrow().getListingState());
+    }
+
+    @Test
+    @DisplayName("a tenant-owned project markets itself unless told otherwise")
+    void theSellingOrganisationDefaults() {
+        Long tenantId = tenantId();
+        signInAsSeller(tenantId);
+
+        var created = service.create(request("Self Marketed", "Nairobi"));
+
+        assertEquals(tenantName(tenantId), created.sellingTenantName());
     }
 }

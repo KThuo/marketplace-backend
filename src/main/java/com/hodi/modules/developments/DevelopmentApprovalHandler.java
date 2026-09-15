@@ -31,7 +31,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DevelopmentApprovalHandler implements ApprovalHandler {
 
-    private final DevelopmentRepository developments;
     private final DevelopmentService service;
 
     @Override
@@ -44,24 +43,23 @@ public class DevelopmentApprovalHandler implements ApprovalHandler {
         return "DEVELOPMENTS_APPROVE";
     }
 
+    /**
+     * Only the bank decides.
+     *
+     * <p>This used to admit the owning tenant and the selling tenant as well, which meant a seller approving
+     * their own project — the thing the arrangement exists to prevent. The seller sells through the bank, so
+     * the bank is the checker on anything that reaches a buyer.
+     *
+     * <p>Its staff are platform staff, so that is the whole test. Note what this does <em>not</em> relax:
+     * {@code ck_approval_maker_checker} is a database CHECK, so the bank user who drafted a project still
+     * cannot be the one who approves it — another bank user must. A rule that can be switched off is not
+     * segregation of duties.
+     */
     @Override
     public void assertMayDecide(ApprovalWorkflow workflow, UserPrincipal caller) {
         if (caller.isPlatformStaff()) return;
-        Development development = developments.findById(workflow.getEntityId())
-                .orElseThrow(() -> new HodiException("That development no longer exists.",
-                        HttpStatus.CONFLICT));
-
-        boolean owns = caller.getInstitutionId() != null
-                && caller.getInstitutionId().equals(development.getInstitutionId());
-        boolean isOwningTenant = caller.getTenantId() != null
-                && caller.getTenantId().equals(development.getTenantId());
-        boolean isMarketing = caller.getTenantId() != null
-                && caller.getTenantId().equals(development.getSellingTenantId());
-
-        if (!owns && !isOwningTenant && !isMarketing) {
-            throw new HodiException("That development belongs to another organisation.",
-                    HttpStatus.FORBIDDEN);
-        }
+        throw new HodiException(
+                "Only the bank can approve a development for the marketplace.", HttpStatus.FORBIDDEN);
     }
 
     @Override

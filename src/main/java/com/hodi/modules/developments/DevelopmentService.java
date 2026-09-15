@@ -1,6 +1,7 @@
 package com.hodi.modules.developments;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.properties.Property;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
@@ -57,10 +58,12 @@ public class DevelopmentService {
     private final DevelopmentRepository repository;
     private final DevelopmentPhaseRepository phases;
     private final DevelopmentUnitTypeRepository unitTypes;
+    private final DevelopmentUnitTypeService unitTypeService;
     private final DevelopmentCollaboratorRepository collaborators;
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final TenantRepository tenants;
+    private final com.hodi.modules.properties.PropertyRepository properties;
     private final BankRepository institutions;
     private final ApprovalService approvals;
     private final AuditService audit;
@@ -120,6 +123,21 @@ public class DevelopmentService {
 
         applyOwner(development, request, caller);
         apply(development, request, caller);
+
+        /*
+         * A tenant-owned project markets itself unless told otherwise.
+         *
+         * applySellingTenant already defaults it from the caller, which covers a seller drafting their own.
+         * It did not cover platform staff drafting on a seller's behalf — and the gap was expensive, because
+         * a null selling organisation blocks BOTH submitting the project and putting a unit type on the
+         * marketplace, with two different messages and no hint that they are the same missing field.
+         *
+         * A bank-owned project still has to say, because there the answer genuinely is somebody else.
+         */
+        if (development.getSellingTenantId() == null && development.getTenantId() != null) {
+            development.setSellingTenantId(development.getTenantId());
+            development.setSellingTenantName(development.getTenantName());
+        }
         development.setCreatedBy(AuthContext.username());
         Development saved = repository.save(development);
         // Its unit rows are properties too, and they carry the project's state, name and place.
@@ -191,6 +209,15 @@ public class DevelopmentService {
         }
         assertReadyToPublish(development);
 
+        /*
+         * Draft the cards buyers will see, here rather than by hand.
+         *
+         * Before this, a project could be created, have its units generated, pass every gate and go live —
+         * and show nothing on Browse, because Browse shows typology cards and nobody had clicked "Put on
+         * the marketplace" on each of them. The button stays for listing one early; nobody has to find it.
+         */
+        unitTypeService.ensureListings(development);
+
         String before = snapshot(development);
         development.setListingState(AppConstant.LISTING_PENDING);
         development.setUpdatedBy(AuthContext.username());
@@ -250,8 +277,33 @@ public class DevelopmentService {
         Development saved = repository.save(development);
         // Its unit rows are properties too, and they carry the project's state, name and place.
         inventory.syncUnitRows(saved);
+        /*
+         * And its typology cards, which are what the marketplace actually shows.
+         *
+         * They used to hold their own approval each: publishing one project with three typologies meant four
+         * submit/approve round trips, three of them for rows nobody had drafted by hand — listOnMarketplace
+         * creates them. A second queue for a decision the bank has just made on the thing they belong to is
+         * a queue that only ever gets rubber-stamped.
+         */
+        publishTypologies(saved, AppConstant.LISTING_LIVE, saved.getPublishedAt());
         audit.record(AppConstant.ACTION_APPROVE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} is live", saved.getReference());
+    }
+
+    /**
+     * Moves every typology card with the project it belongs to.
+     *
+     * <p>A card that has been sold out or withdrawn on its own is left alone — its state is its own fact and
+     * outlives the project's, the same rule {@code unitListingStateFor} applies to a sold unit.
+     */
+    private void publishTypologies(Development development, String state, OffsetDateTime publishedAt) {
+        for (Property card : properties.findTypologiesForDevelopment(development.getId())) {
+            if (AppConstant.LISTING_SOLD.equals(card.getListingState())) continue;
+            card.setListingState(state);
+            card.setPublishedAt(publishedAt);
+            card.setUpdatedBy(AuthContext.username());
+            properties.save(card);
+        }
     }
 
     /** Refused, and back to the drafter. */
@@ -265,6 +317,9 @@ public class DevelopmentService {
         Development saved = repository.save(development);
         // Its unit rows are properties too, and they carry the project's state, name and place.
         inventory.syncUnitRows(saved);
+        // The cards go back with it: a live typology card on a project that is no longer live is the
+        // marketplace showing something the bank has just refused.
+        publishTypologies(saved, AppConstant.LISTING_DRAFT, null);
         audit.record(AppConstant.ACTION_UPDATE, "Development", saved.getId(), before, snapshot(saved));
         log.info("Development {} sent back: {}", saved.getReference(), reason);
     }

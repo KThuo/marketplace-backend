@@ -78,6 +78,11 @@ public interface PropertyRepository
      * seventy available" has to have exactly one place a buyer can read it.
      */
     /** The typology's card. Its units share the unit type id, so the kind is what makes this one row. */
+    /** Every typology card of one development — the marketplace cards its approval publishes. */
+    @Query("select p from Property p where p.developmentId = :developmentId "
+            + "and p.listingKind = 'TYPOLOGY' and p.status <> 5")
+    java.util.List<Property> findTypologiesForDevelopment(@Param("developmentId") Long developmentId);
+
     @Query("select p from Property p where p.unitTypeId = :unitTypeId and p.listingKind = 'TYPOLOGY' "
             + "and p.status <> 5")
     Optional<Property> findByUnitTypeId(@Param("unitTypeId") Long unitTypeId);
