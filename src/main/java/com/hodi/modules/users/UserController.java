@@ -35,16 +35,20 @@ public class UserController {
     }
 
     /**
-     * Creates a staff account and returns its temporary password once.
+     * Creates a staff account, disabled until the bank approves it, and returns its temporary password once.
      *
      * <p>The password is in the response body and nowhere else — not stored readable, not emailed from here.
      * The screen shows it once and tells the administrator to pass it on; there is deliberately no way to
      * retrieve it again, only to issue a new one.
+     *
+     * <p>The password is issued even though the account cannot yet be used, and that is the point: handing a
+     * credential over and letting it through the door are two acts, and only the second is the bank's.
      */
     @PostMapping("/create")
     @PreAuthorize("hasAuthority('USERS_CREATE')")
     public ApiResponse<TemporaryPasswordResponse> create(@Valid @RequestBody CreateUserRequest request) {
-        return ApiResponse.success("User created", service.create(request));
+        return ApiResponse.success("User created — waiting for the bank to approve them",
+                service.create(request));
     }
 
     @PostMapping("/update/{hashId}")

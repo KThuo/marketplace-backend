@@ -133,6 +133,14 @@ public enum AppPermissionEnum {
     USERS_RESET_PASSWORD("Issue a user a temporary password", AppModuleEnum.USERS),
     /** Ending somebody else's live sessions. Separate for the same reason as the above. */
     USERS_REVOKE_SESSIONS("Sign a user out of every device", AppModuleEnum.USERS),
+    /**
+     * Letting a newly created account sign in.
+     *
+     * <p>Not part of {@code USERS_ACTIVATE}, which switches a working account back on. This one decides
+     * whether a person exists on the platform at all, and the seller sells through the bank — so it is the
+     * bank's decision, held by whoever the bank chooses, and in no role template by default.
+     */
+    USERS_APPROVE("Approve a new user account", AppModuleEnum.USERS),
 
     // ── SETTINGS ──────────────────────────────────────────────────────────────
     APP_SETTINGS_VIEW("See settings", AppModuleEnum.APP_SETTINGS),

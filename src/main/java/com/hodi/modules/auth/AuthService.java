@@ -592,6 +592,20 @@ public class AuthService {
      * locked is not a disclosure — they already proved they know the password.
      */
     private void assertUsable(User user, UserProfile profile) {
+        /*
+         * Its own message, and before the generic one.
+         *
+         * Somebody holding a temporary password their administrator has just handed them has a right to the
+         * truth: the account exists, the password is right, and the bank has not approved it yet. "This
+         * account is not active" would send them back to the administrator, who would reissue a password
+         * that works no better.
+         */
+        if (!user.isEnabled() && user.getStatus() != null
+                && user.getStatus() == AppConstant.STATUS_NEW) {
+            throw new UnauthorizedException(
+                    "This account is waiting for the bank to approve it. You will be able to sign in "
+                            + "once they have.");
+        }
         if (!AppConstant.isLive(user.getStatus()) || !user.isEnabled()) {
             throw new UnauthorizedException("This account is not active");
         }

@@ -54,6 +54,14 @@ public final class UserDtos {
             Integer status,
             String statusFlag,
             String deactivationReason,
+            /**
+             * Created, but the bank has not let it sign in yet.
+             *
+             * <p>Its own flag rather than something the client infers from {@code status == 0}: the list
+             * needs to say "Waiting for approval" instead of "New", and it needs to hide Deactivate and
+             * Delete, both of which refuse on a waiting account.
+             */
+            boolean awaitingApproval,
             OffsetDateTime createdAt,
             String createdBy) {}
 
@@ -105,8 +113,16 @@ public final class UserDtos {
             @Size(max = 32) String phone,
             String userGroupId) {}
 
-    /** What a temporary password issue returns. Shown once and never retrievable again. */
-    public record TemporaryPasswordResponse(String username, String temporaryPassword) {}
+    /**
+     * What a temporary password issue returns. Shown once and never retrievable again.
+     *
+     * <p>{@code awaitingApproval} is true on a newly created account, and it changes what the screen has to
+     * say: hand the password over, but the person cannot use it until the bank approves them. An
+     * administrator who tells a new colleague to go and sign in, when they cannot, generates the support
+     * call this flag exists to prevent.
+     */
+    public record TemporaryPasswordResponse(String username, String temporaryPassword,
+                                            boolean awaitingApproval) {}
 
     /**
      * The user list's own filters, on top of the shared paging and search.

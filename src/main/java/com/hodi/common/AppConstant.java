@@ -134,6 +134,16 @@ public final class AppConstant {
     /** The decision being asked for. One entity can need several over its life. */
     public static final String APPROVAL_ACTION_ACTIVATE = "ACTIVATE";
 
+    /**
+     * A staff account, waiting for the bank to let it sign in.
+     *
+     * <p>{@code CREATE} rather than {@code ACTIVATE}: the account has never been in service, and the
+     * distinction matters to anybody reading the queue's history — an activation is a switch being turned
+     * back on, and this is a person the bank has not yet agreed exists.
+     */
+    public static final String APPROVAL_ENTITY_USER   = "USER";
+    public static final String APPROVAL_ACTION_CREATE = "CREATE";
+
     // ── Developments (a project with many units) ─────────────────────────────
     /**
      * Why a development exists. FOR_SALE is the marketplace case; the rest are the tracking case, which is

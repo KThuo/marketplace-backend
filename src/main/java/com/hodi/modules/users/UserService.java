@@ -93,6 +93,7 @@ public class UserService {
     private final RefreshTokenService refreshTokens;
     private final StorageService storage;
     private final AuditService audit;
+    private final com.hodi.modules.approvals.ApprovalService approvals;
 
     // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -253,9 +254,17 @@ public class UserService {
                 .username(username)
                 .phone(blankToNull(request.phone()))
                 .mustChangePassword(true)
-                .enabled(true)
-                .status(AppConstant.STATUS_ACTIVE)
-                .statusFlag(AppConstant.FLAG_ACTIVE)
+                /*
+                 * Created, and unable to sign in until the bank says so.
+                 *
+                 * STATUS_NEW rather than STATUS_INACTIVE, because those are different facts: inactive is an
+                 * account somebody switched off, and this one has never been in service. Conflating them
+                 * would make "never approved" and "deactivated" indistinguishable on the list and in the
+                 * trail, and would let `activate` treat one as the other.
+                 */
+                .enabled(false)
+                .status(AppConstant.STATUS_NEW)
+                .statusFlag(AppConstant.FLAG_NEW)
                 .createdBy(AuthContext.username())
                 .build();
         // Through PasswordService so the temporary credential satisfies the same policy as a chosen one, and
@@ -269,10 +278,45 @@ public class UserService {
         UserProfile profile = userProfiles.provisionFirst(saved.getId(), type, group,
                 affiliation.tenantId(), affiliation.tenantName(),
                 affiliation.institutionId(), affiliation.institutionName());
+        submitForApproval(saved, profile,
+                "Created by " + AuthContext.username() + " as " + describe(profile) + ".");
         audit.record(AppConstant.ACTION_CREATE, "User", saved.getId(), null, snapshot(saved, profile));
-        log.info("Created {} user {} in {}", type.getActorClass(), saved.getUsername(),
-                affiliation.label());
-        return new TemporaryPasswordResponse(saved.getUsername(), temporary);
+        log.info("Created {} user {} in {} — waiting for approval", type.getActorClass(),
+                saved.getUsername(), affiliation.label());
+        return new TemporaryPasswordResponse(saved.getUsername(), temporary, true);
+    }
+
+    /**
+     * Puts an account in front of the bank.
+     *
+     * <p>Scoped to the new person's own organisation rather than the caller's, so a seller's owner sees their
+     * own request waiting — and so the bank, who sees everything, reads it against the organisation it
+     * concerns. {@code submitOrRestate} rather than {@code submit}: a maker fixing what a send-back asked for
+     * should not be told their edit is already waiting for a decision.
+     */
+    private void submitForApproval(User user, UserProfile profile, String note) {
+        approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_USER, user.getId(),
+                AppConstant.APPROVAL_ACTION_CREATE, profile.getTenantId(),
+                profile.getInstitutionId(), user.fullName() + " — " + describe(profile), note);
+    }
+
+    /** What the checker reads before opening anything: the role, and where it applies. */
+    private static String describe(UserProfile profile) {
+        String group = profile.getUserGroupName() == null
+                ? profile.getUserTypeName() : profile.getUserGroupName();
+        return group + " at " + profile.organisationLabel();
+    }
+
+    /**
+     * Created, and not yet let in.
+     *
+     * <p>Both halves, because either alone is a different state: a disabled account that was once active is
+     * deactivated, and {@code STATUS_NEW} on an enabled row would be a row mid-save. Only the pair means
+     * "the bank has not decided".
+     */
+    private static boolean awaitingApproval(User user) {
+        return !user.isEnabled() && user.getStatus() != null
+                && user.getStatus() == AppConstant.STATUS_NEW;
     }
 
     @Transactional
@@ -339,11 +383,30 @@ public class UserService {
             }
         }
 
-        user.setStatus(AppConstant.STATUS_EDITED);
-        user.setStatusFlag(AppConstant.FLAG_EDITED);
+        /*
+         * A waiting account stays waiting, and goes back in front of the bank.
+         *
+         * Stamping STATUS_EDITED here would knock it off STATUS_NEW and make it indistinguishable from an
+         * approved account that somebody had edited — and it is that pair, disabled plus NEW, that the
+         * login guard and every button on the row read.
+         *
+         * The resubmission is what makes a send-back work: the checker says what is wrong, the maker fixes
+         * it and saves, and the request is raised again carrying the newer description. An edit made while
+         * the request is still pending restates it for the same reason, which is the rule already settled
+         * for developments — the checker should read the latest version of what they are being asked about.
+         */
+        boolean waiting = awaitingApproval(user);
+        if (!waiting) {
+            user.setStatus(AppConstant.STATUS_EDITED);
+            user.setStatusFlag(AppConstant.FLAG_EDITED);
+        }
         user.setUpdatedBy(AuthContext.username());
 
         User saved = repository.save(user);
+        if (waiting) {
+            submitForApproval(saved, profile,
+                    "Changed by " + AuthContext.username() + " — now " + describe(profile) + ".");
+        }
         audit.record(AppConstant.ACTION_UPDATE, "User", saved.getId(), before,
                 snapshot(saved, profile));
         return toResponse(saved, profile);
@@ -354,6 +417,7 @@ public class UserService {
         UserProfile profile = requireManageable(hashId);
         User user = account(profile);
         assertNotSelf(user, "deactivate");
+        assertNotAwaitingApproval(user, "Deactivating");
         assertNotLastOwner(profile, null);
 
         String before = snapshot(user, profile);
@@ -381,6 +445,14 @@ public class UserService {
     public void activate(String hashId) {
         UserProfile profile = requireManageable(hashId);
         User user = account(profile);
+        /*
+         * The guard that makes the gate real.
+         *
+         * USERS_ACTIVATE is a far commoner permission than USERS_APPROVE — every organisation grants it to
+         * whoever tidies up their staff list — and without this line it switches `enabled` on directly,
+         * which is the entire decision the bank was supposed to be making.
+         */
+        assertNotAwaitingApproval(user, "Activating");
         String before = snapshot(user, profile);
         user.setEnabled(true);
         user.setLocked(false);
@@ -400,6 +472,7 @@ public class UserService {
         UserProfile profile = requireManageable(hashId);
         User user = account(profile);
         assertNotSelf(user, "delete");
+        assertNotAwaitingApproval(user, "Deleting");
         assertNotLastOwner(profile, null);
 
         String before = snapshot(user, profile);
@@ -433,7 +506,7 @@ public class UserService {
         refreshTokens.revokeAllForUser(user.getId());
         audit.record(AppConstant.AUDIT_PASSWORD_CHANGE, "User", user.getId(), null,
                 "temporary password issued by " + AuthContext.username());
-        return new TemporaryPasswordResponse(user.getUsername(), temporary);
+        return new TemporaryPasswordResponse(user.getUsername(), temporary, awaitingApproval(user));
     }
 
     @Transactional
@@ -446,6 +519,71 @@ public class UserService {
         audit.record(AppConstant.AUDIT_SESSION_REVOKED, "User", user.getId(), null,
                 "revoked " + revoked + " session(s)");
         return revoked;
+    }
+
+    // ── what the bank's decision does ─────────────────────────────────────────
+
+    /**
+     * Approved: the account can sign in.
+     *
+     * <p>Called by {@link com.hodi.modules.users.UserApprovalHandler} inside the deciding transaction, so a
+     * failure here rolls the decision back rather than leaving a queue row reading "approved" beside an
+     * account that never opened.
+     *
+     * <p>{@code must_change_password} is deliberately untouched. The temporary credential the maker handed
+     * over is still temporary, and approval is permission to use it once — not permission to keep it.
+     *
+     * <p>No caller guards: every one of them ran before the decision was recorded. Tolerant of an account
+     * that is no longer waiting, because a stale queue row should not blow up a decision — it should do
+     * nothing, which is what an already-enabled account needs.
+     */
+    @Transactional
+    public void applyApproval(Long userId, String approvedBy) {
+        User user = repository.findById(userId).orElse(null);
+        if (user == null || !awaitingApproval(user)) return;
+        String before = snapshot(user);
+        user.setEnabled(true);
+        user.setStatus(AppConstant.STATUS_ACTIVE);
+        user.setStatusFlag(AppConstant.FLAG_ACTIVE);
+        user.setUpdatedBy(AuthContext.username());
+        repository.save(user);
+        audit.record(AppConstant.ACTION_ACTIVATE, "User", user.getId(), before, snapshot(user));
+        log.info("User {} approved by {}", user.getUsername(), approvedBy);
+    }
+
+    /**
+     * Refused. Rejection archives the account; a send-back leaves it waiting.
+     *
+     * <p>The difference is the whole reason the two decisions are separate words. A send-back is "fix this
+     * and come back", so the account has to survive for there to be anything to fix — the maker edits it and
+     * the edit resubmits. A rejection is "this person should not exist here", and an account left disabled
+     * after that is a row somebody with {@code USERS_ACTIVATE} could later switch on without a second look.
+     *
+     * <p>The username and email stay taken, which is deliberate: releasing them would let the same maker
+     * recreate the rejected account unchanged and put it straight back in the queue.
+     */
+    @Transactional
+    public void applyRefusal(Long userId, String decision, String reason) {
+        User user = repository.findById(userId).orElse(null);
+        if (user == null || !awaitingApproval(user)) return;
+        if (AppConstant.APPROVAL_SENT_BACK.equals(decision)) {
+            log.info("User {} sent back: {}", user.getUsername(), reason);
+            return;
+        }
+        String before = snapshot(user);
+        user.setStatus(AppConstant.STATUS_DELETED);
+        user.setStatusFlag(AppConstant.FLAG_DELETED);
+        user.setDeactivationReason(reason);
+        user.setUpdatedBy(AuthContext.username());
+        repository.save(user);
+        audit.record(AppConstant.ACTION_DELETE, "User", user.getId(), before, snapshot(user));
+        log.info("User {} rejected: {}", user.getUsername(), reason);
+    }
+
+    /** What a person's account looks like on its own — the profile is not what a decision changes. */
+    private static String snapshot(User user) {
+        return "{\"username\":\"%s\",\"enabled\":%s,\"status\":%d}"
+                .formatted(user.getUsername(), user.isEnabled(), user.getStatus());
     }
 
     // ── affiliation and authority ─────────────────────────────────────────────
@@ -605,6 +743,26 @@ public class UserService {
     }
 
     /**
+     * Nothing goes round the bank's decision.
+     *
+     * <p>Three endpoints could otherwise: {@code activate} would enable the account outright, and
+     * {@code deactivate} and {@code archive} would dispose of it while leaving a pending request pointing at
+     * it — which a checker could then approve into existence.
+     *
+     * <p>So disposal is the bank's too: they reject it. A maker who created an account by mistake asks for a
+     * rejection, and that is right rather than inconvenient — a maker who can make their own mistake vanish
+     * unseen is not working under Maker/Checker. What they <em>can</em> do alone is fix it: editing a waiting
+     * account resubmits it.
+     */
+    private static void assertNotAwaitingApproval(User user, String verb) {
+        if (awaitingApproval(user)) {
+            throw new HodiException(
+                    verb + " is not yours to do while this account is waiting for the bank to approve it. "
+                            + "Edit it to resubmit, or ask the bank to reject it.", HttpStatus.CONFLICT);
+        }
+    }
+
+    /**
      * The lock-out guard: an organisation must always retain one live member of its owner group.
      *
      * <p>Without it, deactivating the last owner — or moving them to a lesser group — leaves an organisation
@@ -722,6 +880,7 @@ public class UserService {
                 user.getStatus(),
                 user.getStatusFlag(),
                 user.getDeactivationReason(),
+                awaitingApproval(user),
                 user.getCreatedAt(),
                 user.getCreatedBy());
     }
