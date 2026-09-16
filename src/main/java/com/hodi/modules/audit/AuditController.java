@@ -60,6 +60,38 @@ public class AuditController {
         return ApiResponse.success(PagedResponse.from(page, AuditController::toResponse));
     }
 
+    /**
+     * What this person did, whoever they are.
+     *
+     * <p>No {@code AUDIT_VIEW}. That permission governs reading *other people's* trail, which is a
+     * privilege; reading your own is not one, and gating it would mean the only people who could see their
+     * own history are the auditors who least need the feature. A buyer, a seller's agent and a bank clerk
+     * all get theirs.
+     *
+     * <p>Filtered on {@code actorUserId} rather than on the username, because a username can be changed in
+     * the first session and the trail would then split across two names. The id is what does not move.
+     *
+     * <p>Deliberately not tenant-scoped either: somebody who has left an organisation still did what they
+     * did, and a trail that emptied when their profile moved would be the opposite of a record.
+     */
+    @GetMapping("/mine")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ApiResponse<PagedResponse<AuditResponse>> mine(@ModelAttribute PagedDataRequest request,
+                                                          @RequestParam(required = false) String entity,
+                                                          @RequestParam(required = false) String operation) {
+        Long me = com.hodi.security.principal.AuthContext.require().getUserId();
+        Specification<AuditLog> spec = SearchSpecs.allOf(
+                SearchSpecs.fuzzy("searchText", request.getSearch()),
+                SearchSpecs.eq("actorUserId", me),
+                SearchSpecs.eq("entity", entity == null || entity.isBlank() ? null : entity),
+                SearchSpecs.eq("operation", operation == null || operation.isBlank() ? null : operation),
+                SearchSpecs.betweenDays("createdAt", request.getFrom(), request.getTo()));
+        var page = repository.findAll(spec,
+                request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
+        return ApiResponse.success(PagedResponse.from(page, AuditController::toResponse));
+    }
+
     private static AuditResponse toResponse(AuditLog row) {
         return new AuditResponse(
                 HashIdUtil.encodeId(row.getId()),
