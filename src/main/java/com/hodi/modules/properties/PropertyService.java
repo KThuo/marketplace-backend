@@ -457,8 +457,31 @@ public class PropertyService {
                     + String.join(", ", unknown), HttpStatus.BAD_REQUEST);
         }
 
-        features.deleteAll(features.findForUnit(property.getId()));
+        /*
+         * The difference, not a rewrite.
+         *
+         * This deleted every row and re-inserted the whole set, which fails the moment a seller keeps an
+         * amenity they already had: Hibernate orders inserts before deletes within a transaction, so the
+         * re-inserted row meets its own predecessor and uk_unit_feature_unit refuses it. Saving a listing
+         * without changing its amenities — the commonest save there is — was a 500.
+         *
+         * Flushing between the two would have fixed the collision and kept the rewrite. The diff is better
+         * for a reason beyond the bug: these rows carry created_at and created_by, and re-inserting an
+         * amenity somebody chose last month would restamp it with today and whoever happened to press save.
+         */
+        java.util.List<com.hodi.modules.developments.UnitFeature> held =
+                features.findForUnit(property.getId());
+        java.util.Set<String> already = held.stream()
+                .map(com.hodi.modules.developments.UnitFeature::getFeatureCode)
+                .collect(java.util.stream.Collectors.toSet());
+
+        java.util.List<com.hodi.modules.developments.UnitFeature> gone = held.stream()
+                .filter(f -> !wanted.contains(f.getFeatureCode()))
+                .toList();
+        if (!gone.isEmpty()) features.deleteAll(gone);
+
         for (String code : wanted) {
+            if (already.contains(code)) continue;
             features.save(com.hodi.modules.developments.UnitFeature.builder()
                     .unitId(property.getId())
                     .featureCode(code)
