@@ -92,14 +92,19 @@ public class PropertyMediaService {
 
         var stored = storage.store(file, "properties");
         /*
-         * The cover is the first *photograph*, not the first file.
+         * The cover is the first *photograph*, not the first file — and it is taken, not merely claimed.
          *
          * Before kinds existed every row was a photograph and "the first one" was unambiguous. Now a seller
          * who uploads the floor plan first would have had a floor plan on the card, which is a worse first
          * impression than the blank one this rule was written to avoid.
+         *
+         * <p>Room is made before the insert because uk_property_media_primary permits one: claiming the flag
+         * while another row still holds it is a constraint violation and a lost upload, not a cover change.
+         * The same fault, and the same fix, as {@code MediaAssetService.add}.
          */
         boolean first = AppConstant.MEDIA_KIND_PHOTO.equals(normaliseKind(mediaKind))
                 && repository.countOfKind(property.getId(), AppConstant.MEDIA_KIND_PHOTO) == 0;
+        if (first) repository.clearPrimary(property.getId());
 
         PropertyMedia row = repository.save(PropertyMedia.builder()
                 .propertyId(property.getId())
@@ -175,7 +180,11 @@ public class PropertyMediaService {
          */
         if (property.getPrimaryImageKey() != null
                 && property.getPrimaryImageKey().equals(row.getStorageKey())) {
-            var next = repository.findForProperty(property.getId()).stream().findFirst().orElse(null);
+            // The next photograph, not the next file: a card led by a floor plan is the fault this
+            // whole rule exists to prevent, and promoting one also blocks the next photograph's upload.
+            var next = repository.findForProperty(property.getId()).stream()
+                    .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
+                    .findFirst().orElse(null);
             if (next != null) {
                 next.setPrimary(true);
                 repository.save(next);

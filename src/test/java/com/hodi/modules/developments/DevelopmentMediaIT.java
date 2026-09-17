@@ -190,6 +190,57 @@ class DevelopmentMediaIT {
     }
 
     @Test
+    @DisplayName("a plan is never the cover, and a photograph after one is not refused")
+    void aPlanDoesNotHoldTheCover() {
+        MediaResponse plan = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                jpeg("block-layout.jpg"), AppConstant.MEDIA_KIND_SITE_PLAN, null, null);
+        assertFalse(plan.primary(), "a site plan is not what a card should lead with");
+
+        MediaResponse photo = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                jpeg("one.jpg"), AppConstant.MEDIA_KIND_PHOTO, null, null);
+
+        assertTrue(photo.primary(), "the first photograph takes the cover, whatever was uploaded before it");
+        assertEquals(photo.url(),
+                developments.findById(development.getId()).orElseThrow().getPrimaryImageKey() == null
+                        ? null : photo.url(),
+                "and the parent's cache carries a photograph");
+    }
+
+    @Test
+    @DisplayName("a photograph after the plan inherited the cover is still accepted")
+    void theCoverIsTakenFromWhateverHoldsIt() {
+        /*
+         * The reported sequence, exactly: a plan is uploaded, then every photograph is deleted, and the next
+         * photograph upload was a 500.
+         *
+         * Deleting the last photograph promoted the plan — `remove` took the next row of any kind — and then
+         * `add` saw no photographs, decided the new one was the cover, and inserted a second primary into an
+         * index that permits one. uk_media_primary refused it, the upload was lost, and the unit type was
+         * left holding a plan and nothing else while the listing beside it showed no pictures at all.
+         */
+        MediaResponse photo = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                jpeg("one.jpg"), AppConstant.MEDIA_KIND_PHOTO, null, null);
+        media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                jpeg("block-layout.jpg"), AppConstant.MEDIA_KIND_SITE_PLAN, null, null);
+
+        media.remove(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null, photo.id());
+
+        List<MediaResponse> afterDelete = media.list(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null);
+        assertEquals(1, afterDelete.size());
+        assertFalse(afterDelete.getFirst().primary(),
+                "the plan must not inherit the cover — nothing renders a plan as a card's picture");
+        assertNull(developments.findById(development.getId()).orElseThrow().getPrimaryImageKey(),
+                "with no photograph left there is no cover, and the card falls back rather than showing a plan");
+
+        MediaResponse replacement = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,
+                jpeg("two.jpg"), AppConstant.MEDIA_KIND_PHOTO, null, null);
+
+        assertTrue(replacement.primary(), "and the replacement photograph is accepted, and is the cover");
+        assertEquals(2, media.list(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null).size(),
+                "the upload that used to be refused is in the album");
+    }
+
+    @Test
     @DisplayName("removing the last photograph clears the cover rather than keeping a dead key")
     void lastRemovalClearsCover() {
         MediaResponse only = media.add(id(development), AppConstant.MEDIA_OWNER_DEVELOPMENT, null,

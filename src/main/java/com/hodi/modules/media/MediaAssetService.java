@@ -121,6 +121,25 @@ public class MediaAssetService {
          * adding a photograph on a seller's behalf would have been refused, which is what a test found.
          * An institution-owned development has no tenant prefix to live under, so its files are shared.
          */
+        /*
+         * The cover is the first *photograph*, not the first file.
+         *
+         * Until the uploader sent a kind every row was a photograph and "the first one" was unambiguous. A
+         * seller who uploads the site plan first would otherwise have a site plan on the project's card — a
+         * worse first impression than the blank one this rule exists to prevent.
+         *
+         * <p>And the flag is *taken*, not merely claimed. Deciding this from "are there any photographs"
+         * while some other row already held the flag put a second primary into an index that permits one:
+         * uk_media_primary refused the insert, the upload was lost with a 500, and the album was left
+         * holding a plan and nothing else. That is reachable exactly when a delete has promoted a
+         * non-photograph, which `remove` below no longer does — but the room is made here regardless,
+         * because a rule that depends on another method never having misbehaved is not a rule.
+         */
+        boolean takesCover = AppConstant.MEDIA_KIND_PHOTO.equals(kind)
+                && repository.findForOwner(owner, ownerId).stream()
+                        .noneMatch(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()));
+        if (takesCover) repository.clearPrimary(owner, ownerId);
+
         var stored = tenantId == null
                 ? storage.storeShared(file, folderFor(owner))
                 : storage.storeFor(file, folderFor(owner), tenantId);
@@ -136,17 +155,7 @@ public class MediaAssetService {
                 .sizeBytes(stored.sizeBytes())
                 .caption(caption == null || caption.isBlank() ? null : caption.trim())
                 .sortOrder((int) held)
-                /*
-                 * The cover is the first *photograph*, not the first file.
-                 *
-                 * Until the uploader sent a kind every row was a photograph and "the first one" was
-                 * unambiguous. Now a seller who uploads the site plan before any photograph would have had
-                 * a site plan on the project's card — a worse first impression than the blank one this rule
-                 * exists to prevent.
-                 */
-                .primary(AppConstant.MEDIA_KIND_PHOTO.equals(kind)
-                        && repository.findForOwner(owner, ownerId).stream()
-                                .noneMatch(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind())))
+                .primary(takesCover)
                 .publicVisible(publicVisible)
                 .createdBy(AuthContext.username())
                 .build());
@@ -197,12 +206,24 @@ public class MediaAssetService {
         row.setUpdatedBy(AuthContext.username());
         repository.save(row);
 
+        /*
+         * The next *photograph*, and nothing if there is none.
+         *
+         * Promoting the next row of any kind handed the cover to a floor plan the moment somebody deleted
+         * their last photograph — a card led by a plan, and an album whose flag then refused the very
+         * upload that would have fixed it. An owner with no photograph left has no cover, which every read
+         * path already copes with: `coverKeyFor` returns null and the card falls back to the project's
+         * gallery.
+         */
         if (wasCover) {
-            repository.findForOwner(owner, ownerId).stream().findFirst().ifPresent(next -> {
-                next.setPrimary(true);
-                next.setUpdatedBy(AuthContext.username());
-                repository.save(next);
-            });
+            repository.findForOwner(owner, ownerId).stream()
+                    .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
+                    .findFirst()
+                    .ifPresent(next -> {
+                        next.setPrimary(true);
+                        next.setUpdatedBy(AuthContext.username());
+                        repository.save(next);
+                    });
         }
 
         audit.record(AppConstant.ACTION_DELETE, "MediaAsset", row.getId(), null,
@@ -214,6 +235,9 @@ public class MediaAssetService {
     public String coverKeyFor(String ownerType, Long ownerId) {
         String owner = normaliseOwnerType(ownerType);
         return repository.findPrimary(owner, ownerId)
+                // The flag is filtered rather than trusted: albums that a promotion already spoiled answer
+                // correctly from now on without a migration to go and unset them.
+                .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
                 .map(MediaAsset::getStorageKey)
                 // Falling back to "the first row" would hand the card a floor plan on an album that holds
                 // plans and no photographs, which is exactly the album a project starts with.
