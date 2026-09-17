@@ -202,6 +202,25 @@ public final class FinanceDtos {
              */
             String productReference) {}
 
+    /**
+     * One term, costed two ways.
+     *
+     * <p>Both questions somebody asks about length, answered on the same row, because they are the same
+     * arithmetic run in opposite directions and seeing only one of them is what makes a repayment look
+     * wrong. {@code monthlyRepayment} is what the loan they can take would cost over <em>this</em> term —
+     * shorter is dearer. {@code maxLoan} is what their ceiling payment would borrow over this term —
+     * shorter buys less. On the term actually chosen the two agree with the headline, which is what makes
+     * the table checkable rather than decorative.
+     *
+     * @param months how long, in months, so a screen can render years without the server assuming twelve
+     * @param chosen the row the answer above was computed on
+     */
+    public record TermOption(
+            short months,
+            BigDecimal monthlyRepayment,
+            BigDecimal maxLoan,
+            boolean chosen) {}
+
     /** Everything back, and only ever to the person who entered it. */
     public record AffordabilityResponse(
             String reference,
@@ -217,6 +236,8 @@ public final class FinanceDtos {
             Integer dependants,
             BigDecimal maxLoanAmount,
             BigDecimal maxPropertyPrice,
+            /** What this listing would need borrowed — its price less the deposit. Null without a listing. */
+            BigDecimal loanRequired,
             BigDecimal monthlyRepayment,
             BigDecimal dtiPercent,
             BigDecimal dtiCeilingPercent,
@@ -230,6 +251,8 @@ public final class FinanceDtos {
             String institutionName,
             /** The working, in order, as a person would check it by hand. */
             List<AffordabilityProvider.Step> steps,
+            /** What each term the product allows would cost, and what it would borrow. */
+            List<TermOption> terms,
             String propertyReference,
             String propertyTitle,
             BigDecimal propertyPrice,

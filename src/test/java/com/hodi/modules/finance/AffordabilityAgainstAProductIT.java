@@ -4,6 +4,7 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.finance.FinanceDtos.AffordabilityRequest;
+import com.hodi.modules.finance.FinanceDtos;
 import com.hodi.modules.finance.FinanceDtos.SaveProductRequest;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.users.User;
@@ -85,6 +86,20 @@ class AffordabilityAgainstAProductIT {
         return productRepository.findById(
                         com.hodi.security.hashid.HashIdUtil.decodeId(created.id()))
                 .orElseThrow().getReference();
+    }
+
+    /** A live listing at a known price, so a check can be run against something real. */
+    private String aLiveListingAt(BigDecimal price) {
+        Long tenantId = jdbc.queryForObject(
+                "select id from tenants where status <> 5 order by id limit 1", Long.class);
+        String reference = RrnGenerator.generate("PR");
+        jdbc.update("insert into properties (reference, tenant_id, title, property_type, listing_type, "
+                        + "price, currency, county, listing_state, listing_kind, published_at, status, "
+                        + "status_flag, created_at, updated_at) "
+                        + "values (?, ?, 'Test house', 'HOUSE', 'SALE', ?, 'KES', 'Nairobi', 'LIVE', "
+                        + "'HOUSE', now(), 1, 'ACTIVE', now(), now())",
+                reference, tenantId, price);
+        return reference;
     }
 
     // ── creating one at all ──────────────────────────────────────────────────
@@ -211,6 +226,55 @@ class AffordabilityAgainstAProductIT {
                 .findFirst().orElseThrow().value();
         assertEquals(0, maxPriceFromSteps.compareTo(result.maxPropertyPrice()),
                 "the steps and the headline must be the same calculation, not two of them");
+    }
+
+    @Test
+    @DisplayName("every term the product allows is costed both ways, and the chosen one matches the headline")
+    void theTermTableReconciles() {
+        String reference = aPublishedProduct();
+
+        var result = affordability.estimate(new AffordabilityRequest(
+                new BigDecimal("200000"), null, null, new BigDecimal("2000000"),
+                (short) 240, null, null, null, reference));
+
+        // The product runs 60 to 240 months, so 300 must not be offered.
+        assertTrue(result.terms().stream().noneMatch(t -> t.months() == 300),
+                "offering a term the mortgage does not run to is offering a figure the bank would refuse");
+
+        var chosen = result.terms().stream().filter(FinanceDtos.TermOption::chosen).findFirst().orElseThrow();
+        assertEquals((short) 240, chosen.months());
+        assertEquals(0, chosen.maxLoan().compareTo(result.maxLoanAmount()),
+                "on the chosen term the table and the headline are the same calculation");
+        assertEquals(0, chosen.monthlyRepayment().compareTo(result.monthlyRepayment()),
+                "and so is the repayment");
+
+        // Shorter is dearer on the same loan, and buys less at the same repayment. Both directions, so a
+        // reader can see that a shorter term costing more is arithmetic rather than a mistake.
+        var fiveYears = result.terms().stream().filter(t -> t.months() == 60).findFirst().orElseThrow();
+        assertTrue(fiveYears.monthlyRepayment().compareTo(chosen.monthlyRepayment()) > 0,
+                "the same loan over five years costs more each month than over twenty");
+        assertTrue(fiveYears.maxLoan().compareTo(chosen.maxLoan()) < 0,
+                "and the same repayment borrows less over five years than over twenty");
+    }
+
+    @Test
+    @DisplayName("against a listing, the loan is that listing's price less the deposit")
+    void aListingIsCostedOnItsOwnPrice() {
+        String reference = aPublishedProduct();
+        String listing = aLiveListingAt(new BigDecimal("6000000"));
+
+        var result = affordability.estimate(new AffordabilityRequest(
+                new BigDecimal("400000"), null, null, new BigDecimal("2000000"),
+                (short) 240, null, null, listing, reference));
+
+        assertEquals(0, result.loanRequired().compareTo(new BigDecimal("4000000")),
+                "the question was about this home: 6,000,000 less the 2,000,000 they have");
+        assertTrue(result.maxLoanAmount().compareTo(result.loanRequired()) > 0,
+                "they could borrow more than this home needs — which is a different figure, kept apart");
+        assertEquals(0, result.monthlyRepayment().compareTo(
+                        com.hodi.modules.finance.Amortisation.monthlyRepayment(
+                                new BigDecimal("4000000"), new BigDecimal("12.000"), 240)),
+                "and the repayment is on that loan, not on the maximum");
     }
 
     @Test

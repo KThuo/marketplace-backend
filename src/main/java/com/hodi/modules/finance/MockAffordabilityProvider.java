@@ -121,7 +121,7 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
                     product.name() + " is for households earning at least "
                             + money(product.minMonthlyIncome()) + " a month.",
                     BigDecimal.ZERO, deposit, BigDecimal.ZERO, BigDecimal.ZERO, ceiling, rate,
-                    null, payload, term, List.copyOf(steps));
+                    null, payload, term, null, List.copyOf(steps));
         }
         if (product != null && product.minMonthlyIncome() != null) {
             steps.add(Step.check("Minimum income for " + product.name(), true,
@@ -174,6 +174,24 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         steps.add(Step.money("The most you could pay for a home", money(maxLoan) + " + "
                 + money(deposit) + " deposit", maxPrice, null));
 
+        /*
+         * What the loan they can actually take would cost — which is the ceiling only when the ceiling is
+         * what limited it.
+         *
+         * Where the deposit capped the loan, the repayment on that smaller loan is lower than the ceiling,
+         * and reporting the ceiling as "your repayment" overstated it: a household shown a loan of eight
+         * million and a repayment worked out on ten would find the two did not go together, and would be
+         * right. The ceiling is still on screen a few lines above, as what they *could* pay.
+         */
+        BigDecimal repaymentOnMaxLoan = Amortisation.monthlyRepayment(maxLoan, rate, term);
+        if (repaymentOnMaxLoan.compareTo(affordableRepayment) < 0) {
+            steps.add(Step.money("What that loan would actually cost you",
+                    money(maxLoan) + " at " + rate(rate) + "% over " + term + " months",
+                    repaymentOnMaxLoan,
+                    "Less than the " + money(affordableRepayment) + " you could put to it, because the "
+                            + "deposit — not your income — is what limited the loan."));
+        }
+
         addFeeSteps(product, maxLoan, steps);
 
         // No particular property: the answer is the headline, and there is nothing to be ineligible for.
@@ -184,9 +202,11 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
             String reason = reasonForHeadline(can, netIncome, maxLoan, ceiling, product, deposit);
             Map<String, Object> payload = payload(request, product, grossTotal, netIncome, ceiling, rate,
                     term, maxLoan, maxPrice, deposit, outcome);
-            return new Decision(outcome, reason, maxLoan, maxPrice, affordableRepayment,
-                    Amortisation.shareOf(affordableRepayment, netIncome), ceiling, rate, null, payload,
-                    term, List.copyOf(steps));
+            // The repayment reported is the one on the loan offered, not the ceiling it was measured
+            // against — see the step above for why the two can differ.
+            return new Decision(outcome, reason, maxLoan, maxPrice, repaymentOnMaxLoan,
+                    Amortisation.shareOf(repaymentOnMaxLoan, netIncome), ceiling, rate, null, payload,
+                    term, null, List.copyOf(steps));
         }
 
         // A property is named: the question becomes whether this one fits.
@@ -252,8 +272,10 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         payload.put("loanRequired", required);
         payload.put("repaymentRequired", repaymentNeeded);
         payload.put("repaymentAsShareOfNetIncome", dti);
+        // `required` — what this home needs — travels beside the maximum, because the question asked was
+        // about this home and the two are different numbers.
         return new Decision(outcome, reason, maxLoan, maxPrice, repaymentNeeded, dti, ceiling, rate,
-                null, payload, term, List.copyOf(steps));
+                null, payload, term, required, List.copyOf(steps));
     }
 
     /** The ceiling this product allows, or the platform's configured default where it names none. */

@@ -135,6 +135,16 @@ public interface AffordabilityProvider {
             Map<String, Object> payload,
             /** The term actually used, which a product's band may have moved. */
             short termMonths,
+            /**
+             * The loan this particular home needs — its price less the deposit — or null when no home was
+             * named.
+             *
+             * <p>Distinct from {@code maxLoanAmount}, which is the most this household could borrow at all.
+             * A check run against a listing is about that listing: quoting the maximum beside it invited
+             * the reader to think they were being offered it, when the question they asked was what *this*
+             * house would cost them.
+             */
+            BigDecimal loanRequired,
             /** The working, in order, for the screen that explains the answer. */
             java.util.List<Step> steps) {}
 }

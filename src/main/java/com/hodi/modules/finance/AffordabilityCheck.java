@@ -57,6 +57,14 @@ public class AffordabilityCheck {
     @Builder.Default private BigDecimal maxLoanAmount = BigDecimal.ZERO;
     @Column(name = "max_property_price", nullable = false, precision = 15, scale = 2)
     @Builder.Default private BigDecimal maxPropertyPrice = BigDecimal.ZERO;
+    /**
+     * What this particular listing needed borrowed, when the check was against one.
+     *
+     * <p>Kept beside the maximum rather than instead of it: reopening a check about a specific home has to
+     * show what that home would have cost, not what the household could have borrowed in general.
+     */
+    @Column(name = "loan_required", precision = 15, scale = 2) private BigDecimal loanRequired;
+
     @Column(name = "monthly_repayment", nullable = false, precision = 15, scale = 2)
     @Builder.Default private BigDecimal monthlyRepayment = BigDecimal.ZERO;
     @Column(name = "dti_percent", precision = 5, scale = 2) private BigDecimal dtiPercent;
@@ -82,6 +90,18 @@ public class AffordabilityCheck {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "provider_payload", columnDefinition = "jsonb")
     private Map<String, Object> providerPayload;
+
+    /**
+     * The working, as it was shown on the day.
+     *
+     * <p>Kept rather than re-derived. Re-running the arithmetic when somebody reopens a check would answer
+     * with today's product — a rate that has moved since, a ceiling the bank has tightened — and quietly
+     * contradict the figures stored on this very row. A check is a record of what a household was told, and
+     * the explanation is part of what they were told.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "provider_steps", columnDefinition = "jsonb")
+    private java.util.List<AffordabilityProvider.Step> providerSteps;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)

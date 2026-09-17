@@ -99,8 +99,10 @@ public class AffordabilityService {
                 .assumedRate(computed.assumedRate())
                 .provider(computed.provider())
                 .providerPayload(computed.working())
+                .loanRequired(computed.loanRequired())
                 .productReference(computed.productReference())
                 .productName(computed.productName())
+                .providerSteps(computed.steps())
                 .createdBy(AuthContext.username())
                 .updatedBy(AuthContext.username())
                 .build();
@@ -168,6 +170,7 @@ public class AffordabilityService {
                 request.dependants(),
                 decision.maxLoanAmount(),
                 decision.maxPropertyPrice(),
+                decision.loanRequired(),
                 carryable,
                 decision.dtiPercent(),
                 decision.dtiCeilingPercent(),
@@ -178,6 +181,8 @@ public class AffordabilityService {
                 product == null ? null : product.getName(),
                 product == null ? null : product.getInstitutionName(),
                 decision.steps(),
+                termOptions(product, decision, rate, term, nz(request.depositAmount()),
+                        netIncomeFor(request)),
                 property == null ? null : property.getReference(),
                 property == null ? null : property.getTitle(),
                 property == null ? null : property.getPrice(),
@@ -300,6 +305,79 @@ public class AffordabilityService {
                         HttpStatus.BAD_REQUEST));
     }
 
+    /**
+     * What every term on offer would mean, so the length of the loan stops being a number somebody has to
+     * take on trust.
+     *
+     * <p>Two columns because there are two questions, and answering only one of them is what makes a
+     * repayment look wrong: <em>what would this loan cost me over five years rather than twenty</em>, and
+     * <em>what could I borrow if I took five</em>. The row for the chosen term agrees with the headline by
+     * construction, which is the check a reader can make without doing any arithmetic themselves.
+     *
+     * <p>Bounded by the product where there is one. Offering a household a twenty-five year column on a
+     * mortgage that stops at twenty is offering them a number the bank would not honour.
+     */
+    private List<FinanceDtos.TermOption> termOptions(MortgageProduct product,
+                                                     AffordabilityProvider.Decision decision,
+                                                     BigDecimal rate, short chosenTerm,
+                                                     BigDecimal deposit, BigDecimal netIncome) {
+        BigDecimal loan = decision.maxLoanAmount();
+        /*
+         * The ceiling, not the repayment the answer reports.
+         *
+         * They are the same figure only when income is what limited the loan. Where the deposit capped it
+         * the reported repayment is the smaller one on the capped loan, and reading the table backwards
+         * from that would quietly shrink every row — including the one that has to agree with the headline.
+         */
+        BigDecimal ceilingPayment = Amortisation.percentOf(netIncome, decision.dtiCeilingPercent());
+        if (loan == null || loan.signum() <= 0) return List.of();
+
+        short min = product == null || product.getMinTermMonths() == null ? 12 : product.getMinTermMonths();
+        short max = product == null || product.getMaxTermMonths() == null
+                ? 300 : product.getMaxTermMonths();
+
+        /*
+         * The deposit caps every row, exactly as it caps the headline.
+         *
+         * A product lending at most 80% of a price cannot lend more than the deposit supports however long
+         * the term runs, so a table that showed the uncapped annuity would offer a longer term as a way
+         * round a rule it is not a way round — and would disagree with the figure printed above it, which
+         * is the precise complaint this table exists to answer.
+         */
+        BigDecimal ltvCap = null;
+        if (product != null && product.getMaxLtvPercent() != null
+                && product.getMaxLtvPercent().signum() > 0
+                && product.getMaxLtvPercent().compareTo(new BigDecimal("100")) < 0) {
+            BigDecimal ltv = product.getMaxLtvPercent();
+            ltvCap = nz(deposit).multiply(ltv)
+                    .divide(new BigDecimal("100").subtract(ltv), 2, java.math.RoundingMode.HALF_UP);
+        }
+
+        List<FinanceDtos.TermOption> rows = new ArrayList<>();
+        for (short months : new short[] {60, 120, 180, 240, 300}) {
+            if (months < min || months > max) continue;
+            rows.add(row(loan, ceilingPayment, rate, months, chosenTerm, ltvCap));
+        }
+        // The chosen term may be one the standard row set does not carry — a product whose band is 12 to 36
+        // months, say. The row the answer was computed on always appears.
+        if (rows.stream().noneMatch(FinanceDtos.TermOption::chosen)) {
+            rows.add(row(loan, ceilingPayment, rate, chosenTerm, chosenTerm, ltvCap));
+            rows.sort(java.util.Comparator.comparingInt(FinanceDtos.TermOption::months));
+        }
+        return List.copyOf(rows);
+    }
+
+    /** One row: the loan they can take costed over this term, and what their ceiling buys over it. */
+    private static FinanceDtos.TermOption row(BigDecimal loan, BigDecimal ceilingPayment, BigDecimal rate,
+                                              short months, short chosenTerm, BigDecimal ltvCap) {
+        BigDecimal borrowable = Amortisation.loanFor(ceilingPayment, rate, months);
+        if (ltvCap != null && ltvCap.compareTo(borrowable) < 0) borrowable = ltvCap;
+        return new FinanceDtos.TermOption(months,
+                Amortisation.monthlyRepayment(loan, rate, months),
+                borrowable,
+                months == chosenTerm);
+    }
+
     /** The product's own columns, in the shape the assessor's contract asks for. */
     private static AffordabilityProvider.ProductTerms termsOf(MortgageProduct p) {
         if (p == null) return null;
@@ -318,10 +396,11 @@ public class AffordabilityService {
                 computed.currency(), computed.grossMonthlyIncome(), computed.otherMonthlyIncome(),
                 computed.monthlyObligations(), computed.depositAmount(), computed.termMonths(),
                 computed.employmentType(), computed.dependants(), computed.maxLoanAmount(),
-                computed.maxPropertyPrice(), computed.monthlyRepayment(), computed.dtiPercent(),
+                computed.maxPropertyPrice(), computed.loanRequired(), computed.monthlyRepayment(),
+                computed.dtiPercent(),
                 computed.dtiCeilingPercent(), computed.assumedRate(), computed.provider(),
                 computed.providerLabel(), computed.productReference(), computed.productName(),
-                computed.institutionName(), computed.steps(),
+                computed.institutionName(), computed.steps(), computed.terms(),
                 computed.propertyReference(), computed.propertyTitle(), computed.propertyPrice(),
                 computed.working(), computed.options(), computed.disclaimer(), createdAt);
     }
@@ -338,12 +417,14 @@ public class AffordabilityService {
                 c.getGrossMonthlyIncome(), c.getOtherMonthlyIncome(), c.getMonthlyObligations(),
                 c.getDepositAmount(), c.getTermMonths(), c.getEmploymentType(),
                 c.getDependants() == null ? null : c.getDependants().intValue(),
-                c.getMaxLoanAmount(), c.getMaxPropertyPrice(), c.getMonthlyRepayment(),
+                c.getMaxLoanAmount(), c.getMaxPropertyPrice(), c.getLoanRequired(),
+                c.getMonthlyRepayment(),
                 c.getDtiPercent(), c.getDtiCeilingPercent(), c.getAssumedRate(), c.getProvider(),
                 labelFor(c.getProvider()), c.getProductReference(), c.getProductName(), null,
-                // A stored check keeps the assessor's payload, not the rendered derivation: the steps are
-                // built from figures that were true on the day and are not re-derived from today's product.
-                java.util.List.of(),
+                // The working as it was shown on the day, kept on the row rather than re-derived: today's
+                // product may carry a different rate, and re-running it would contradict the figures here.
+                c.getProviderSteps() == null ? java.util.List.of() : c.getProviderSteps(),
+                storedTermOptions(c),
                 c.getPropertyReference(), null, c.getPropertyPrice(),
                 c.getProviderPayload(), options, FinanceMatchService.DISCLAIMER, c.getCreatedAt());
     }
@@ -367,6 +448,25 @@ public class AffordabilityService {
         BigDecimal net = nz(c.getGrossMonthlyIncome()).add(nz(c.getOtherMonthlyIncome()))
                 .subtract(nz(c.getMonthlyObligations()));
         return net.signum() > 0 ? net : BigDecimal.ZERO;
+    }
+
+    /**
+     * The term table for a stored check, rebuilt from the figures on the row.
+     *
+     * <p>Arithmetic on numbers this row already holds — the loan, the ceiling payment, the rate as it was —
+     * so it says the same thing today as it did then. Nothing is read from the product, which is what makes
+     * it safe to compute rather than store.
+     */
+    private List<FinanceDtos.TermOption> storedTermOptions(AffordabilityCheck c) {
+        if (c.getMaxLoanAmount() == null || c.getMaxLoanAmount().signum() <= 0) return List.of();
+        List<FinanceDtos.TermOption> rows = new ArrayList<>();
+        for (short months : new short[] {60, 120, 180, 240, 300}) {
+            rows.add(new FinanceDtos.TermOption(months,
+                    Amortisation.monthlyRepayment(c.getMaxLoanAmount(), c.getAssumedRate(), months),
+                    Amortisation.loanFor(c.getMonthlyRepayment(), c.getAssumedRate(), months),
+                    c.getTermMonths() != null && c.getTermMonths() == months));
+        }
+        return List.copyOf(rows);
     }
 
     private AffordabilitySummary toSummary(AffordabilityCheck c) {
