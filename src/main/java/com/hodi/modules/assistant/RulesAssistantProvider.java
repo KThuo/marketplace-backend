@@ -186,13 +186,20 @@ public class RulesAssistantProvider implements AssistantProvider {
                 "{\"matched\":" + results.getTotalElements() + "}", links);
     }
 
+    /**
+     * The figure asked for here is take-home, like everywhere else.
+     *
+     * <p>Somebody typing a number into a chat box will type whatever they think of as their salary, and
+     * this cannot make them read a label. What it can do is say which figure it wants, and say which one it
+     * used in the answer — so the estimate is at least honest about its own input.
+     */
     private Answer afford(String q) {
         BigDecimal income = firstMoney(q);
         if (income == null) {
             return new Answer(AssistantConstants.INTENT_AFFORD,
-                    "Tell me your monthly income and I will work out roughly what you could borrow — for "
-                            + "example \"what can I afford on 180,000 a month\". The calculator asks a few "
-                            + "more questions and gives a firmer figure.",
+                    "Tell me what you take home each month — after tax — and I will work out roughly what "
+                            + "you could borrow. For example \"what can I afford on 180,000 a month\". The "
+                            + "calculator asks a few more questions and gives a firmer figure.",
                     null, List.of(new Link("Open the calculator", "/affordability")));
         }
         var estimate = affordability.estimate(new com.hodi.modules.finance.FinanceDtos

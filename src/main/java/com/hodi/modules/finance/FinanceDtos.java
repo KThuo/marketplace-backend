@@ -180,9 +180,20 @@ public final class FinanceDtos {
      *                          from the calculator is about the household
      */
     public record AffordabilityRequest(
-            @NotNull(message = "Tell us what you earn each month")
-            @DecimalMin(value = "0", message = "Income cannot be negative")
-            BigDecimal grossMonthlyIncome,
+            /**
+             * Pay after tax and deductions — what actually reaches the account.
+             *
+             * <p>Take-home rather than gross, and the rename is the point. The form used to ask for gross
+             * and the arithmetic then spent all of it, so every figure was overstated by whatever PAYE, the
+             * housing levy and SHIF had already taken — on a Kenyan salary that is not a rounding error.
+             *
+             * <p>The alternative was to model payroll from a gross figure. That is a second product with a
+             * yearly maintenance burden, and a model that is slightly wrong is worse here than no model at
+             * all: it would put a precise-looking number on a deduction nobody checked.
+             */
+            @NotNull(message = "Tell us what you take home each month")
+            @DecimalMin(value = "0", message = "That cannot be negative")
+            BigDecimal monthlyTakeHome,
 
             BigDecimal otherMonthlyIncome,
             BigDecimal monthlyObligations,
@@ -227,7 +238,7 @@ public final class FinanceDtos {
             String decision,
             String decisionReason,
             String currency,
-            BigDecimal grossMonthlyIncome,
+            BigDecimal monthlyTakeHome,
             BigDecimal otherMonthlyIncome,
             BigDecimal monthlyObligations,
             BigDecimal depositAmount,

@@ -26,7 +26,7 @@ import java.util.Map;
  * <h2>The rules, in order</h2>
  *
  * <ol>
- *   <li><strong>Net income</strong> = gross + other income − existing monthly obligations. Obligations come
+ *   <li><strong>Net income</strong> = take-home + other income − existing monthly obligations. Obligations come
  *       off the top rather than out of the ceiling: a household already paying a car loan has that much less
  *       to give, whatever percentage anyone is willing to lend against.</li>
  *   <li><strong>Affordable repayment</strong> = net income × the configured DTI ceiling. Kenyan banks
@@ -87,17 +87,19 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         List<Step> termStep = new ArrayList<>();
         short term = termFor(product, request.termMonths(), termStep);
 
-        BigDecimal gross = nz(request.grossMonthlyIncome());
+        BigDecimal takeHome = nz(request.monthlyTakeHome());
         BigDecimal other = nz(request.otherMonthlyIncome());
         BigDecimal obligations = nz(request.monthlyObligations());
         BigDecimal deposit = nz(request.depositAmount());
 
-        BigDecimal grossTotal = gross.add(other);
+        BigDecimal grossTotal = takeHome.add(other);
         BigDecimal netIncome = grossTotal.subtract(obligations).max(BigDecimal.ZERO);
 
-        steps.add(Step.money("Income each month", money(gross) + " + " + money(other), grossTotal,
-                other.signum() > 0 ? "Your salary and the other income you told us about."
-                        : "What you told us you earn."));
+        steps.add(Step.money("What you take home each month",
+                money(takeHome) + " + " + money(other), grossTotal,
+                other.signum() > 0
+                        ? "Your pay after tax and deductions, and the other income you told us about."
+                        : "Your pay after tax and deductions — what actually reaches your account."));
         steps.add(Step.money("Less what you already owe each month", "− " + money(obligations), netIncome,
                 "Existing repayments come off the top rather than out of the ceiling: a household already "
                         + "paying a car loan has that much less to give."));
@@ -105,9 +107,16 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         /*
          * The product's own floor, before anything else is worked out.
          *
-         * Checked against gross rather than net, because that is the figure a bank's product sheet quotes,
-         * and named in the answer — "you do not qualify" without the number is not something anybody can act
-         * on.
+         * <p>Measured against take-home, because take-home is what this application asks for and therefore
+         * the only income it actually knows. It used to ask for gross and then spend it as though tax had
+         * not been taken — which overstated every figure below by whatever PAYE, the housing levy and SHIF
+         * had already removed. Asking for the figure that reaches the account is the honest fix; modelling
+         * Kenyan payroll from a salary is a second product, and a wrong model would be worse than not
+         * having one.
+         *
+         * <p>So a product's minimum has to be stated in the same terms. The field's hint on the product
+         * form says take-home, and a bank quoting a gross floor here would be comparing two different
+         * numbers — which is the trap this comment exists to flag.
          */
         if (product != null && product.minMonthlyIncome() != null
                 && grossTotal.compareTo(product.minMonthlyIncome()) < 0) {

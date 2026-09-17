@@ -39,8 +39,8 @@ public class AffordabilityCheck {
     @Column(name = "property_price", precision = 15, scale = 2) private BigDecimal propertyPrice;
 
     @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
-    @Column(name = "gross_monthly_income", nullable = false, precision = 15, scale = 2)
-    private BigDecimal grossMonthlyIncome;
+    @Column(name = "monthly_take_home", nullable = false, precision = 15, scale = 2)
+    private BigDecimal monthlyTakeHome;
     @Column(name = "other_monthly_income", nullable = false, precision = 15, scale = 2)
     @Builder.Default private BigDecimal otherMonthlyIncome = BigDecimal.ZERO;
     @Column(name = "monthly_obligations", nullable = false, precision = 15, scale = 2)

@@ -62,6 +62,13 @@ public class MortgageProduct {
     @Builder.Default private BigDecimal insurancePercent = BigDecimal.ZERO;
     @Column(name = "other_fees_note", columnDefinition = "TEXT") private String otherFeesNote;
 
+    /**
+     * The least a household may take home each month and still be considered.
+     *
+     * <p>Take-home, not gross: the affordability calculator asks applicants for the figure that reaches
+     * their account, and a floor quoted in gross would be compared against a smaller number and refuse
+     * people it should not.
+     */
     @Column(name = "min_monthly_income", precision = 15, scale = 2) private BigDecimal minMonthlyIncome;
     @Column(name = "max_dti_percent", precision = 5, scale = 2) private BigDecimal maxDtiPercent;
     @Column(name = "eligibility_notes", columnDefinition = "TEXT") private String eligibilityNotes;

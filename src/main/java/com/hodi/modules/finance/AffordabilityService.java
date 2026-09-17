@@ -82,7 +82,7 @@ public class AffordabilityService {
                 .propertyReference(property == null ? null : property.getReference())
                 .propertyPrice(property == null ? null : property.getPrice())
                 .currency(computed.currency())
-                .grossMonthlyIncome(nz(request.grossMonthlyIncome()))
+                .monthlyTakeHome(nz(request.monthlyTakeHome()))
                 .otherMonthlyIncome(nz(request.otherMonthlyIncome()))
                 .monthlyObligations(nz(request.monthlyObligations()))
                 .depositAmount(nz(request.depositAmount()))
@@ -121,7 +121,7 @@ public class AffordabilityService {
      *               the same inputs give the same answer signed in or not
      */
     private AffordabilityResponse assess(AffordabilityRequest request) {
-        if (request.grossMonthlyIncome() == null || request.grossMonthlyIncome().signum() < 0) {
+        if (request.monthlyTakeHome() == null || request.monthlyTakeHome().signum() < 0) {
             throw new HodiException("Tell us what you earn each month.", HttpStatus.BAD_REQUEST);
         }
 
@@ -133,7 +133,7 @@ public class AffordabilityService {
 
         AffordabilityProvider provider = resolveProvider();
         AffordabilityProvider.Decision decision = provider.assess(new AffordabilityProvider.Request(
-                request.grossMonthlyIncome(),
+                request.monthlyTakeHome(),
                 nz(request.otherMonthlyIncome()),
                 nz(request.monthlyObligations()),
                 nz(request.depositAmount()),
@@ -161,7 +161,7 @@ public class AffordabilityService {
                 decision.outcome(),
                 decision.reason(),
                 currency,
-                request.grossMonthlyIncome(),
+                request.monthlyTakeHome(),
                 nz(request.otherMonthlyIncome()),
                 nz(request.monthlyObligations()),
                 nz(request.depositAmount()),
@@ -283,7 +283,7 @@ public class AffordabilityService {
 
     /** Income left after existing commitments — what a repayment actually comes out of. */
     private static BigDecimal netIncomeFor(AffordabilityRequest request) {
-        BigDecimal gross = nz(request.grossMonthlyIncome()).add(nz(request.otherMonthlyIncome()));
+        BigDecimal gross = nz(request.monthlyTakeHome()).add(nz(request.otherMonthlyIncome()));
         BigDecimal net = gross.subtract(nz(request.monthlyObligations()));
         return net.signum() > 0 ? net : BigDecimal.ZERO;
     }
@@ -393,7 +393,7 @@ public class AffordabilityService {
     private AffordabilityResponse withReference(AffordabilityResponse computed, String reference,
                                                 java.time.OffsetDateTime createdAt) {
         return new AffordabilityResponse(reference, computed.decision(), computed.decisionReason(),
-                computed.currency(), computed.grossMonthlyIncome(), computed.otherMonthlyIncome(),
+                computed.currency(), computed.monthlyTakeHome(), computed.otherMonthlyIncome(),
                 computed.monthlyObligations(), computed.depositAmount(), computed.termMonths(),
                 computed.employmentType(), computed.dependants(), computed.maxLoanAmount(),
                 computed.maxPropertyPrice(), computed.loanRequired(), computed.monthlyRepayment(),
@@ -414,7 +414,7 @@ public class AffordabilityService {
 
         return new AffordabilityResponse(
                 c.getReference(), c.getDecision(), c.getDecisionReason(), c.getCurrency(),
-                c.getGrossMonthlyIncome(), c.getOtherMonthlyIncome(), c.getMonthlyObligations(),
+                c.getMonthlyTakeHome(), c.getOtherMonthlyIncome(), c.getMonthlyObligations(),
                 c.getDepositAmount(), c.getTermMonths(), c.getEmploymentType(),
                 c.getDependants() == null ? null : c.getDependants().intValue(),
                 c.getMaxLoanAmount(), c.getMaxPropertyPrice(), c.getLoanRequired(),
@@ -445,7 +445,7 @@ public class AffordabilityService {
     }
 
     private static BigDecimal netIncomeOf(AffordabilityCheck c) {
-        BigDecimal net = nz(c.getGrossMonthlyIncome()).add(nz(c.getOtherMonthlyIncome()))
+        BigDecimal net = nz(c.getMonthlyTakeHome()).add(nz(c.getOtherMonthlyIncome()))
                 .subtract(nz(c.getMonthlyObligations()));
         return net.signum() > 0 ? net : BigDecimal.ZERO;
     }

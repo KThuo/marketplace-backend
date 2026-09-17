@@ -37,7 +37,7 @@ public interface AffordabilityProvider {
      * @param propertyPrice the listing being considered, or null for an open-ended "what can I afford"
      */
     record Request(
-            BigDecimal grossMonthlyIncome,
+            BigDecimal monthlyTakeHome,
             BigDecimal otherMonthlyIncome,
             BigDecimal monthlyObligations,
             BigDecimal depositAmount,
