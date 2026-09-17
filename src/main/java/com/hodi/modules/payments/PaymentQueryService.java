@@ -57,6 +57,8 @@ public class PaymentQueryService {
     private final DevelopmentVisibility visibility;
     private final com.hodi.modules.bookings.BookingAccess access;
     private final BookingBalanceReader balances;
+    /** Knows what this organisation has configured, which is what may be offered. */
+    private final PaymentAccountService accountService;
     private final PaymentScope scope;
 
     @Transactional(readOnly = true)
@@ -162,9 +164,15 @@ public class PaymentQueryService {
                 .toList();
     }
 
-    /** The methods on offer, so the form does not hardcode the list. */
+    /**
+     * The methods on offer — this organisation's, not the platform's whole vocabulary.
+     *
+     * <p>Delegated to {@code PaymentAccountService}, which knows what is configured. This used to return
+     * the static list of six, so a form offered Card to an organisation that had never set up a card
+     * channel and money could be recorded through a route nothing could collect.
+     */
     public List<MethodOption> methods() {
-        return PaymentMethods.ALL.stream().map(m -> new MethodOption(m, PaymentMethods.label(m))).toList();
+        return accountService.methodsOnOffer();
     }
 
     // ── rows ──────────────────────────────────────────────────────────────────

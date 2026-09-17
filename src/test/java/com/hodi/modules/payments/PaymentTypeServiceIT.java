@@ -287,4 +287,46 @@ class PaymentTypeServiceIT {
         assertTrue(service.list(request).getContent().stream().noneMatch(a -> mine.equals(a.accountNo())),
                 "another organisation's till is not visible");
     }
+
+    // ── what the receive form may offer ──────────────────────────────────────
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("only cash and cheque are offered to an organisation with no channel set up")
+    void withNothingConfiguredOnlyCounterMethodsAreOffered() {
+        var offered = service.methodsOnOffer().stream()
+                .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
+
+        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_CASH));
+        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_CHEQUE));
+        org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_CARD),
+                "a form offering a card channel nobody configured is a payment recorded against nothing");
+        org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_MOBILE_MONEY),
+                "mobile money needs a till or a paybill behind it, and this organisation has none");
+    }
+
+    @org.junit.jupiter.api.Test
+    @org.junit.jupiter.api.DisplayName("a configured channel adds its method, and only its method")
+    void aConfiguredChannelIsOffered() {
+        PaymentType channel = types.findAllLive().stream()
+                .filter(t -> t.channelCategory().isReceivable())
+                .filter(t -> AppConstant.PAY_MOBILE_MONEY.equals(t.getMethod()))
+                .findFirst().orElse(null);
+        org.junit.jupiter.api.Assumptions.assumeTrue(channel != null,
+                "no mobile-money channel in the catalogue to configure");
+
+        accounts.save(PaymentAccount.builder()
+                .paymentTypeId(channel.getId()).tenantId(tenantId)
+                // The check constraint insists a non-counter account names itself.
+                .category(channel.getCategory())
+                .accountNo("TEST-OFFERED-1").accountName("Test offered account")
+                .status(AppConstant.STATUS_ACTIVE).statusFlag(AppConstant.FLAG_ACTIVE).build());
+
+        var offered = service.methodsOnOffer().stream()
+                .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
+
+        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_MOBILE_MONEY),
+                "configuring the channel is what puts its method on the form");
+        org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_CARD),
+                "and it puts nothing else there");
+    }
 }
