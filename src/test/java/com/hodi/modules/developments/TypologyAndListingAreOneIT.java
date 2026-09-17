@@ -265,6 +265,35 @@ class TypologyAndListingAreOneIT {
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
+    @Test
+    @DisplayName("the platform can correct a listing, and the correction goes through approval")
+    void platformStaffCanEditAListing() {
+        listing.setListingState(AppConstant.LISTING_LIVE);
+        listing.setPublishedAt(java.time.OffsetDateTime.now());
+        properties.save(listing);
+        signInAsPlatformStaff();
+
+        propertyService.update(HashIdUtil.encodeId(listing.getId()),
+                listingAs("Two bedroom at Highrise Apartments", (short) 2, "Corrected by the bank."));
+
+        Property after = properties.findById(listing.getId()).orElseThrow();
+        assertEquals("Corrected by the bank.", after.getDescription(),
+                "an administrator holding every permission was told the listing was somebody else's");
+        assertEquals(AppConstant.LISTING_PENDING, after.getListingState(),
+                "and the edit is not a way past the queue — a live listing still comes down for re-approval");
+    }
+
+    @Test
+    @DisplayName("but a seller from another organisation still cannot")
+    void anotherSellerStillCannotEdit() {
+        signInAsAnotherSeller();
+
+        assertThrows(RuntimeException.class, () -> propertyService.update(
+                HashIdUtil.encodeId(listing.getId()),
+                listingAs("Mine now", (short) 2, "Not theirs to write.")),
+                "opening the door for the platform must not open it for a competitor");
+    }
+
     // ── the facts ────────────────────────────────────────────────────────────
 
     @Test

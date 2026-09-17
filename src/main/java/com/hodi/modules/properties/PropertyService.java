@@ -143,7 +143,7 @@ public class PropertyService {
 
     @Transactional
     public PropertyResponse update(String hashId, SavePropertyRequest request) {
-        Property property = requireOwn(hashId);
+        Property property = requireManageable(hashId);
         if (AppConstant.LISTING_SOLD.equals(property.getListingState())) {
             throw new HodiException("A sold listing cannot be edited.", HttpStatus.CONFLICT);
         }
@@ -202,7 +202,7 @@ public class PropertyService {
     /** Sends a draft for approval. The Maker half. */
     @Transactional
     public PropertyResponse submit(String hashId, SubmitRequest request) {
-        Property property = requireOwn(hashId);
+        Property property = requireManageable(hashId);
         if (property.isPending()) {
             throw new HodiException("That listing is already waiting for approval.",
                     HttpStatus.CONFLICT);
@@ -329,10 +329,16 @@ public class PropertyService {
     }
 
     /**
-     * The caller's own organisation's listing.
+     * The caller's own organisation's listing, and nobody else's — not even the platform's.
      *
      * <p>Stricter than {@link #requireVisible}: a partnered bank may <em>read</em> a seller's portfolio, and
      * editing it would be a partnership granting write access to somebody else's business.
+     *
+     * <p>Stricter than {@link #requireManageable} too, and deliberately. What is left here is the pair of
+     * acts where the platform would not be operating the marketplace but speaking as the seller: recording
+     * that a property was sold, which creates a booking and the money that hangs off it, and archiving,
+     * which is not reversible. The platform can already take a listing off the market by withdrawing it,
+     * which says the same thing about the marketplace without saying anything about the seller's business.
      */
     private Property requireOwn(String hashId) {
         Property property = requireVisible(hashId);
@@ -352,9 +358,20 @@ public class PropertyService {
     /**
      * The caller's own, or the platform's oversight.
      *
-     * <p>Taking a listing down is the one write the platform does on a seller's behalf: something unlawful or
-     * fraudulent has to be removable by whoever operates the marketplace, and waiting for the seller to agree
-     * is not a moderation policy.
+     * <p>Taking a listing down was the first write the platform did on a seller's behalf: something unlawful
+     * or fraudulent has to be removable by whoever operates the marketplace, and waiting for the seller to
+     * agree is not a moderation policy.
+     *
+     * <p>Correcting and submitting are here for the same reason, and because refusing them was indefensible
+     * once the bank became the platform rather than a participant in it. A platform administrator holds
+     * every permission in the system and is the checker on the approval this very edit produces — and was
+     * told "that listing belongs to another organisation" by the one screen where they could act on what
+     * they had approved. The gate that makes an edit safe is Maker/Checker, not the tenant column: an edit
+     * to a live listing takes it off the marketplace and back into the queue whoever made it, which is the
+     * protection the seller actually has.
+     *
+     * <p>A partnered lender is still refused. Their visibility comes from a partnership, which grants
+     * reading a portfolio and has never granted writing to it.
      */
     private Property requireManageable(String hashId) {
         Property property = requireVisible(hashId);
