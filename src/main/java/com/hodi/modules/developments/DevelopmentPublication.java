@@ -91,6 +91,45 @@ public class DevelopmentPublication {
     }
 
     /**
+     * One unit goes back for approval, and nothing else moves.
+     *
+     * <h3>What this replaces</h3>
+     *
+     * <p>Changing the price of unit 4B used to call {@link #requireReapproval}, which is a project-level
+     * act: the development went to {@code PENDING}, <em>every</em> non-sold sibling was bulk-updated to
+     * {@code DRAFT}, every typology card was taken down, and one development-level approval was raised.
+     * Correcting one price therefore withdrew the entire development from sale — units 1A through 12C
+     * included — and nobody looking at 4B would connect the two.
+     *
+     * <p>A unit is a listing in its own right, so it is treated as one: its own state, its own
+     * {@code PROPERTY}/{@code PUBLISH} request, decided on its own merits. The project stays live and its
+     * siblings stay on sale, which is what the rest of them being unchanged actually means.
+     *
+     * <p>Project-level edits — the name, the location, the phase plan — still go through
+     * {@link #requireReapproval}, because there the whole project genuinely has changed.
+     */
+    @Transactional
+    public void requireUnitReapproval(Property unit, Development development, String reason) {
+        boolean live = AppConstant.LISTING_LIVE.equals(unit.getListingState());
+        boolean alreadyWaiting = AppConstant.LISTING_PENDING.equals(unit.getListingState());
+        // A draft unit has no public face to take down, exactly as a draft project has none.
+        if (!live && !alreadyWaiting) return;
+
+        if (live) {
+            unit.setListingState(AppConstant.LISTING_PENDING);
+            unit.setPublishedAt(null);
+            unit.setUpdatedBy(AuthContext.username());
+            properties.save(unit);
+        }
+
+        // Restated rather than submitted, so a second edit before anybody looks does not 409 on the first.
+        approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_PROPERTY, unit.getId(),
+                AppConstant.APPROVAL_ACTION_PUBLISH, ownerScopeId(development), null,
+                unit.getReference() + " — " + unit.getTitle(), reason);
+        log.info("Unit {} needs approval again: {}", unit.getReference(), reason);
+    }
+
+    /**
      * Moves every typology card with the project it belongs to.
      *
      * <p>The cards are what the marketplace shows, and they used to hold an approval each — publishing one

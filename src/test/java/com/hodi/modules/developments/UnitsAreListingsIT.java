@@ -75,11 +75,13 @@ class UnitsAreListingsIT {
         developmentId = developmentService.create(new SaveDevelopmentRequest(
                 "Rowhouse Gardens", "Twelve homes.", "APARTMENT", AppConstant.DEV_PURPOSE_FOR_SALE,
                 "Acacia Builders", null, null, null, "Nairobi", "Nairobi", "Kilimani", null, null, null,
-                12, null, null, null, null, null, null)).id();
+                12, null, null, null, null, null,
+                // amenityCodes, greenCertified, greenCertification, energyRating, percentComplete
+                null, null, null, null, null)).id();
         typeId = typeService.create(developmentId, new SaveUnitTypeRequest(
                 "3BED", "Three bedroom", "A hundred and ten square metres.", "APARTMENT",
                 (short) 3, (short) 2, (short) 1, new BigDecimal("110"), null,
-                new BigDecimal("14500000"), new BigDecimal("15000"), 12, 10)).id();
+                new BigDecimal("14500000"), new BigDecimal("15000"), 12, 10, null)).id();
     }
 
     @AfterEach

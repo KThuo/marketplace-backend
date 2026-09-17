@@ -271,7 +271,7 @@ public class SellerApplicationService {
         application.setIdNumber(blankToNull(request.idNumber()));
         application.setKraPin(blankToNull(request.kraPin()));
         application.setOrganisationName(blankToNull(request.organisationName()));
-        application.setSellerType(blankToNull(request.sellerType()));
+        application.setSellerType(sellerType(request.sellerType()));
         application.setRegistrationNumber(blankToNull(request.registrationNumber()));
         application.setCounty(blankToNull(request.county()));
         application.setTown(blankToNull(request.town()));
@@ -310,10 +310,39 @@ public class SellerApplicationService {
     }
 
     /** What is still missing. Named rather than counted, so the screen can say which. */
+    /**
+     * One of the six, or nothing.
+     *
+     * <p>Refused rather than stored as typed. An unrecognised type resolves to an empty checklist, which
+     * {@link #outstanding} then reads as "nothing missing" — so the hole this closes is not a cosmetic one:
+     * it let an application through to a reviewer carrying no evidence whatsoever, and looking complete.
+     */
+    private static String sellerType(String requested) {
+        String value = blankToNull(requested);
+        if (value == null) return null;
+        String type = value.trim().toUpperCase();
+        if (!SellerState.SELLER_TYPES.contains(type)) {
+            throw new HodiException("That is not a kind of seller on this platform.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return type;
+    }
+
     private List<String> outstanding(SellerApplication a) {
         List<String> missing = new ArrayList<>();
         if (isBlank(a.getIdNumber())) missing.add("an ID number");
         if (isBlank(a.getSellerType())) missing.add("the kind of seller you are");
+        /*
+         * A type with no checklist behind it is as good as no type.
+         *
+         * `checklistFor` returns nothing when the requirement catalogue has no current version for the
+         * seller type, and the loop below would then find nothing outstanding — an application submittable
+         * with no documents at all. Saying so is better than the silence that produced it.
+         */
+        else if (checklistFor(a).isEmpty()) {
+            missing.add("the documents for a " + a.getSellerType().toLowerCase()
+                    + " — ask the bank, the checklist for that kind of seller is not set up");
+        }
         if (isBlank(a.getOrganisationName())) missing.add("a trading name");
         if (isBlank(a.getCounty())) missing.add("a county");
         /*

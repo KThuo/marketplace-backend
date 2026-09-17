@@ -142,11 +142,18 @@ public interface DevelopmentUnitRepository
                     @Param("addressLine") String addressLine, @Param("latitude") java.math.BigDecimal latitude,
                     @Param("longitude") java.math.BigDecimal longitude);
 
-    /** The project's listing state, onto every unit row that is not sold. */
+    /**
+     * The project's listing state, onto every unit row that is not sold and not waiting on its own decision.
+     *
+     * <p>{@code PENDING} is excluded for the same reason {@code SOLD} is: it is the unit's own fact rather
+     * than the project's. A unit whose price was changed goes back to the bank by itself, and a project-wide
+     * sync that published it again on the next unrelated approval would decide a question the bank had been
+     * asked and not yet answered.
+     */
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update Property p set p.listingState = :state, p.publishedAt = :publishedAt "
             + "where p.developmentId = :developmentId and p.listingKind = 'UNIT' and p.status <> 5 "
-            + "and p.saleState <> 'SOLD'")
+            + "and p.saleState <> 'SOLD' and p.listingState <> 'PENDING'")
     int syncListingState(@Param("developmentId") Long developmentId, @Param("state") String state,
                          @Param("publishedAt") java.time.OffsetDateTime publishedAt);
 }

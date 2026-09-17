@@ -111,9 +111,24 @@ public final class AppConstant {
     public static final String LISTING_SOLD      = "SOLD";
     public static final String LISTING_WITHDRAWN = "WITHDRAWN";
 
-    /** What the listing is for. RENT exists in the CHECK so the eventual lettings slice is additive. */
+    /** What the listing is for. */
     public static final String LISTING_TYPE_SALE = "SALE";
     public static final String LISTING_TYPE_RENT = "RENT";
+
+    /**
+     * How long a rent buys, for the listings that are lettings.
+     *
+     * <p>Null on a sale, and deliberately so: writing MONTH on every sale row to keep the column full
+     * would make the column mean nothing. A rent without one is not a price — "KES 85,000" is a bargain
+     * by the year and an insult by the day — which is why the control makes it part of the same answer.
+     */
+    public static final String RENT_PERIOD_DAY   = "DAY";
+    public static final String RENT_PERIOD_WEEK  = "WEEK";
+    public static final String RENT_PERIOD_MONTH = "MONTH";
+    public static final String RENT_PERIOD_YEAR  = "YEAR";
+
+    public static final java.util.List<String> RENT_PERIODS = java.util.List.of(
+            RENT_PERIOD_DAY, RENT_PERIOD_WEEK, RENT_PERIOD_MONTH, RENT_PERIOD_YEAR);
 
     /** Entity type and actions for the approval queue. */
     public static final String APPROVAL_ENTITY_PROPERTY = "PROPERTY";
@@ -308,6 +323,18 @@ public final class AppConstant {
     public static final String MEDIA_KIND_SITE_PLAN  = "SITE_PLAN";
     public static final String MEDIA_KIND_BROCHURE   = "BROCHURE";
     public static final String MEDIA_KIND_DRONE      = "DRONE";
+    /**
+     * Evidence for a claim the listing makes, rather than a picture of the place.
+     *
+     * A green certification was a tick box and a free-text name — EDGE, LEED, Safari Green — with nothing
+     * behind it, which is the same as saying nobody checked. This is where the certificate itself goes.
+     */
+    public static final String MEDIA_KIND_CERTIFICATE = "CERTIFICATE";
+
+    /** Every kind, in the order a gallery should offer them. */
+    public static final java.util.List<String> MEDIA_KINDS = java.util.List.of(
+            MEDIA_KIND_PHOTO, MEDIA_KIND_FLOOR_PLAN, MEDIA_KIND_SITE_PLAN,
+            MEDIA_KIND_BROCHURE, MEDIA_KIND_DRONE, MEDIA_KIND_CERTIFICATE);
 
     // ── Consent (plan §3.8, BRD FR004–FR005) ────────────────────────────────
     // Channels somebody can be reached on, and the three reasons they might be. The purposes are not a
@@ -374,6 +401,16 @@ public final class AppConstant {
     public static final String SIDE_BUYER    = "BUYER";
     public static final String SIDE_SELLER   = "SELLER";
     public static final String SIDE_PLATFORM = "PLATFORM";
+
+    /**
+     * Which lead a {@code lead_messages} row belongs to.
+     *
+     * <p>A viewing and an offer each kept one note per role, and every decision overwrote the last —
+     * so a viewing rescheduled twice retained only the second reason. The thread is polymorphic over the
+     * two rather than duplicated per table, because the two histories are read the same way.
+     */
+    public static final String LEAD_SITE_VISIT       = "SITE_VISIT";
+    public static final String LEAD_PURCHASE_REQUEST = "PURCHASE_REQUEST";
 
     public static final String VISIT_REQUESTED = "REQUESTED";
     public static final String VISIT_CONFIRMED = "CONFIRMED";

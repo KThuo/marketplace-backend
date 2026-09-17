@@ -55,7 +55,17 @@ public final class LeadDtos {
             String closeReason,
             OffsetDateTime createdAt,
             /** Null on a list; the whole conversation when one enquiry is opened. */
-            List<MessageResponse> messages) {}
+            List<MessageResponse> messages,
+            /**
+             * The most recent message, present on a list as well as on a single read.
+             *
+             * <p>{@link #messages} is deliberately null on a list — fifty threads is a very different
+             * response from fifty rows — but a list with no message text at all was the whole of "display
+             * the chat": a buyer saw the count rise and the badge flip to "They replied" without one word
+             * of the reply, and the answer they had come back for was behind a button that did not say it
+             * had arrived.
+             */
+            MessageResponse lastMessage) {}
 
     public record RaiseEnquiryRequest(
             @NotBlank(message = "Which listing is this about?") String propertyReference,
@@ -101,7 +111,15 @@ public final class LeadDtos {
             String sellerNote,
             String outcomeNote,
             OffsetDateTime decidedAt,
-            OffsetDateTime createdAt) {}
+            OffsetDateTime createdAt,
+            /**
+             * Everything said about this viewing, oldest first.
+             *
+             * <p>Carried on the list as well as on a single read, unlike {@link EnquiryResponse#messages}.
+             * The enquiry inbox opens a thread pane; the viewings screen is a table, and the complaint it
+             * answers is that the history was not there to open.
+             */
+            List<MessageResponse> messages) {}
 
     public record RequestVisitRequest(
             @NotBlank(message = "Which listing is this about?") String propertyReference,
@@ -150,7 +168,9 @@ public final class LeadDtos {
             String state,
             String decisionNote,
             OffsetDateTime decidedAt,
-            OffsetDateTime createdAt) {}
+            OffsetDateTime createdAt,
+            /** Everything said about this offer, oldest first. See {@link VisitResponse#messages}. */
+            List<MessageResponse> messages) {}
 
     public record SubmitOfferRequest(
             @NotBlank(message = "Which listing is this about?") String propertyReference,

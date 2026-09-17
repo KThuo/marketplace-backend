@@ -303,7 +303,8 @@ public class DevelopmentUnitService {
         unit.setPhaseId(resolvePhase(development, request.phaseHashId()));
         apply(unit, request);
         if (!materialBefore.equals(unitMaterial(unit))) {
-            publication.requireReapproval(development.getId(),
+            // This one unit, and not its neighbours. See DevelopmentPublication#requireUnitReapproval.
+            publication.requireUnitReapproval(unit, development,
                     "Unit " + unit.getUnitLabel() + " changed — its price or its kind of home.");
         }
         unit.setStatus(AppConstant.STATUS_EDITED);

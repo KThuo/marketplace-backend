@@ -19,6 +19,28 @@ public final class SellerState {
     public static final String APPROVED  = "APPROVED";
     public static final String REJECTED  = "REJECTED";
 
+    /**
+     * The kinds of seller, matching {@code ck_tenant_seller_type}.
+     *
+     * <p>Named here because nothing validated the value on the way in: {@code save()} wrote whatever
+     * arrived and only {@code tenants.seller_type} carries a CHECK, which is not reached until approval.
+     * A typo therefore produced an empty document checklist — {@code checklistFor} returns nothing when
+     * {@code currentVersion(entityType)} is null — and {@code outstanding()} then found nothing missing,
+     * so the application could be submitted with no KYB evidence at all.
+     *
+     * <p>Duplicated from the CHECK constraint rather than read from it, which is the usual trade in this
+     * codebase: the database is where the rule is enforced and this is where the refusal is readable.
+     */
+    public static final String TYPE_INDIVIDUAL = "INDIVIDUAL";
+    public static final String TYPE_COMPANY    = "COMPANY";
+    public static final String TYPE_SACCO      = "SACCO";
+    public static final String TYPE_DEVELOPER  = "DEVELOPER";
+    public static final String TYPE_AGENCY     = "AGENCY";
+    public static final String TYPE_GOVERNMENT = "GOVERNMENT";
+
+    public static final java.util.List<String> SELLER_TYPES = java.util.List.of(
+            TYPE_INDIVIDUAL, TYPE_COMPANY, TYPE_SACCO, TYPE_DEVELOPER, TYPE_AGENCY, TYPE_GOVERNMENT);
+
     /** Where the personal details came from — the first thing a reviewer wants to know. */
     public static final String SOURCE_COOP  = "COOP_ACCOUNT";
     public static final String SOURCE_SELF  = "SELF_DECLARED";

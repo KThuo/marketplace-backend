@@ -23,6 +23,14 @@ public class UnitFeature {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    /*
+     * Exactly one of the three is set, and which one says what the amenity describes.
+     *
+     * A development's borehole belongs to the estate; a typology's en-suite belongs to every flat of that
+     * kind; a listing's own row belongs to that one home. Before this the development had nowhere to say
+     * so, and ticking the gate on all ninety listings was the only way to record one gate.
+     */
+    @Column(name = "development_id") private Long developmentId;
     @Column(name = "unit_id") private Long unitId;
     @Column(name = "unit_type_id") private Long unitTypeId;
     @Column(name = "feature_code", nullable = false, length = 48) private String featureCode;

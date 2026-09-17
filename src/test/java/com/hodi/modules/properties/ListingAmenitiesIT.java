@@ -78,7 +78,8 @@ class ListingAmenitiesIT {
 
     private SavePropertyRequest listing(List<String> amenities) {
         return new SavePropertyRequest(
-                "Four bedrooms at Sunset", "Four-bedroom apartment.", "APARTMENT", "SALE", null,
+                // propertyType, listingType, rentPeriod (null on a sale), tenure
+                "Four bedrooms at Sunset", "Four-bedroom apartment.", "APARTMENT", "SALE", null, null,
                 new BigDecimal("22000000"), new BigDecimal("6000"), false,
                 (short) 4, (short) 4, (short) 3, new BigDecimal("92"), null, null,
                 "Nairobi", "Nairobi", "Kasarani", "Sunset Road",

@@ -66,6 +66,25 @@ public final class DevelopmentDtos {
             @Size(max = 32) String facilityReference,
             @DecimalMin("0") BigDecimal facilityAmount,
             /**
+             * What the estate itself comes with — the borehole, the gate, the clubhouse.
+             *
+             * <p>The whole set, not a delta; {@code null} leaves the existing rows alone, so a screen that
+             * does not edit amenities can still save. Before this the only way to record one gate was to
+             * tick it on each of ninety listings behind it.
+             */
+            List<String> amenityCodes,
+            /**
+             * The project's certification, and the evidence for it.
+             *
+             * <p>These lived on {@code properties} only, which had it backwards: an EDGE or Safari Green
+             * certificate is issued to the project and every unit in it inherits the claim. The certificate
+             * itself is {@code CERTIFICATE}-kind media against the development.
+             */
+            Boolean greenCertified,
+            @Size(max = 64) String greenCertification,
+            /** An A–G band. */
+            @Size(max = 8) String energyRating,
+            /**
              * Only honoured when the development has no phases — the escape hatch for a one-line project.
              * With phases the figure is derived from them and this is ignored, which the response's
              * percentBasis then says.
@@ -114,6 +133,10 @@ public final class DevelopmentDtos {
             BigDecimal budgetAmount,
             String facilityReference,
             BigDecimal facilityAmount,
+            List<String> amenityCodes,
+            boolean greenCertified,
+            String greenCertification,
+            String energyRating,
             String listingState,
             OffsetDateTime publishedAt,
             OffsetDateTime withdrawnAt,
@@ -138,6 +161,15 @@ public final class DevelopmentDtos {
             String name,
             String description,
             String developmentType,
+            /**
+             * What the project is for — {@code FOR_SALE}, {@code FOR_RENT}, {@code OWNER_OCCUPIED},
+             * {@code COMMERCIAL_RENTAL}, {@code MIXED}.
+             *
+             * <p>Settable since the project form was written and absent from every public shape, so a buyer
+             * looking at a block of flats could not tell whether they were for sale or to let. The one
+             * question a marketplace card has to answer.
+             */
+            String purpose,
             String developerName,
             String sellerName,
             String county,
@@ -155,6 +187,13 @@ public final class DevelopmentDtos {
             LocalDate projectedCompletionOn,
             String primaryImageUrl,
             List<String> imageUrls,
+            /** Site plans, kept out of the photographs — see the listing's {@code floorPlanUrls}. */
+            List<String> sitePlanUrls,
+            /** What the estate comes with. Amenities true of one typology are on the typology. */
+            List<com.hodi.modules.properties.PropertyDtos.PublicAmenity> amenities,
+            boolean greenCertified,
+            String greenCertification,
+            String energyRating,
             /*
              * The bedroom span across the project's typologies, for a card that carries one figure where a
              * listing carries a number. Null when no typology has said — which is different from a studio,

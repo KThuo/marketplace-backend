@@ -53,6 +53,16 @@ public class Property {
     @Column(name = "property_type", nullable = false, length = 32) private String propertyType;
     @Column(name = "listing_type", nullable = false, length = 16)
     @Builder.Default private String listingType = AppConstant.LISTING_TYPE_SALE;
+
+    /**
+     * How long the rent buys — {@code DAY}, {@code WEEK}, {@code MONTH}, {@code YEAR}.
+     *
+     * <p>Null on a sale. A rent without it is not a price: "KES 85,000" is a bargain by the year and an
+     * insult by the day, and the marketplace rendered every listing as though the figure were paid once
+     * because there was nothing else it could say.
+     */
+    @Column(name = "rent_period", length = 16) private String rentPeriod;
+
     @Column(length = 16) private String tenure;
 
     /** Null only on a UNIT, meaning "its typology's price". See {@link #effectivePrice}. */

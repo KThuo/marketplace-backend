@@ -52,6 +52,7 @@ public class DevelopmentUnitTypeService {
     private final DevelopmentInventoryService inventory;
     private final DevelopmentPublication publication;
     private final AuditService audit;
+    private final AmenityService amenities;
     private final StorageService storage;
 
     @Transactional(readOnly = true)
@@ -77,6 +78,8 @@ public class DevelopmentUnitTypeService {
         type.setCreatedBy(AuthContext.username());
 
         DevelopmentUnitType saved = repository.save(type);
+        // After the save: the rows key off an id the typology does not have until it exists.
+        amenities.apply(AmenityService.Scope.UNIT_TYPE, saved.getId(), request.amenityCodes());
         inventory.recountUnitType(saved.getId());
         audit.record(AppConstant.ACTION_CREATE, "DevelopmentUnitType", saved.getId(), null, snapshot(saved));
         return toResponse(repository.findById(saved.getId()).orElse(saved));
@@ -116,6 +119,14 @@ public class DevelopmentUnitTypeService {
         type.setUpdatedBy(AuthContext.username());
 
         DevelopmentUnitType saved = repository.save(type);
+        /*
+         * Amenities are deliberately not part of `material`.
+         *
+         * Adding a wardrobe to the description of a two-bed is not the price changing or a two-bed becoming
+         * a three-bed, and sending a live project back to the bank because somebody ticked "fitted
+         * wardrobes" is how a re-approval rule becomes the thing people work around.
+         */
+        amenities.apply(AmenityService.Scope.UNIT_TYPE, saved.getId(), request.amenityCodes());
         // A changed price moves the "from" figure on the typology, the development and the listing.
         inventory.recountUnitType(saved.getId());
         audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnitType", saved.getId(), before,
@@ -397,7 +408,8 @@ public class DevelopmentUnitTypeService {
                 t.getSortOrder(),
                 listing.map(Property::getReference).orElse(null),
                 listing.map(Property::getListingState).orElse(null),
-                (int) media.countForOwner(AppConstant.MEDIA_OWNER_UNIT_TYPE, t.getId()));
+                (int) media.countForOwner(AppConstant.MEDIA_OWNER_UNIT_TYPE, t.getId()),
+                amenities.codesFor(AmenityService.Scope.UNIT_TYPE, t.getId()));
     }
 
     private String snapshot(DevelopmentUnitType t) {

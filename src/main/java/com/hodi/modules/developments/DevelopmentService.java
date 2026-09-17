@@ -65,6 +65,7 @@ public class DevelopmentService {
     private final DevelopmentPublication publication;
     private final BankRepository institutions;
     private final ApprovalService approvals;
+    private final AmenityService amenities;
     private final AuditService audit;
     private final StorageService storage;
 
@@ -139,6 +140,8 @@ public class DevelopmentService {
         }
         development.setCreatedBy(AuthContext.username());
         Development saved = repository.save(development);
+        // After the save, because the amenity rows key off an id the project does not have until then.
+        amenities.apply(AmenityService.Scope.DEVELOPMENT, saved.getId(), request.amenityCodes());
         // Its unit rows are properties too, and they carry the project's state, name and place.
         inventory.syncUnitRows(saved);
 
@@ -168,6 +171,7 @@ public class DevelopmentService {
          */
         boolean wasLive = development.isLive();
         Development saved = repository.save(development);
+        amenities.apply(AmenityService.Scope.DEVELOPMENT, saved.getId(), request.amenityCodes());
         // Its unit rows are properties too, and they carry the project's state, name and place.
         inventory.syncUnitRows(saved);
         if (wasLive) {
@@ -413,6 +417,22 @@ public class DevelopmentService {
         return development;
     }
 
+    /**
+     * An A–G band, or nothing.
+     *
+     * <p>Same rule the listing keeps, and refused rather than dropped for the same reason: dropping a
+     * value the seller typed tells them it was saved.
+     */
+    private static String energyBand(String requested) {
+        String value = blankToNull(requested);
+        if (value == null) return null;
+        String band = value.trim().toUpperCase();
+        if (!band.matches("[A-G]")) {
+            throw new HodiException("An energy rating is a band from A to G.", HttpStatus.BAD_REQUEST);
+        }
+        return band;
+    }
+
     private void apply(Development development, SaveDevelopmentRequest request, UserPrincipal caller) {
         development.setName(request.name().trim());
         development.setDescription(blankToNull(request.description()));
@@ -428,6 +448,9 @@ public class DevelopmentService {
         development.setLatitude(request.latitude());
         development.setLongitude(request.longitude());
         development.setPlannedUnitCount(request.plannedUnitCount());
+        development.setGreenCertified(Boolean.TRUE.equals(request.greenCertified()));
+        development.setGreenCertification(blankToNull(request.greenCertification()));
+        development.setEnergyRating(energyBand(request.energyRating()));
         development.setStartedOn(request.startedOn());
         development.setProjectedCompletionOn(request.projectedCompletionOn());
         /*
@@ -614,6 +637,10 @@ public class DevelopmentService {
                 money ? d.getBudgetAmount() : null,
                 money ? d.getFacilityReference() : null,
                 money ? d.getFacilityAmount() : null,
+                amenities.codesFor(AmenityService.Scope.DEVELOPMENT, d.getId()),
+                d.isGreenCertified(),
+                d.getGreenCertification(),
+                d.getEnergyRating(),
                 d.getListingState(),
                 d.getPublishedAt(),
                 d.getWithdrawnAt(),

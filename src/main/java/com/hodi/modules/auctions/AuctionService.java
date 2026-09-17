@@ -88,14 +88,27 @@ public class AuctionService {
     /**
      * Creates a lot.
      *
-     * <p>The principal is whichever organisation the caller belongs to — never a parameter, and never the
-     * platform: somebody has to be selling, and the platform is not. That is the same rule valuations
-     * follow, and it means a lot always has an owner who can be asked about it.
+     * <p>The principal is whichever organisation the caller belongs to — never a parameter. A seller's
+     * staff bring their own organisation's lots; the bank brings the ones it is exercising a power of sale
+     * over, and both have an owner who can be asked about the sale.
+     *
+     * <h3>Why this used to refuse the bank</h3>
+     *
+     * <p>It demanded a {@code tenantId} or an {@code institutionId} and said *"A lot is brought by the bank
+     * or the seller selling it."* — which read as an invitation to exactly the population it rejected. When
+     * this was written the bank was a lending institution and carried an {@code institutionId}. Since the
+     * Co-op migrations the bank *is* the platform: its staff are {@code ACTOR_PLATFORM} with both ids null,
+     * so every lot a bank administrator tried to create was refused by a message naming them.
+     *
+     * <p>Platform staff therefore create lots with neither id set, which is the accurate record — the lot
+     * is brought by the bank itself, not on behalf of a tenant — and {@link #isMine} reads that back the
+     * same way. What has not changed is that a seller's staff still cannot touch another organisation's lot.
      */
     @Transactional
     public LotResponse create(SaveLotRequest request) {
         UserPrincipal caller = AuthContext.require();
-        if (caller.getTenantId() == null && caller.getInstitutionId() == null) {
+        if (caller.getTenantId() == null && caller.getInstitutionId() == null
+                && !caller.isPlatformStaff()) {
             throw new HodiException(
                     "A lot is brought by the bank or the seller selling it.", HttpStatus.FORBIDDEN);
         }
@@ -251,8 +264,9 @@ public class AuctionService {
     /**
      * Writable: the principal only.
      *
-     * <p>The platform can read every lot and edit none, the same arrangement mortgage products have. A
-     * support administrator changing a reserve or a date on somebody else's sale is not oversight.
+     * <p>The platform can read every lot and edit only its own — a support administrator changing a
+     * reserve or a date on somebody else's sale is not oversight. "Its own" is the set it brought, which
+     * since the bank became the platform is the lots with no tenant and no institution against them.
      */
     private AuctionLot loadOwn(String reference) {
         AuctionLot lot = lots.findByReference(trim(reference))
@@ -264,6 +278,12 @@ public class AuctionService {
     }
 
     private static boolean isMine(AuctionLot lot, UserPrincipal caller) {
+        // A lot the bank brought carries neither id, which is what platform staff are. Written as an
+        // explicit branch rather than falling out of the null comparisons below, because "null equals
+        // null" is a coincidence a reader has to verify and this is a rule they can read.
+        if (caller.isPlatformStaff()) {
+            return lot.getInstitutionId() == null && lot.getTenantId() == null;
+        }
         return (caller.getInstitutionId() != null
                         && caller.getInstitutionId().equals(lot.getInstitutionId()))
                 || (caller.getTenantId() != null && caller.getTenantId().equals(lot.getTenantId()));
@@ -305,6 +325,8 @@ public class AuctionService {
         lot.setDepositRequired(request.depositRequired());
         lot.setAuctionDate(request.auctionDate());
         lot.setVenue(blankToNull(request.venue()));
+        lot.setVenueLatitude(request.venueLatitude());
+        lot.setVenueLongitude(request.venueLongitude());
         lot.setViewingNotes(blankToNull(request.viewingNotes()));
         lot.setTerms(blankToNull(request.terms()));
 
@@ -335,11 +357,24 @@ public class AuctionService {
                 lot.getAddressLine(), lot.getLatitude(), lot.getLongitude(), lot.getTitleNumber(),
                 lot.getPlotAreaAcres(), lot.getBedrooms(), lot.getGuidePrice(), lot.getReservePrice(),
                 lot.getCurrency(), lot.getDepositRequired(), lot.getAuctionDate(), lot.getVenue(),
+                lot.getVenueLatitude(), lot.getVenueLongitude(),
                 lot.getViewingNotes(), lot.getTerms(), auctioneerReference, lot.getAuctioneerName(),
-                lot.getInstitutionName() != null ? lot.getInstitutionName() : lot.getTenantName(),
+                broughtBy(lot),
                 lot.getState(), lot.getPublishedAt(), lot.getSoldPrice(), lot.getSoldAt(),
                 lot.getOutcomeNote(), storage.urlFor(lot.getPrimaryImageKey()),
                 registrations.countApprovedForLot(lot.getId()), lot.getCreatedAt());
+    }
+
+    /**
+     * Who brought the lot, for the one line that says so on screen.
+     *
+     * <p>Neither name set means the platform brought it, and the platform is the bank — so it says so
+     * rather than leaving the field blank, which is what a bank-brought lot showed before.
+     */
+    private static String broughtBy(AuctionLot lot) {
+        if (lot.getInstitutionName() != null) return lot.getInstitutionName();
+        if (lot.getTenantName() != null) return lot.getTenantName();
+        return "The bank";
     }
 
     private String nextReference() {

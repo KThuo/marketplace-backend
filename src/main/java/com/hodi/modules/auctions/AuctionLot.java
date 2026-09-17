@@ -56,6 +56,15 @@ public class AuctionLot {
 
     @Column(name = "auction_date") private OffsetDateTime auctionDate;
     @Column(length = 255) private String venue;
+    /**
+     * Where the room is, which is not where the property is.
+     *
+     * <p>The lot already carries the property's own coordinates. The sale happens somewhere else — a
+     * hotel, an auctioneer's rooms, a court — and "Nairobi, at the usual place" has cost bidders a
+     * morning often enough to be worth a pin.
+     */
+    @Column(name = "venue_latitude", precision = 9, scale = 6) private BigDecimal venueLatitude;
+    @Column(name = "venue_longitude", precision = 9, scale = 6) private BigDecimal venueLongitude;
     @Column(name = "viewing_notes", columnDefinition = "TEXT") private String viewingNotes;
     @Column(columnDefinition = "TEXT") private String terms;
 

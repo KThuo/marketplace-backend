@@ -22,6 +22,20 @@ public interface PropertyMediaRepository extends JpaRepository<PropertyMedia, Lo
     long countForProperty(@Param("propertyId") Long propertyId);
 
     /**
+     * How many of one kind this listing holds.
+     *
+     * <p>Used to decide whether an upload is the cover: the cover is the first <em>photograph</em>, and
+     * before kinds existed every row was one so "the first row" happened to mean the same thing.
+     */
+    @Query("select count(m) from PropertyMedia m where m.propertyId = :propertyId "
+            + "and m.mediaKind = :kind and m.status <> 5")
+    long countOfKind(@Param("propertyId") Long propertyId, @Param("kind") String kind);
+
+    @Query("select m from PropertyMedia m where m.propertyId = :propertyId and m.mediaKind = :kind "
+            + "and m.status <> 5 order by m.primary desc, m.sortOrder asc, m.id asc")
+    List<PropertyMedia> findOfKind(@Param("propertyId") Long propertyId, @Param("kind") String kind);
+
+    /**
      * Clears the primary flag across a property's photographs.
      *
      * <p>Run before setting a new one, because the partial unique index refuses two — and refusing is right:

@@ -79,12 +79,14 @@ class DevelopmentUnitServiceIT {
                 "Highrise Apartments", "Two hundred units.", "APARTMENT",
                 AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders", null, null, null,
                 "Nairobi", "Nairobi", "Kilimani", null, null, null,
-                200, null, null, null, null, null, null)).id();
+                200, null, null, null, null, null,
+                // amenityCodes, greenCertified, greenCertification, energyRating, percentComplete
+                null, null, null, null, null)).id();
 
         typeId = typeService.create(developmentId, new SaveUnitTypeRequest(
                 "2BED", "Two bedroom", "Ninety-two square metres.", "APARTMENT",
                 (short) 2, (short) 2, (short) 1, new BigDecimal("92"), null,
-                new BigDecimal("9500000"), new BigDecimal("12000"), 70, 10)).id();
+                new BigDecimal("9500000"), new BigDecimal("12000"), 70, 10, null)).id();
     }
 
     @AfterEach
@@ -304,7 +306,7 @@ class DevelopmentUnitServiceIT {
         String second = typeService.create(developmentId, new SaveUnitTypeRequest(
                 "3BED", "Three bedroom", "Bigger.", "APARTMENT",
                 (short) 3, (short) 2, (short) 1, new BigDecimal("120"), null,
-                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10)).id();
+                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10, null)).id();
 
         int written = units.generateMany(developmentId, List.of(
                 new GenerateUnitsRequest(typeId, null, 4, "B", (short) 1, (short) 2, null, null),
@@ -327,7 +329,7 @@ class DevelopmentUnitServiceIT {
         String second = typeService.create(developmentId, new SaveUnitTypeRequest(
                 "3BED", "Three bedroom", "Bigger.", "APARTMENT",
                 (short) 3, (short) 2, (short) 1, new BigDecimal("120"), null,
-                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10)).id();
+                new BigDecimal("14000000"), new BigDecimal("15000"), 40, 10, null)).id();
 
         HodiException thrown = assertThrows(HodiException.class,
                 () -> units.generateMany(developmentId, List.of(

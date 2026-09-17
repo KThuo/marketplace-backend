@@ -118,6 +118,16 @@ public class DevelopmentMediaService {
             }
             case AppConstant.MEDIA_OWNER_UNIT_TYPE -> unitTypes.findById(ownerId).ifPresent(type -> {
                 type.setPrimaryImageKey(key);
+                /*
+                 * And the plan, which is a separate cache because it answers a separate question.
+                 *
+                 * `floor_plan_key` has existed since the typology table was written and nothing had ever
+                 * called its setter — the column was permanently null and `floorPlanUrl` was permanently
+                 * null with it, on both the workspace DTO and the public one. Now that the uploader sends a
+                 * kind there is something to put in it.
+                 */
+                type.setFloorPlanKey(media.firstKeyOfKind(
+                        AppConstant.MEDIA_OWNER_UNIT_TYPE, ownerId, AppConstant.MEDIA_KIND_FLOOR_PLAN));
                 unitTypes.save(type);
             });
             /*

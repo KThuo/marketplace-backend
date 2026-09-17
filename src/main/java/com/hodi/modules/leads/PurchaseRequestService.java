@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -60,6 +61,7 @@ public class PurchaseRequestService {
     private final UserRepository users;
     private final AuditService audit;
     private final LeadNotifier notifier;
+    private final LeadThreadService thread;
 
     // ── the buyer's side ──────────────────────────────────────────────────────
 
@@ -101,6 +103,11 @@ public class PurchaseRequestService {
                 .updatedBy(buyer.getUsername())
                 .build());
 
+        thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), userId, buyer.fullName(),
+                EnquiryService.blankTo(request.message(),
+                        "Offered " + money(request.offerAmount(), property.getCurrency()) + "."),
+                AppConstant.PURCHASE_SUBMITTED);
+
         audit.record(AppConstant.AUDIT_OFFER_SUBMITTED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " on " + property.getReference());
         notifier.toSeller(property.getTenantId(),
@@ -117,7 +124,7 @@ public class PurchaseRequestService {
     public PagedResponse<OfferResponse> mine(OfferListRequest request) {
         var page = repository.findMine(AuthContext.requireUserId(),
                 request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
-        return PagedResponse.from(page, this::toResponse);
+        return withThreads(page);
     }
 
     @Transactional(readOnly = true)
@@ -138,6 +145,9 @@ public class PurchaseRequestService {
         offer.setUpdatedBy(AuthContext.username());
         repository.save(offer);
 
+        thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(),
+                offer.getBuyerName(), "Withdrew the offer.", AppConstant.PURCHASE_WITHDRAWN);
+
         notifier.toSeller(offer.getTenantId(),
                 "Offer withdrawn: " + offer.getPropertyTitle(),
                 offer.getBuyerName() + " has withdrawn their offer on " + offer.getPropertyTitle() + ".",
@@ -157,9 +167,8 @@ public class PurchaseRequestService {
                         EnquiryService.blankToNull(request.getPropertyReference())),
                 TenantScope.restrict("tenantId"));
 
-        return PagedResponse.from(
-                repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"))),
-                this::toResponse);
+        return withThreads(
+                repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"))));
     }
 
     /**
@@ -206,10 +215,18 @@ public class PurchaseRequestService {
         offer.setUpdatedBy(AuthContext.username());
         repository.save(offer);
 
+        /*
+         * Appended, not replaced. `decisionNote` still holds the latest word — the notification line and
+         * the seller's table both read it — but an offer countered twice used to retain only the second
+         * note, which is what "the conversation was not saved" meant.
+         */
+        thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(),
+                EnquiryService.blankTo(request.note(), line), offer.getState());
+
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " " + offer.getState());
         notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(), line,
-                "/account/offers?ref=" + offer.getReference());
+                "/account/conversations?tab=offers&ref=" + offer.getReference());
         return toResponse(offer);
     }
 
@@ -239,13 +256,25 @@ public class PurchaseRequestService {
                 + NumberFormat.getIntegerInstance(Locale.UK).format(amount);
     }
 
+    /** A page of offers with every thread fetched once. See the note on the viewings equivalent. */
+    private PagedResponse<OfferResponse> withThreads(
+            org.springframework.data.domain.Page<PurchaseRequest> page) {
+        var byLead = thread.threads(AppConstant.LEAD_PURCHASE_REQUEST,
+                page.getContent().stream().map(PurchaseRequest::getId).toList());
+        return PagedResponse.from(page, p -> toResponse(p, byLead.getOrDefault(p.getId(), List.of())));
+    }
+
     private OfferResponse toResponse(PurchaseRequest p) {
+        return toResponse(p, thread.thread(AppConstant.LEAD_PURCHASE_REQUEST, p.getId()));
+    }
+
+    private OfferResponse toResponse(PurchaseRequest p, List<MessageResponse> messages) {
         return new OfferResponse(
                 p.getReference(), p.getPropertyReference(), p.getPropertyTitle(), p.getTenantName(),
                 p.getAskingPrice(), p.getBuyerName(), p.getBuyerEmail(), p.getBuyerPhone(),
                 p.getOfferAmount(), p.getCurrency(), p.getFinancing(), p.getAffordabilityReference(),
                 p.getProductReference(), p.getDepositAvailable(), p.getBuyerMessage(), p.getState(),
-                p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt());
+                p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt(), messages);
     }
 
     private String nextReference() {

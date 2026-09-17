@@ -21,4 +21,23 @@ import java.util.Optional;
 public interface EnquiryMessageRepository extends JpaRepository<EnquiryMessage, Long> {
 
     List<EnquiryMessage> findByTicketIdOrderByCreatedAtAsc(Long ticketId);
+
+    /**
+     * The most recent message on each of a page of tickets, in one query.
+     *
+     * <p>Exists because a list of conversations that shows a count going up and not a word of what was
+     * said is the complaint "display the chat" is about. The alternative — fetching each thread from the
+     * client — is fifty round trips for one screen, and the alternative to that is what was there before,
+     * which is nothing.
+     *
+     * <p>Newest first and the caller keeps the first per ticket, rather than a correlated subquery for the
+     * maximum: the rows are small, a page is at most fifty tickets, and the version of this with
+     * {@code max(created_at)} in a subquery ties whenever two messages share a timestamp.
+     */
+    @Query("""
+            select m from EnquiryMessage m
+            where m.ticketId in :ticketIds
+            order by m.createdAt desc, m.id desc
+            """)
+    List<EnquiryMessage> latestForTickets(@Param("ticketIds") List<Long> ticketIds);
 }

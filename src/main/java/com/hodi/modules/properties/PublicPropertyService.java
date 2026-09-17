@@ -53,6 +53,7 @@ public class PublicPropertyService {
     private final com.hodi.modules.developments.PublicDevelopmentService publicDevelopments;
     private final com.hodi.modules.developments.UnitFeatureRepository features;
     private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
+    private final com.hodi.modules.media.MediaAssetService mediaAssets;
 
     @Transactional(readOnly = true)
     public PagedResponse<PublicPropertyResponse> search(PublicSearchRequest request) {
@@ -86,6 +87,7 @@ public class PublicPropertyService {
         return SearchSpecs.allOf(
                 live(),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
+                SearchSpecs.eq("listingType", blankToNull(request.getListingType())),
                 SearchSpecs.eq("propertyType", blankToNull(request.getPropertyType())),
                 SearchSpecs.eq("county", blankToNull(request.getCounty())),
                 SearchSpecs.eq("town", blankToNull(request.getTown())),
@@ -136,6 +138,7 @@ public class PublicPropertyService {
     @Transactional(readOnly = true)
     public FacetsResponse facets() {
         List<Facet> types = countBy("property_type");
+        List<Facet> listingTypes = countBy("listing_type");
         List<Facet> counties = countBy("county");
         List<String> towns = repository.liveTowns();
 
@@ -147,7 +150,7 @@ public class PublicPropertyService {
                                 + "where listing_state = 'LIVE' and listing_kind <> 'UNIT' and status <> 5")
                 .getSingleResult();
 
-        return new FacetsResponse(types, counties, towns,
+        return new FacetsResponse(types, listingTypes, counties, towns,
                 range[0] == null ? null : new BigDecimal(range[0].toString()),
                 range[1] == null ? null : new BigDecimal(range[1].toString()),
                 repository.countLive());
@@ -245,19 +248,84 @@ public class PublicPropertyService {
 
     /** The card: enough to decide whether to open it, and nothing more. */
     private PublicPropertyResponse toCard(Property p) {
-        return response(p, List.of());
+        return response(p, List.of(), List.of());
     }
 
-    /** The detail page: the card plus every photograph. */
+    /**
+     * The detail page: the card plus every photograph, and the plans beside them.
+     *
+     * <h3>Why this is not simply the listing's own rows</h3>
+     *
+     * <p>It was, and that was the defect behind "images uploaded during development creation are not
+     * displayed". A typology card and a generated unit have no rows of their own — their gallery lives on
+     * the unit type — while {@code PropertyService.photographCount} counted exactly those rows when
+     * deciding whether the card could be published. So a card passed the "at least one photograph" gate on
+     * pictures this method then refused to show, and went live blank.
+     *
+     * <p>The fallback chain is the same one the gate uses, in the same order: the listing's own, then its
+     * typology's, then the project's. A house never leaves the first branch.
+     */
     private PublicPropertyResponse toDetail(Property p) {
-        List<String> images = media.findForProperty(p.getId()).stream()
-                .map(m -> storage.urlFor(m.getStorageKey()))
-                .filter(java.util.Objects::nonNull)
-                .toList();
-        return response(p, images);
+        List<String> own = urls(media.findForProperty(p.getId()).stream()
+                .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
+                .map(PropertyMedia::getStorageKey).toList());
+        List<String> ownPlans = urls(media.findForProperty(p.getId()).stream()
+                .filter(m -> AppConstant.MEDIA_KIND_FLOOR_PLAN.equals(m.getMediaKind()))
+                .map(PropertyMedia::getStorageKey).toList());
+        if (!own.isEmpty() || !ownPlans.isEmpty()) return response(p, own, ownPlans);
+
+        if (p.getUnitTypeId() != null) {
+            var shared = mediaAssets.listPublic(
+                    AppConstant.MEDIA_OWNER_UNIT_TYPE, p.getUnitTypeId());
+            List<String> photos = ofKind(shared, AppConstant.MEDIA_KIND_PHOTO);
+            List<String> plans = ofKind(shared, AppConstant.MEDIA_KIND_FLOOR_PLAN);
+            if (!photos.isEmpty() || !plans.isEmpty()) return response(p, photos, plans);
+        }
+
+        if (p.getDevelopmentId() != null) {
+            var project = mediaAssets.listPublic(
+                    AppConstant.MEDIA_OWNER_DEVELOPMENT, p.getDevelopmentId());
+            return response(p, ofKind(project, AppConstant.MEDIA_KIND_PHOTO),
+                    ofKind(project, AppConstant.MEDIA_KIND_SITE_PLAN));
+        }
+        return response(p, own, ownPlans);
     }
 
-    private PublicPropertyResponse response(Property p, List<String> images) {
+    private List<String> urls(List<String> keys) {
+        return keys.stream().map(storage::urlFor).filter(java.util.Objects::nonNull).toList();
+    }
+
+    private static List<String> ofKind(List<com.hodi.modules.media.MediaDtos.MediaResponse> rows,
+                                       String kind) {
+        return rows.stream().filter(m -> kind.equals(m.mediaKind()))
+                .map(com.hodi.modules.media.MediaDtos.MediaResponse::url)
+                .filter(java.util.Objects::nonNull).toList();
+    }
+
+    /**
+     * The card's cover, falling back the same way the gallery does.
+     *
+     * <p>{@code properties.primary_image_key} is never written for a typology card or a unit — nothing
+     * writes it but the listing's own media service, and those listings have no media of their own — so
+     * every generated card in marketplace search rendered coverless. Resolving it here rather than
+     * backfilling the column keeps one answer: the cover is whatever the shared gallery's cover is, now.
+     */
+    private String coverUrl(Property p) {
+        String own = storage.urlFor(p.getPrimaryImageKey());
+        if (own != null) return own;
+        if (p.getUnitTypeId() != null) {
+            String shared = storage.urlFor(
+                    mediaAssets.coverKeyFor(AppConstant.MEDIA_OWNER_UNIT_TYPE, p.getUnitTypeId()));
+            if (shared != null) return shared;
+        }
+        if (p.getDevelopmentId() != null) {
+            return storage.urlFor(
+                    mediaAssets.coverKeyFor(AppConstant.MEDIA_OWNER_DEVELOPMENT, p.getDevelopmentId()));
+        }
+        return null;
+    }
+
+    private PublicPropertyResponse response(Property p, List<String> images, List<String> floorPlans) {
         return new PublicPropertyResponse(
                 HashIdUtil.encodeId(p.getId()),
                 p.getReference(),
@@ -265,6 +333,7 @@ public class PublicPropertyService {
                 p.getDescription(),
                 p.getPropertyType(),
                 p.getListingType(),
+                p.getRentPeriod(),
                 p.getTenure(),
                 p.getPrice(),
                 p.getCurrency(),
@@ -288,8 +357,9 @@ public class PublicPropertyService {
                 p.isHasBorehole(),
                 p.isRainwaterHarvesting(),
                 p.getTenantName(),
-                storage.urlFor(p.getPrimaryImageKey()),
+                coverUrl(p),
                 images,
+                floorPlans,
                 p.getPromotionBoost() != null && p.getPromotionBoost() > 0,
                 p.getPublishedAt(),
                 /*

@@ -63,6 +63,7 @@ public class PublicDevelopmentService {
     private final DevelopmentPhaseRepository phases;
     private final PropertyRepository properties;
     private final MediaAssetRepository media;
+    private final AmenityService amenities;
     private final StorageService storage;
 
     @Getter @Setter
@@ -567,15 +568,39 @@ public class PublicDevelopmentService {
     }
 
     private PublicDevelopmentResponse toDetail(Development d) {
-        List<String> images = media.findPublicForOwner(
-                        AppConstant.MEDIA_OWNER_DEVELOPMENT, d.getId()).stream()
-                .map(MediaAsset::getStorageKey)
-                .map(storage::urlFor)
-                .toList();
+        List<String> images = urlsOfKind(d, AppConstant.MEDIA_KIND_PHOTO);
         return build(d, images, typologies(d),
                 bedroomRanges(List.of(d.getId())).get(d.getId()),
                 latestPost(d),
                 typeCounts(List.of(d.getId())).getOrDefault(d.getId(), List.of()));
+    }
+
+    /**
+     * The project's media of one kind, as URLs.
+     *
+     * <p>Split by kind because a site plan mixed into the photographs was a picture buyers had to find by
+     * scrolling — and because the uploader never sent a kind at all until now, so the discriminator the
+     * table has always had was unreachable.
+     */
+    private List<String> urlsOfKind(Development d, String kind) {
+        return media.findPublicForOwner(AppConstant.MEDIA_OWNER_DEVELOPMENT, d.getId()).stream()
+                .filter(m -> kind.equals(m.getMediaKind()))
+                .map(MediaAsset::getStorageKey)
+                .map(storage::urlFor)
+                .filter(java.util.Objects::nonNull)
+                .toList();
+    }
+
+    /** What the estate comes with, resolved through the catalogue for names and glyphs. */
+    private List<com.hodi.modules.properties.PropertyDtos.PublicAmenity> amenitiesFor(Development d) {
+        List<String> codes = amenities.codesFor(AmenityService.Scope.DEVELOPMENT, d.getId());
+        if (codes.isEmpty()) return List.of();
+        java.util.Set<String> wanted = new java.util.HashSet<>(codes);
+        return featureConfigs.findLive().stream()
+                .filter(c -> wanted.contains(c.getCode()))
+                .map(c -> new com.hodi.modules.properties.PropertyDtos.PublicAmenity(
+                        c.getCode(), c.getName(), c.getCategory(), c.getIcon()))
+                .toList();
     }
 
     private PublicDevelopmentResponse build(Development d, List<String> imageUrls,
@@ -588,6 +613,7 @@ public class PublicDevelopmentService {
                 d.getName(),
                 d.getDescription(),
                 d.getDevelopmentType(),
+                d.getPurpose(),
                 d.getDeveloperName(),
                 d.getSellingTenantName(),
                 d.getCounty(),
@@ -605,6 +631,11 @@ public class PublicDevelopmentService {
                 d.getProjectedCompletionOn(),
                 d.getPrimaryImageKey() == null ? null : storage.urlFor(d.getPrimaryImageKey()),
                 imageUrls,
+                urlsOfKind(d, AppConstant.MEDIA_KIND_SITE_PLAN),
+                amenitiesFor(d),
+                d.isGreenCertified(),
+                d.getGreenCertification(),
+                d.getEnergyRating(),
                 bedrooms == null ? null : bedrooms[0],
                 bedrooms == null ? null : bedrooms[1],
                 typologies,

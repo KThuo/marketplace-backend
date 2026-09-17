@@ -136,7 +136,17 @@ public class MediaAssetService {
                 .sizeBytes(stored.sizeBytes())
                 .caption(caption == null || caption.isBlank() ? null : caption.trim())
                 .sortOrder((int) held)
-                .primary(held == 0)
+                /*
+                 * The cover is the first *photograph*, not the first file.
+                 *
+                 * Until the uploader sent a kind every row was a photograph and "the first one" was
+                 * unambiguous. Now a seller who uploads the site plan before any photograph would have had
+                 * a site plan on the project's card — a worse first impression than the blank one this rule
+                 * exists to prevent.
+                 */
+                .primary(AppConstant.MEDIA_KIND_PHOTO.equals(kind)
+                        && repository.findForOwner(owner, ownerId).stream()
+                                .noneMatch(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind())))
                 .publicVisible(publicVisible)
                 .createdBy(AuthContext.username())
                 .build());
@@ -202,10 +212,32 @@ public class MediaAssetService {
     /** The cover's storage key, for a parent that caches one. Null when there are no files. */
     @Transactional(readOnly = true)
     public String coverKeyFor(String ownerType, Long ownerId) {
-        return repository.findPrimary(normaliseOwnerType(ownerType), ownerId)
+        String owner = normaliseOwnerType(ownerType);
+        return repository.findPrimary(owner, ownerId)
                 .map(MediaAsset::getStorageKey)
-                .orElseGet(() -> repository.findForOwner(normaliseOwnerType(ownerType), ownerId).stream()
+                // Falling back to "the first row" would hand the card a floor plan on an album that holds
+                // plans and no photographs, which is exactly the album a project starts with.
+                .orElseGet(() -> repository.findForOwner(owner, ownerId).stream()
+                        .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
                         .findFirst().map(MediaAsset::getStorageKey).orElse(null));
+    }
+
+    /**
+     * The first key of one kind, or null.
+     *
+     * <p>{@code coverKeyFor} answers "what does the card show", which is a photograph. This answers "where
+     * is the floor plan", which is a different question and the one
+     * {@code development_unit_types.floor_plan_key} was added to hold — a column nothing had ever written,
+     * exposed as {@code floorPlanUrl} on two DTOs and therefore always null.
+     */
+    @Transactional(readOnly = true)
+    public String firstKeyOfKind(String ownerType, Long ownerId, String mediaKind) {
+        String kind = normaliseKind(mediaKind);
+        return repository.findForOwner(normaliseOwnerType(ownerType), ownerId).stream()
+                .filter(m -> kind.equals(m.getMediaKind()))
+                .findFirst()
+                .map(MediaAsset::getStorageKey)
+                .orElse(null);
     }
 
     @Transactional(readOnly = true)

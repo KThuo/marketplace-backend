@@ -77,6 +77,9 @@ public final class AuctionDtos {
             BigDecimal depositRequired,
             OffsetDateTime auctionDate,
             String venue,
+            /** Where the room is, which is not where the property is. */
+            BigDecimal venueLatitude,
+            BigDecimal venueLongitude,
             String viewingNotes,
             String terms,
             String auctioneerReference,
@@ -110,6 +113,8 @@ public final class AuctionDtos {
             BigDecimal depositRequired,
             OffsetDateTime auctionDate,
             @Size(max = 255) String venue,
+            BigDecimal venueLatitude,
+            BigDecimal venueLongitude,
             String viewingNotes,
             String terms,
             /** The auctioneer's reference. Required before the lot can be published, not before it exists. */
@@ -157,6 +162,8 @@ public final class AuctionDtos {
             BigDecimal depositRequired,
             OffsetDateTime auctionDate,
             String venue,
+            BigDecimal venueLatitude,
+            BigDecimal venueLongitude,
             String viewingNotes,
             String terms,
             String auctioneerName,

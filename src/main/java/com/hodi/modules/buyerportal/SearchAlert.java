@@ -34,6 +34,8 @@ public class SearchAlert {
 
     // ── the criteria ──────────────────────────────────────────────────────────
     @Column(name = "search_term", length = 255) private String searchTerm;
+    /** {@code SALE}, {@code RENT}, or null for both — which is what every alert saved before now meant. */
+    @Column(name = "listing_type", length = 16) private String listingType;
     @Column(name = "property_type", length = 32) private String propertyType;
     @Column(length = 64) private String county;
     @Column(length = 64) private String town;

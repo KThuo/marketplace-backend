@@ -26,7 +26,20 @@ public final class DevelopmentUnitTypeDtos {
             @DecimalMin("0") BigDecimal listPrice,
             @DecimalMin("0") BigDecimal serviceCharge,
             @Min(0) Integer plannedUnitCount,
-            Integer sortOrder) {}
+            Integer sortOrder,
+            /**
+             * What every home of this kind comes with.
+             *
+             * <p>The first writer this column has ever had. {@code unit_features.unit_type_id}, the XOR
+             * constraint and the inheritance rule in {@link UnitSpec} were all built together and none of
+             * them could be reached, because the only writer in the codebase always wrote {@code unit_id}.
+             *
+             * <p>What belongs here rather than on the project: the things true of this typology and not of
+             * its neighbour — all-en-suite, a private garden, a roof terrace. The estate's borehole belongs
+             * on the development, and the picker says which is which by offering the project's own set
+             * first.
+             */
+            java.util.List<String> amenityCodes) {}
 
     public record UnitTypeResponse(
             String id,
@@ -56,5 +69,6 @@ public final class DevelopmentUnitTypeDtos {
             /** The listing this typology is marketed through, when it has one. */
             String listingReference,
             String listingState,
-            int photoCount) {}
+            int photoCount,
+            java.util.List<String> amenityCodes) {}
 }

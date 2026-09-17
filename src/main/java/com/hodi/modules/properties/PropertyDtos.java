@@ -35,6 +35,8 @@ public final class PropertyDtos {
             String description,
             String propertyType,
             String listingType,
+            /** {@code DAY}, {@code WEEK}, {@code MONTH} or {@code YEAR} on a letting; null on a sale. */
+            String rentPeriod,
             String tenure,
             BigDecimal price,
             String currency,
@@ -86,6 +88,14 @@ public final class PropertyDtos {
             String caption,
             int sortOrder,
             boolean primary,
+            /**
+             * {@code PHOTO}, {@code FLOOR_PLAN}, {@code CERTIFICATE} and the rest.
+             *
+             * <p>A listing could not hold a floor plan at all before this — the column did not exist on
+             * {@code property_media} — so the plan buyers ask for first had nowhere to go but the
+             * photograph gallery, unlabelled and in the middle of the pictures.
+             */
+            String mediaKind,
             String contentType,
             Long sizeBytes) {}
 
@@ -103,7 +113,21 @@ public final class PropertyDtos {
             @NotBlank(message = "Choose what kind of property this is")
             String propertyType,
 
+            /**
+             * {@code SALE} or {@code RENT}.
+             *
+             * <p>{@code RENT} has been legal in the CHECK since the table was created and no screen ever
+             * set it — the form hardcoded {@code SALE} — so a lettings listing could not be created at all.
+             */
             String listingType,
+            /**
+             * How long the rent buys. Required when {@code listingType} is {@code RENT}, ignored otherwise.
+             *
+             * <p>Validated in the service rather than here, because the rule is conditional on another
+             * field and a bean-validation annotation that cannot see its sibling would have to be either
+             * always-on (breaking every sale) or advisory (which is not validation).
+             */
+            String rentPeriod,
             String tenure,
 
             @NotNull(message = "A price is required")
@@ -183,6 +207,8 @@ public final class PropertyDtos {
             String description,
             String propertyType,
             String listingType,
+            /** {@code DAY}, {@code WEEK}, {@code MONTH} or {@code YEAR} on a letting; null on a sale. */
+            String rentPeriod,
             String tenure,
             BigDecimal price,
             String currency,
@@ -208,6 +234,14 @@ public final class PropertyDtos {
             String sellerName,
             String primaryImageUrl,
             List<String> imageUrls,
+            /**
+             * The plans, kept out of the photographs.
+             *
+             * <p>A buyer asks for the floor plan before almost anything else, and mixed into the gallery it
+             * was a picture they had to find by scrolling. It is a separate list because it is answering a
+             * separate question.
+             */
+            List<String> floorPlanUrls,
             /**
              * Whether somebody is paying for placement on this one (M13).
              *
@@ -266,6 +300,13 @@ public final class PropertyDtos {
     @Getter
     @Setter
     public static class PublicSearchRequest extends PagedDataRequest {
+        /**
+         * {@code SALE} or {@code RENT}. Empty means both.
+         *
+         * <p>There was no such filter, and no badge either, so the marketplace was implicitly sale-only —
+         * a buyer looking for somewhere to rent had no way to say so and no way to tell from a card.
+         */
+        private String listingType;
         private String propertyType;
         private String county;
         private String town;
@@ -281,6 +322,8 @@ public final class PropertyDtos {
     /** What the marketplace offers to filter by, counted from what is actually live. */
     public record FacetsResponse(
             List<Facet> propertyTypes,
+            /** How many are for sale and how many to let, so the control can say which it is offering. */
+            List<Facet> listingTypes,
             List<Facet> counties,
             List<String> towns,
             BigDecimal minPrice,

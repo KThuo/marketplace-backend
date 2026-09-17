@@ -85,6 +85,19 @@ public class Development {
     @Column(name = "to_price", precision = 15, scale = 2) private BigDecimal toPrice;
     @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
 
+    /**
+     * What the project itself is certified as, and how it performs.
+     *
+     * <p>These were on {@code properties} only, which had it backwards: an EDGE or Safari Green
+     * certificate is issued to the project, and every unit in it inherits the claim. A seller could
+     * therefore tick the box ninety times, once per listing, or not at all — and nothing anywhere held
+     * the certificate itself. The evidence is {@code CERTIFICATE}-kind media against the development.
+     */
+    @Column(name = "green_certified", nullable = false) @Builder.Default private boolean greenCertified = false;
+    @Column(name = "green_certification", length = 64) private String greenCertification;
+    /** An A–G band, constrained by the column rather than by convention. */
+    @Column(name = "energy_rating", length = 8) private String energyRating;
+
     @Column(name = "construction_status", nullable = false, length = 24)
     @Builder.Default private String constructionStatus = AppConstant.BUILD_PLANNED;
     @Column(name = "percent_complete", nullable = false) @Builder.Default private short percentComplete = 0;

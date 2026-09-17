@@ -87,7 +87,9 @@ class DevelopmentServiceIT {
         return new SaveDevelopmentRequest(name, "Two hundred units over four blocks.", "APARTMENT",
                 AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders Ltd", null, null, null,
                 "Nairobi", town, "Kilimani", "Off Argwings Kodhek", null, null,
-                200, null, null, null, null, null, null);
+                200, null, null, null, null, null,
+                // amenityCodes, greenCertified, greenCertification, energyRating, percentComplete
+                null, null, null, null, null);
     }
 
     private void addTypology(Long developmentId) {
@@ -275,7 +277,9 @@ class DevelopmentServiceIT {
         return new SaveDevelopmentRequest(name, "Two hundred units over four blocks.", "APARTMENT",
                 AppConstant.DEV_PURPOSE_FOR_SALE, "Acacia Builders Ltd", null, kind, tenantHash,
                 "Nairobi", "Nairobi", "Kilimani", "Off Argwings Kodhek", null, null,
-                200, null, null, null, null, null, null);
+                200, null, null, null, null, null,
+                // amenityCodes, greenCertified, greenCertification, energyRating, percentComplete
+                null, null, null, null, null);
     }
 
     // ── who may own one ───────────────────────────────────────────────────────
@@ -469,7 +473,7 @@ class DevelopmentServiceIT {
         var type = typeService.create(development.id(), new SaveUnitTypeRequest(
                 "2BED", "Two bedroom", "Ninety-two square metres.", "APARTMENT",
                 (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
-                new java.math.BigDecimal("9500000"), null, 40, 10));
+                new java.math.BigDecimal("9500000"), null, 40, 10, null));
 
         service.submit(development.id(), null);
         service.applyPublication(id);
@@ -478,7 +482,7 @@ class DevelopmentServiceIT {
         typeService.update(development.id(), type.id(), new SaveUnitTypeRequest(
                 "2BED", "Two bedroom", "Ninety-two square metres.", "APARTMENT",
                 (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
-                new java.math.BigDecimal("11000000"), null, 40, 10));
+                new java.math.BigDecimal("11000000"), null, 40, 10, null));
 
         assertEquals(AppConstant.LISTING_PENDING, developments.findById(id).orElseThrow().getListingState(),
                 "a price the bank has not seen is not the price on the marketplace");
@@ -498,7 +502,7 @@ class DevelopmentServiceIT {
         var type = typeService.create(development.id(), new SaveUnitTypeRequest(
                 "2BED", "Two bedroom", "First wording.", "APARTMENT",
                 (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
-                new java.math.BigDecimal("9500000"), null, 40, 10));
+                new java.math.BigDecimal("9500000"), null, 40, 10, null));
 
         service.submit(development.id(), null);
         service.applyPublication(id);
@@ -506,7 +510,7 @@ class DevelopmentServiceIT {
         typeService.update(development.id(), type.id(), new SaveUnitTypeRequest(
                 "2BED", "Two bedroom", "Better wording, same price.", "APARTMENT",
                 (short) 2, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
-                new java.math.BigDecimal("9500000"), null, 40, 10));
+                new java.math.BigDecimal("9500000"), null, 40, 10, null));
 
         assertEquals(AppConstant.LISTING_LIVE, developments.findById(id).orElseThrow().getListingState(),
                 "re-approving over a typo would make the rule the thing people work around");
@@ -515,7 +519,7 @@ class DevelopmentServiceIT {
     private SaveUnitTypeRequest typeSpec(String desc, short beds, String price) {
         return new SaveUnitTypeRequest("2BED", "Two bedroom", desc, "APARTMENT",
                 beds, (short) 2, (short) 1, new java.math.BigDecimal("92"), null,
-                new java.math.BigDecimal(price), null, 40, 10);
+                new java.math.BigDecimal(price), null, 40, 10, null);
     }
 
     /** Takes a live project and returns its id, with one typology already on it. */

@@ -26,6 +26,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 /**
  * Viewings: a buyer asks to come, a seller answers (M4, BRD FR041–FR044).
@@ -52,6 +53,7 @@ public class SiteVisitService {
     private final UserRepository users;
     private final AuditService audit;
     private final LeadNotifier notifier;
+    private final LeadThreadService thread;
 
     // ── the buyer's side ──────────────────────────────────────────────────────
 
@@ -85,6 +87,11 @@ public class SiteVisitService {
                 .updatedBy(buyer.getUsername())
                 .build());
 
+        thread.recordAsBuyer(AppConstant.LEAD_SITE_VISIT, visit.getId(), userId, buyer.fullName(),
+                EnquiryService.blankTo(request.note(),
+                        "Asked to view on " + when(request.requestedAt()) + "."),
+                AppConstant.VISIT_REQUESTED);
+
         audit.record(AppConstant.AUDIT_VISIT_REQUESTED, "SiteVisit", visit.getId(), null,
                 visit.getReference() + " on " + property.getReference());
         notifier.toSeller(property.getTenantId(),
@@ -100,7 +107,7 @@ public class SiteVisitService {
     public PagedResponse<VisitResponse> mine(VisitListRequest request) {
         var page = repository.findMine(AuthContext.requireUserId(),
                 request.toPageable(Sort.by(Sort.Direction.DESC, "requestedAt")));
-        return PagedResponse.from(page, this::toResponse);
+        return withThreads(page);
     }
 
     @Transactional(readOnly = true)
@@ -122,6 +129,12 @@ public class SiteVisitService {
         visit.setOutcomeNote(EnquiryService.blankToNull(request == null ? null : request.outcomeNote()));
         visit.setUpdatedBy(AuthContext.username());
         repository.save(visit);
+
+        thread.recordAsBuyer(AppConstant.LEAD_SITE_VISIT, visit.getId(), visit.getUserId(),
+                visit.getBuyerName(),
+                EnquiryService.blankTo(request == null ? null : request.outcomeNote(),
+                        "Cancelled the viewing."),
+                AppConstant.VISIT_CANCELLED);
 
         notifier.toSeller(visit.getTenantId(),
                 "Viewing cancelled: " + visit.getPropertyTitle(),
@@ -147,7 +160,7 @@ public class SiteVisitService {
         Sort sort = Boolean.TRUE.equals(request.getUpcoming())
                 ? Sort.by(Sort.Direction.ASC, "slotAt")
                 : Sort.by(Sort.Direction.DESC, "requestedAt");
-        return PagedResponse.from(repository.findAll(spec, request.toPageable(sort)), this::toResponse);
+        return withThreads(repository.findAll(spec, request.toPageable(sort)));
     }
 
     /**
@@ -197,6 +210,15 @@ public class SiteVisitService {
         visit.setUpdatedBy(AuthContext.username());
         repository.save(visit);
 
+        /*
+         * The decision goes into the history before the notification goes out, and it goes in whether or
+         * not the seller typed a reason — the line the buyer is about to receive is the record of what was
+         * decided, and a thread that had only the optional notes in it would be missing the decisions
+         * they annotate.
+         */
+        thread.record(AppConstant.LEAD_SITE_VISIT, visit.getId(),
+                EnquiryService.blankTo(request.note(), line), visit.getState());
+
         audit.record(AppConstant.AUDIT_VISIT_DECIDED, "SiteVisit", visit.getId(), null,
                 visit.getReference() + " " + visit.getState());
         /*
@@ -214,7 +236,7 @@ public class SiteVisitService {
                 visit.getTenantId(), visit.getTenantName(),
                 visit.getDecidedByUserId(), null);
         notifier.toBuyer(visit.getUserId(), "About your viewing of " + visit.getPropertyTitle(), line,
-                "/account/viewings?ref=" + visit.getReference());
+                "/account/conversations?tab=viewings&ref=" + visit.getReference());
         return toResponse(visit);
     }
 
@@ -230,7 +252,12 @@ public class SiteVisitService {
         visit.setOutcomeNote(EnquiryService.blankToNull(request == null ? null : request.outcomeNote()));
         visit.setUpdatedBy(AuthContext.username());
         calendar.closeProjection(OperationsConstants.SOURCE_SITE_VISIT, visit.getId(), false);
-        return toResponse(repository.save(visit));
+        SiteVisit saved = repository.save(visit);
+        thread.record(AppConstant.LEAD_SITE_VISIT, saved.getId(),
+                EnquiryService.blankTo(request == null ? null : request.outcomeNote(),
+                        "Marked the viewing as done."),
+                AppConstant.VISIT_COMPLETED);
+        return toResponse(saved);
     }
 
     @Transactional(readOnly = true)
@@ -259,12 +286,28 @@ public class SiteVisitService {
         return at == null ? "" : WHEN.format(at);
     }
 
+    /**
+     * A page of viewings with every thread fetched once.
+     *
+     * <p>Twenty rows each loading their own history is twenty-one queries for one screen, and the screen
+     * shows the history — so the alternative is not "fetch lazily", it is "fetch badly".
+     */
+    private PagedResponse<VisitResponse> withThreads(org.springframework.data.domain.Page<SiteVisit> page) {
+        var byLead = thread.threads(AppConstant.LEAD_SITE_VISIT,
+                page.getContent().stream().map(SiteVisit::getId).toList());
+        return PagedResponse.from(page, v -> toResponse(v, byLead.getOrDefault(v.getId(), List.of())));
+    }
+
     private VisitResponse toResponse(SiteVisit v) {
+        return toResponse(v, thread.thread(AppConstant.LEAD_SITE_VISIT, v.getId()));
+    }
+
+    private VisitResponse toResponse(SiteVisit v, List<MessageResponse> messages) {
         return new VisitResponse(
                 v.getReference(), v.getPropertyReference(), v.getPropertyTitle(), v.getTenantName(),
                 v.getBuyerName(), v.getBuyerEmail(), v.getBuyerPhone(), v.getRequestedAt(), v.getSlotAt(),
                 v.getPartySize(), v.getBuyerNote(), v.getState(), v.getSellerNote(), v.getOutcomeNote(),
-                v.getDecidedAt(), v.getCreatedAt());
+                v.getDecidedAt(), v.getCreatedAt(), messages);
     }
 
     private String nextReference() {

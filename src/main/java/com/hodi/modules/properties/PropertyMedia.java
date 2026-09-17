@@ -32,6 +32,17 @@ public class PropertyMedia {
 
     @Column(name = "storage_key", nullable = false, length = 512) private String storageKey;
     @Column(name = "content_type", length = 64) private String contentType;
+
+    /**
+     * A photograph, a floor plan, or the certificate behind a claim.
+     *
+     * <p>`media_assets` has carried this since it was written and `property_media` never did, so a listing
+     * could not hold a floor plan even in principle — and the uploader never sent a kind anyway, so every
+     * row in either table is a PHOTO. Defaulted rather than required for exactly that reason: the rows
+     * already there are photographs, and saying so costs nothing.
+     */
+    @Column(name = "media_kind", nullable = false, length = 24)
+    @Builder.Default private String mediaKind = AppConstant.MEDIA_KIND_PHOTO;
     @Column(name = "size_bytes") private Long sizeBytes;
     @Column(length = 255) private String caption;
 

@@ -54,6 +54,7 @@ public class SearchAlertService {
             String id,
             String name,
             String searchTerm,
+            String listingType,
             String propertyType,
             String county,
             String town,
@@ -80,6 +81,8 @@ public class SearchAlertService {
             @Size(max = 120, message = "That name is too long")
             String name,
             String searchTerm,
+            /** {@code SALE} or {@code RENT}. Absent means both. */
+            String listingType,
             String propertyType,
             String county,
             String town,
@@ -196,6 +199,7 @@ public class SearchAlertService {
     private void apply(SearchAlert alert, SaveAlertRequest request) {
         alert.setName(request.name().trim());
         alert.setSearchTerm(blankToNull(request.searchTerm()));
+        alert.setListingType(listingType(request.listingType()));
         alert.setPropertyType(blankToNull(request.propertyType()));
         alert.setCounty(blankToNull(request.county()));
         alert.setTown(blankToNull(request.town()));
@@ -233,6 +237,7 @@ public class SearchAlertService {
                 HashIdUtil.encodeId(alert.getId()),
                 alert.getName(),
                 alert.getSearchTerm(),
+                alert.getListingType(),
                 alert.getPropertyType(),
                 alert.getCounty(),
                 alert.getTown(),
@@ -251,6 +256,21 @@ public class SearchAlertService {
                 alert.getTotalSent(),
                 alert.getLastOutcome(),
                 alert.getCreatedAt());
+    }
+
+    /**
+     * {@code SALE}, {@code RENT}, or nothing at all.
+     *
+     * <p>Anything unrecognised becomes null rather than being refused: an alert is a convenience, and a
+     * saved search that silently covers both sides of the market is a far smaller failure than one that
+     * will not save. The column's CHECK is what guarantees only these two ever reach it.
+     */
+    private static String listingType(String requested) {
+        String value = blankToNull(requested);
+        if (value == null) return null;
+        String upper = value.trim().toUpperCase();
+        return AppConstant.LISTING_TYPE_SALE.equals(upper) || AppConstant.LISTING_TYPE_RENT.equals(upper)
+                ? upper : null;
     }
 
     private static String blankToNull(String value) {

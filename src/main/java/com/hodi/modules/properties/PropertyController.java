@@ -1,6 +1,7 @@
 package com.hodi.modules.properties;
 
 import com.hodi.common.ApiResponse;
+import com.hodi.common.AppConstant;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.dto.DeactivateRequest;
 import com.hodi.logging.RequestAction;
@@ -125,8 +126,24 @@ public class PropertyController {
     @RequestAction("ADD_LISTING_PHOTO")
     public ApiResponse<MediaResponse> addMedia(@PathVariable String hashId,
                                                @RequestParam("file") MultipartFile file,
+                                               @RequestParam(required = false) String mediaKind,
                                                @RequestParam(required = false) String caption) {
-        return ApiResponse.success("Photograph added", mediaService.add(hashId, file, caption));
+        MediaResponse added = mediaService.add(hashId, file, mediaKind, caption);
+        // The message names what was actually added: "Photograph added" on a floor plan was a small lie
+        // that made the two uploads on the form look like one.
+        return ApiResponse.success(label(added.mediaKind()) + " added", added);
+    }
+
+    /** House style for a media kind, for the sentence the toast shows. */
+    private static String label(String mediaKind) {
+        return switch (mediaKind == null ? "" : mediaKind) {
+            case AppConstant.MEDIA_KIND_FLOOR_PLAN -> "Floor plan";
+            case AppConstant.MEDIA_KIND_SITE_PLAN -> "Site plan";
+            case AppConstant.MEDIA_KIND_BROCHURE -> "Brochure";
+            case AppConstant.MEDIA_KIND_DRONE -> "Aerial photograph";
+            case AppConstant.MEDIA_KIND_CERTIFICATE -> "Certificate";
+            default -> "Photograph";
+        };
     }
 
     @PostMapping("/{hashId}/media/{mediaId}/primary")

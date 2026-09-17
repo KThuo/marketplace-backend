@@ -125,7 +125,7 @@ public class EnquiryService {
     public PagedResponse<EnquiryResponse> mine(EnquiryListRequest request) {
         var page = repository.findMine(AuthContext.requireUserId(),
                 request.toPageable(Sort.by(Sort.Direction.DESC, "lastMessageAt")));
-        return PagedResponse.from(page, t -> toResponse(t, false));
+        return withLastMessage(page);
     }
 
     @Transactional(readOnly = true)
@@ -176,7 +176,7 @@ public class EnquiryService {
 
         var page = repository.findAll(spec,
                 request.toPageable(Sort.by(Sort.Direction.DESC, "lastMessageAt")));
-        return PagedResponse.from(page, t -> toResponse(t, false));
+        return withLastMessage(page);
     }
 
     @Transactional(readOnly = true)
@@ -208,7 +208,7 @@ public class EnquiryService {
                 "A reply about " + ticket.getPropertyTitle(),
                 ticket.getTenantName() + " has replied to your enquiry about " + ticket.getPropertyTitle()
                         + ".",
-                "/account/enquiries?ref=" + ticket.getReference());
+                "/account/conversations?tab=enquiries&ref=" + ticket.getReference());
         return toResponse(ticket, true);
     }
 
@@ -226,9 +226,18 @@ public class EnquiryService {
             ticket.setAssignedToName(assignee.fullName());
         }
         ticket.setUpdatedBy(AuthContext.username());
-        return toResponse(repository.save(ticket), false);
+        return toResponse(repository.save(ticket), true);
     }
 
+    /**
+     * File it.
+     *
+     * <p>Returns the thread, which it did not used to. The admin pane assigns this response straight over
+     * the conversation it is showing, so a response without messages blanked the entire history at the
+     * moment somebody closed it — the one action after which you are most likely to want to re-read what
+     * was agreed. The same applies to {@link #assign}: handing a conversation to a colleague is not a
+     * reason for it to disappear off the screen of the person handing it over.
+     */
     @Transactional
     public EnquiryResponse close(String reference, CloseRequest request) {
         EnquiryTicket ticket = loadForSeller(reference);
@@ -238,7 +247,7 @@ public class EnquiryService {
         ticket.setCloseReason(blankToNull(request == null ? null : request.reason()));
         ticket.setAwaitingSeller(false);
         ticket.setUpdatedBy(AuthContext.username());
-        return toResponse(repository.save(ticket), false);
+        return toResponse(repository.save(ticket), true);
     }
 
     @Transactional(readOnly = true)
@@ -304,16 +313,42 @@ public class EnquiryService {
     private EnquiryResponse toResponse(EnquiryTicket t, boolean withMessages) {
         List<MessageResponse> thread = withMessages
                 ? messages.findByTicketIdOrderByCreatedAtAsc(t.getId()).stream()
-                        .map(m -> new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(),
-                                m.getCreatedAt()))
+                        .map(EnquiryService::asMessage)
                         .toList()
                 : null;
+        // On a single read the last message is already in the thread; taking it from there costs nothing
+        // and keeps the two halves of the response describing the same conversation.
+        MessageResponse last = thread == null || thread.isEmpty()
+                ? null : thread.get(thread.size() - 1);
+        return toResponse(t, thread, last);
+    }
 
+    private static EnquiryResponse toResponse(EnquiryTicket t, List<MessageResponse> thread,
+                                              MessageResponse last) {
         return new EnquiryResponse(
                 t.getReference(), t.getPropertyReference(), t.getPropertyTitle(), t.getTenantName(),
                 t.getBuyerName(), t.getBuyerEmail(), t.getBuyerPhone(), t.getSubject(), t.getState(),
                 t.getAssignedToName(), t.getMessageCount(), t.getLastMessageAt(), t.getLastMessageSide(),
-                t.isAwaitingSeller(), t.getCloseReason(), t.getCreatedAt(), thread);
+                t.isAwaitingSeller(), t.getCloseReason(), t.getCreatedAt(), thread, last);
+    }
+
+    private static MessageResponse asMessage(EnquiryMessage m) {
+        return new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(), m.getCreatedAt());
+    }
+
+    /**
+     * A page of tickets, each carrying its latest message, in two queries rather than one per row.
+     *
+     * <p>The repository returns every message for the page newest first, so the first one seen per ticket
+     * is that ticket's latest — {@code merge} keeps it and discards the rest.
+     */
+    private PagedResponse<EnquiryResponse> withLastMessage(
+            org.springframework.data.domain.Page<EnquiryTicket> page) {
+        List<Long> ids = page.getContent().stream().map(EnquiryTicket::getId).toList();
+        java.util.Map<Long, MessageResponse> latest = ids.isEmpty() ? java.util.Map.of()
+                : messages.latestForTickets(ids).stream().collect(java.util.stream.Collectors.toMap(
+                        EnquiryMessage::getTicketId, EnquiryService::asMessage, (first, older) -> first));
+        return PagedResponse.from(page, t -> toResponse(t, null, latest.get(t.getId())));
     }
 
     private String nextReference() {

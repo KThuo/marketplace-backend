@@ -152,6 +152,7 @@ public class SearchAlertRunner {
     private static PublicSearchRequest criteriaOf(SearchAlert alert) {
         PublicSearchRequest request = new PublicSearchRequest();
         request.setSearch(alert.getSearchTerm());
+        request.setListingType(alert.getListingType());
         request.setPropertyType(alert.getPropertyType());
         request.setCounty(alert.getCounty());
         request.setTown(alert.getTown());

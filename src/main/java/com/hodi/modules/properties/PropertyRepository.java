@@ -87,6 +87,21 @@ public interface PropertyRepository
             + "and p.status <> 5")
     Optional<Property> findByUnitTypeId(@Param("unitTypeId") Long unitTypeId);
 
+    /**
+     * Points every listing of one typology at that typology's cover.
+     *
+     * <p>The card and each of its units all show the same picture, because they all read the same gallery.
+     * Repointing one and leaving the rest is how a unit ends up holding the key of a photograph somebody
+     * deleted from the typology a month ago — a blank card whose cause is nowhere near it.
+     *
+     * <p>Bulk, so a typology with ninety units is one statement. The rows are not in the persistence
+     * context afterwards, which is fine here: nothing in the same transaction reads the cover back.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("update Property p set p.primaryImageKey = :key where p.unitTypeId = :unitTypeId "
+            + "and p.status <> 5")
+    int repointCover(@Param("unitTypeId") Long unitTypeId, @Param("key") String key);
+
     /** Every listing belonging to one development, archived ones excluded. */
     @Query("select p from Property p where p.developmentId = :developmentId and p.status <> 5")
     List<Property> findForDevelopment(@Param("developmentId") Long developmentId);

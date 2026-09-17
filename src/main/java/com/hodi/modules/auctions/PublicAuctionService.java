@@ -106,7 +106,8 @@ public class PublicAuctionService {
                 lot.getPropertyType(), lot.getCounty(), lot.getTown(), lot.getEstate(),
                 lot.getAddressLine(), lot.getLatitude(), lot.getLongitude(), lot.getTitleNumber(),
                 lot.getPlotAreaAcres(), lot.getBedrooms(), lot.getGuidePrice(), lot.getCurrency(),
-                lot.getDepositRequired(), lot.getAuctionDate(), lot.getVenue(), lot.getViewingNotes(),
+                lot.getDepositRequired(), lot.getAuctionDate(), lot.getVenue(),
+                lot.getVenueLatitude(), lot.getVenueLongitude(), lot.getViewingNotes(),
                 lot.getTerms(), lot.getAuctioneerName(), storage.urlFor(lot.getPrimaryImageKey()));
     }
 

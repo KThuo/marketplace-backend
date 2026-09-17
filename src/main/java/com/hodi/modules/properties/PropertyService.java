@@ -6,6 +6,7 @@ import com.hodi.modules.agents.AgentProfileRepository;
 import com.hodi.modules.agents.AgentState;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.exception.HodiException;
+import com.hodi.modules.developments.AmenityService;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.common.util.SearchSpecs;
@@ -70,8 +71,7 @@ public class PropertyService {
     private final com.hodi.modules.media.MediaAssetRepository mediaAssets;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
-    private final com.hodi.modules.developments.UnitFeatureRepository features;
-    private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
+    private final AmenityService amenities;
     private final StorageService storage;
     private final AuditService audit;
 
@@ -159,15 +159,27 @@ public class PropertyService {
          * price is not would mean trusting the editor's own judgement about their own edit, which is the
          * judgement Maker/Checker exists because nobody should have to make about themselves.
          */
+        /*
+         * Already waiting counts too, and that omission was a wall.
+         *
+         * `wasLive` alone meant a listing edited a second time before anybody had decided on the first edit
+         * took the `submit` path — which throws 409 "That is already waiting for a decision." on the
+         * existing request. So the author of a pending listing could not save a correction at all, and the
+         * message told them about a queue rather than about their listing.
+         *
+         * Restating is the right answer regardless: two edits make one listing stale, not two, and the
+         * checker should be reading the newer description of what changed.
+         */
         boolean wasLive = property.isLive();
+        boolean wasWaiting = property.isPending();
         if (wasLive) {
             property.setListingState(AppConstant.LISTING_PENDING);
             property.setPublishedAt(null);
         }
 
         Property saved = repository.save(property);
-        if (wasLive) {
-            approvals.submit(AppConstant.APPROVAL_ENTITY_PROPERTY, saved.getId(),
+        if (wasLive || wasWaiting) {
+            approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_PROPERTY, saved.getId(),
                     AppConstant.APPROVAL_ACTION_PUBLISH, saved.getTenantId(), null,
                     saved.getReference() + " — " + saved.getTitle(),
                     "Edited while live; needs re-approval before it goes back on the marketplace.");
@@ -395,6 +407,49 @@ public class PropertyService {
      * <p>The typology is asked first, because a typology with its own floor plan and gallery should not be
      * gated on the project having any. An ordinary listing never reaches the second branch at all.
      */
+    /** Anything unrecognised is a sale, which is what every listing was before the control existed. */
+    private static String listingType(String requested) {
+        String value = requested == null ? "" : requested.trim().toUpperCase();
+        return AppConstant.LISTING_TYPE_RENT.equals(value)
+                ? AppConstant.LISTING_TYPE_RENT
+                : AppConstant.LISTING_TYPE_SALE;
+    }
+
+    /**
+     * How long the rent buys, and nothing at all on a sale.
+     *
+     * <p>Refused rather than defaulted when a letting arrives without one: "KES 85,000" is a bargain by
+     * the year and an insult by the day, and guessing MONTH on the seller's behalf would publish a figure
+     * they did not write. A sale's period is cleared rather than kept, so a listing switched from letting
+     * to sale does not carry a period that no longer means anything.
+     */
+    private static String rentPeriod(String listingType, String requested) {
+        if (!AppConstant.LISTING_TYPE_RENT.equals(listingType)) return null;
+        String value = requested == null ? "" : requested.trim().toUpperCase();
+        if (!AppConstant.RENT_PERIODS.contains(value)) {
+            throw new HodiException("Say what the rent is per — a day, a week, a month or a year.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return value;
+    }
+
+    /**
+     * An A–G band, or nothing.
+     *
+     * <p>The column was eight free characters with no validation, so it held whatever was typed and could
+     * not be rendered as anything but a string. A value that is not a band is refused rather than silently
+     * dropped: dropping it would tell the seller their rating had been saved.
+     */
+    private static String energyBand(String requested) {
+        String value = blankToNull(requested);
+        if (value == null) return null;
+        String band = value.trim().toUpperCase();
+        if (!band.matches("[A-G]")) {
+            throw new HodiException("An energy rating is a band from A to G.", HttpStatus.BAD_REQUEST);
+        }
+        return band;
+    }
+
     private long photographCount(Property property) {
         long own = media.countForProperty(property.getId());
         if (own > 0 || !property.isUnitTypeListing()) return own;
@@ -426,77 +481,33 @@ public class PropertyService {
     /** Every amenity the platform knows, in the catalogue's own order. Feeds the picker. */
     @Transactional(readOnly = true)
     public java.util.List<PropertyDtos.PublicAmenity> amenityCatalogue() {
-        return featureConfigs.findLive().stream()
-                .map(c -> new PropertyDtos.PublicAmenity(
-                        c.getCode(), c.getName(), c.getCategory(), c.getIcon()))
-                .toList();
+        return amenities.catalogue(c -> new PropertyDtos.PublicAmenity(
+                c.getCode(), c.getName(), c.getCategory(), c.getIcon()));
     }
 
     /** The codes this listing currently carries, so the form opens with them ticked. */
     @Transactional(readOnly = true)
     public java.util.List<String> amenityCodesFor(Long propertyId) {
-        return features.findForUnit(propertyId).stream()
-                .map(com.hodi.modules.developments.UnitFeature::getFeatureCode)
-                .toList();
+        return amenities.codesFor(AmenityService.Scope.LISTING, propertyId);
     }
 
+    /**
+     * Replaces what the listing comes with.
+     *
+     * <p>Delegated since the development and the typology gained amenities of their own: the set rules —
+     * whole set not a delta, null leaves them alone, diff rather than rewrite — are the same at all three
+     * levels, and had begun to be three copies of themselves. See {@link AmenityService}.
+     */
     private void applyAmenities(Property property, SavePropertyRequest request) {
-        if (request.amenityCodes() == null) return;
-
-        java.util.LinkedHashSet<String> wanted = request.amenityCodes().stream()
-                .filter(c -> c != null && !c.isBlank())
-                .map(String::trim)
-                .collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
-
-        java.util.Set<String> known = featureConfigs.findLive().stream()
-                .map(com.hodi.modules.developments.UnitFeatureConfig::getCode)
-                .collect(java.util.stream.Collectors.toSet());
-        java.util.List<String> unknown = wanted.stream().filter(c -> !known.contains(c)).toList();
-        if (!unknown.isEmpty()) {
-            throw new HodiException("These are not amenities on this platform: "
-                    + String.join(", ", unknown), HttpStatus.BAD_REQUEST);
-        }
-
-        /*
-         * The difference, not a rewrite.
-         *
-         * This deleted every row and re-inserted the whole set, which fails the moment a seller keeps an
-         * amenity they already had: Hibernate orders inserts before deletes within a transaction, so the
-         * re-inserted row meets its own predecessor and uk_unit_feature_unit refuses it. Saving a listing
-         * without changing its amenities — the commonest save there is — was a 500.
-         *
-         * Flushing between the two would have fixed the collision and kept the rewrite. The diff is better
-         * for a reason beyond the bug: these rows carry created_at and created_by, and re-inserting an
-         * amenity somebody chose last month would restamp it with today and whoever happened to press save.
-         */
-        java.util.List<com.hodi.modules.developments.UnitFeature> held =
-                features.findForUnit(property.getId());
-        java.util.Set<String> already = held.stream()
-                .map(com.hodi.modules.developments.UnitFeature::getFeatureCode)
-                .collect(java.util.stream.Collectors.toSet());
-
-        java.util.List<com.hodi.modules.developments.UnitFeature> gone = held.stream()
-                .filter(f -> !wanted.contains(f.getFeatureCode()))
-                .toList();
-        if (!gone.isEmpty()) features.deleteAll(gone);
-
-        for (String code : wanted) {
-            if (already.contains(code)) continue;
-            features.save(com.hodi.modules.developments.UnitFeature.builder()
-                    .unitId(property.getId())
-                    .featureCode(code)
-                    .createdBy(AuthContext.username())
-                    .build());
-        }
+        amenities.apply(AmenityService.Scope.LISTING, property.getId(), request.amenityCodes());
     }
 
     private void apply(Property property, SavePropertyRequest request) {
         property.setTitle(request.title().trim());
         property.setDescription(blankToNull(request.description()));
         property.setPropertyType(request.propertyType().trim().toUpperCase());
-        property.setListingType(request.listingType() == null
-                ? AppConstant.LISTING_TYPE_SALE
-                : request.listingType().trim().toUpperCase());
+        property.setListingType(listingType(request.listingType()));
+        property.setRentPeriod(rentPeriod(property.getListingType(), request.rentPeriod()));
         property.setTenure(blankToNull(request.tenure()));
         property.setPrice(request.price());
         property.setServiceCharge(request.serviceCharge());
@@ -515,7 +526,7 @@ public class PropertyService {
         property.setLongitude(request.longitude());
         property.setGreenCertified(Boolean.TRUE.equals(request.greenCertified()));
         property.setGreenCertification(blankToNull(request.greenCertification()));
-        property.setEnergyRating(blankToNull(request.energyRating()));
+        property.setEnergyRating(energyBand(request.energyRating()));
         property.setHasSolar(Boolean.TRUE.equals(request.hasSolar()));
         property.setHasBorehole(Boolean.TRUE.equals(request.hasBorehole()));
         property.setRainwaterHarvesting(Boolean.TRUE.equals(request.rainwaterHarvesting()));
@@ -586,6 +597,7 @@ public class PropertyService {
                 p.getDescription(),
                 p.getPropertyType(),
                 p.getListingType(),
+                p.getRentPeriod(),
                 p.getTenure(),
                 p.getPrice(),
                 p.getCurrency(),
