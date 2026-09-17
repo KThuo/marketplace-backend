@@ -114,6 +114,14 @@ class DevelopmentListingBridgeIT {
                 .build());
     }
 
+    private void planOn(String ownerType, Long ownerId) {
+        mediaAssets.save(MediaAsset.builder()
+                .ownerType(ownerType).ownerId(ownerId).tenantId(tenantId)
+                .mediaKind(AppConstant.MEDIA_KIND_FLOOR_PLAN)
+                .storageKey("t" + tenantId + "/unit-types/2026/plan.png")
+                .primary(false).publicVisible(true).build());
+    }
+
     private void photographOn(String ownerType, Long ownerId) {
         mediaAssets.save(MediaAsset.builder()
                 .ownerType(ownerType).ownerId(ownerId).tenantId(tenantId)
@@ -224,6 +232,28 @@ class DevelopmentListingBridgeIT {
         var detail = publicProperties.findByReference(listing.getReference());
         assertEquals(listing.getReference(), detail.reference(),
                 "hidden from the list is not the same as withdrawn");
+    }
+
+    @Test
+    @DisplayName("the page shows the project's photographs as well as the typology's own plan")
+    void theDetailPageShowsEverythingItInherits() {
+        /*
+         * The reported symptom: pictures on Browse, none on the page you reach by clicking one.
+         *
+         * The card's cover and the page's gallery were resolved by two different rules. The cover walked
+         * past an empty level to the next; the gallery took the first level that held anything at all — so
+         * a typology carrying one floor plan and no photograph ended the search there, and the project's
+         * site photography, which the card was happily showing, never reached the page.
+         */
+        Property listing = typologyListing(AppConstant.LISTING_LIVE);
+        planOn(AppConstant.MEDIA_OWNER_UNIT_TYPE, typology.getId());
+        photographOn(AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId());
+
+        var detail = publicProperties.findByReference(listing.getReference());
+
+        assertEquals(1, detail.imageUrls().size(),
+                "the project's photography is this home's photography, and the card already said so");
+        assertEquals(1, detail.floorPlanUrls().size(), "and the typology's plan is still there");
     }
 
     @Test

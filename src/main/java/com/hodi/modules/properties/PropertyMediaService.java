@@ -61,11 +61,34 @@ public class PropertyMediaService {
     private final StorageService storage;
     private final AuditService audit;
 
+    /**
+     * Everything this listing shows: its own files, its typology's, and its project's.
+     *
+     * <p>A union rather than the nearest rung of a ladder. The first version of this took the first level
+     * that had anything at all, which meant a typology holding one floor plan hid every photograph the
+     * project had — the card showed a picture in search, because the cover resolves separately, and the
+     * page it opened showed none. Two screens disagreeing about the same listing.
+     *
+     * <p>So the rule is inheritance, not substitution: a home in a development is photographed at the
+     * project (the site, the blocks, the masterplan) and at the typology (the show unit, its floor plan),
+     * and a buyer is entitled to all of it. Each row says where it comes from so the editor can show the
+     * inherited ones without offering to delete somebody else's.
+     */
     @Transactional(readOnly = true)
     public List<MediaResponse> list(String propertyHashId) {
         Property property = requireOwn(propertyHashId);
-        if (sharesTypologyMedia(property)) return sharedList(property);
-        return repository.findForProperty(property.getId()).stream().map(this::toResponse).toList();
+        List<MediaResponse> own = repository.findForProperty(property.getId()).stream()
+                .map(this::toResponse).toList();
+        if (!sharesTypologyMedia(property)) return own;
+
+        List<MediaResponse> all = new java.util.ArrayList<>(own);
+        all.addAll(assets.list(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId()).stream()
+                .map(m -> fromShared(m, SOURCE_TYPOLOGY)).toList());
+        if (property.getDevelopmentId() != null) {
+            all.addAll(assets.list(AppConstant.MEDIA_OWNER_DEVELOPMENT, property.getDevelopmentId())
+                    .stream().map(m -> fromShared(m, SOURCE_DEVELOPMENT)).toList());
+        }
+        return all;
     }
 
     @Transactional
@@ -80,7 +103,7 @@ public class PropertyMediaService {
             var added = assets.add(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId(),
                     property.getTenantId(), null, file, mediaKind, caption, true);
             refreshSharedCover(property);
-            return fromShared(added);
+            return fromShared(added, SOURCE_TYPOLOGY);
         }
         long held = repository.countForProperty(property.getId());
         if (held >= MAX_PHOTOS) {
@@ -136,6 +159,7 @@ public class PropertyMediaService {
     public void makePrimary(String propertyHashId, String mediaHashId) {
         Property property = requireOwn(propertyHashId);
         if (sharesTypologyMedia(property)) {
+            assertNotTheProjects(property, mediaHashId, "make that the cover");
             assets.makePrimary(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId(), mediaHashId);
             refreshSharedCover(property);
             return;
@@ -159,6 +183,7 @@ public class PropertyMediaService {
     public void remove(String propertyHashId, String mediaHashId) {
         Property property = requireOwn(propertyHashId);
         if (sharesTypologyMedia(property)) {
+            assertNotTheProjects(property, mediaHashId, "remove that");
             assets.remove(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId(), mediaHashId);
             refreshSharedCover(property);
             return;
@@ -208,11 +233,35 @@ public class PropertyMediaService {
         return property.getUnitTypeId() != null;
     }
 
-    private List<MediaResponse> sharedList(Property property) {
-        return assets.list(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId()).stream()
-                .map(PropertyMediaService::fromShared)
-                .toList();
+    /**
+     * Refuses to change a file that belongs to the project rather than to this listing.
+     *
+     * <p>The gallery here shows the project's photographs because the page does, but they are on every
+     * listing under that project: deleting one from a listing form would take it off all of them and off
+     * the development itself, which is not what anybody pressing a bin icon on one listing intends.
+     *
+     * <p>Said in words rather than left to fail as "not found", which is what the delegation below would
+     * have produced — a 404 for a file the screen is displaying is the least helpful answer available.
+     */
+    private void assertNotTheProjects(Property property, String mediaHashId, String verb) {
+        if (property.getDevelopmentId() == null) return;
+        boolean theProjects = assets.list(
+                        AppConstant.MEDIA_OWNER_DEVELOPMENT, property.getDevelopmentId()).stream()
+                .anyMatch(m -> m.id().equals(mediaHashId));
+        if (theProjects) {
+            throw new HodiException(
+                    "That file belongs to the development, and every listing in it shows the same one. "
+                            + "Open the project to " + verb + ".",
+                    HttpStatus.CONFLICT);
+        }
     }
+
+    /** This listing's own file, in property_media. Editable from here. */
+    static final String SOURCE_OWN = "OWN";
+    /** The typology's — shared with the card and every unit under it. Editable from here, deliberately. */
+    static final String SOURCE_TYPOLOGY = "TYPOLOGY";
+    /** The project's. Shown here, changed on the development. */
+    static final String SOURCE_DEVELOPMENT = "DEVELOPMENT";
 
     /**
      * The typology's shape, in the listing's.
@@ -221,9 +270,13 @@ public class PropertyMediaService {
      * flag that mean nothing on a listing. The listing's callers should not have to know which store their
      * pictures came out of, which is the whole point of the delegation.
      */
-    private static MediaResponse fromShared(com.hodi.modules.media.MediaDtos.MediaResponse m) {
-        return new MediaResponse(m.id(), m.url(), m.caption(), m.sortOrder(), m.primary(),
-                m.mediaKind(), m.contentType(), m.sizeBytes());
+    private static MediaResponse fromShared(com.hodi.modules.media.MediaDtos.MediaResponse m,
+                                            String source) {
+        return new MediaResponse(m.id(), m.url(), m.caption(), m.sortOrder(),
+                // A project's cover is the project's, not this listing's: two rows claiming to be the
+                // cover of one gallery is a star against two thumbnails and no way to read which is which.
+                SOURCE_TYPOLOGY.equals(source) && m.primary(),
+                m.mediaKind(), m.contentType(), m.sizeBytes(), source);
     }
 
     /**
@@ -277,6 +330,7 @@ public class PropertyMediaService {
                 m.isPrimary(),
                 m.getMediaKind(),
                 m.getContentType(),
-                m.getSizeBytes());
+                m.getSizeBytes(),
+                SOURCE_OWN);
     }
 }

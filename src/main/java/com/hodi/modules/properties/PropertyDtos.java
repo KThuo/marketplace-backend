@@ -97,7 +97,22 @@ public final class PropertyDtos {
              */
             String mediaKind,
             String contentType,
-            Long sizeBytes) {}
+            Long sizeBytes,
+            /**
+             * Where this file lives: {@code OWN}, {@code TYPOLOGY} or {@code DEVELOPMENT}.
+             *
+             * <p>A listing in a development shows everything it inherits — the project's site photography
+             * and plans as well as its typology's — because that is what a buyer sees on the page, and a
+             * seller editing the listing should be looking at the same gallery rather than at a subset of
+             * it with no way to tell what is missing.
+             *
+             * <p>But inherited is not owned. The project's photograph belongs to the project and appears on
+             * every listing under it, so the editor shows it and does not offer to delete it; {@code OWN}
+             * and {@code TYPOLOGY} rows are this listing's to change. Without this field the screen cannot
+             * tell the two apart, and the only safe design would be to hide the inherited ones — which is
+             * the complaint.
+             */
+            String source) {}
 
     /**
      * @param price required, because a listing without one cannot be compared, filtered or financed — and

@@ -262,33 +262,36 @@ public class PublicPropertyService {
      * deciding whether the card could be published. So a card passed the "at least one photograph" gate on
      * pictures this method then refused to show, and went live blank.
      *
-     * <p>The fallback chain is the same one the gate uses, in the same order: the listing's own, then its
-     * typology's, then the project's. A house never leaves the first branch.
+     * <p>Everything the listing shows, not the nearest rung of a ladder. Taking the first level that had
+     * anything meant a typology holding one floor plan hid every photograph the project had: the card
+     * carried a picture in search, because the cover resolves separately, and the page it opened carried
+     * none. A home in a development is photographed at the project and at the typology, and the buyer is
+     * entitled to both. A house has no development and stays exactly as it was.
      */
     private PublicPropertyResponse toDetail(Property p) {
-        List<String> own = urls(media.findForProperty(p.getId()).stream()
+        List<PropertyMedia> ownRows = media.findForProperty(p.getId());
+        List<String> photos = new java.util.ArrayList<>(urls(ownRows.stream()
                 .filter(m -> AppConstant.MEDIA_KIND_PHOTO.equals(m.getMediaKind()))
-                .map(PropertyMedia::getStorageKey).toList());
-        List<String> ownPlans = urls(media.findForProperty(p.getId()).stream()
+                .map(PropertyMedia::getStorageKey).toList()));
+        List<String> plans = new java.util.ArrayList<>(urls(ownRows.stream()
                 .filter(m -> AppConstant.MEDIA_KIND_FLOOR_PLAN.equals(m.getMediaKind()))
-                .map(PropertyMedia::getStorageKey).toList());
-        if (!own.isEmpty() || !ownPlans.isEmpty()) return response(p, own, ownPlans);
+                .map(PropertyMedia::getStorageKey).toList()));
 
         if (p.getUnitTypeId() != null) {
-            var shared = mediaAssets.listPublic(
-                    AppConstant.MEDIA_OWNER_UNIT_TYPE, p.getUnitTypeId());
-            List<String> photos = ofKind(shared, AppConstant.MEDIA_KIND_PHOTO);
-            List<String> plans = ofKind(shared, AppConstant.MEDIA_KIND_FLOOR_PLAN);
-            if (!photos.isEmpty() || !plans.isEmpty()) return response(p, photos, plans);
+            var typology = mediaAssets.listPublic(AppConstant.MEDIA_OWNER_UNIT_TYPE, p.getUnitTypeId());
+            photos.addAll(ofKind(typology, AppConstant.MEDIA_KIND_PHOTO));
+            plans.addAll(ofKind(typology, AppConstant.MEDIA_KIND_FLOOR_PLAN));
         }
-
-        if (p.getDevelopmentId() != null) {
+        if (p.getUnitTypeId() != null && p.getDevelopmentId() != null) {
             var project = mediaAssets.listPublic(
                     AppConstant.MEDIA_OWNER_DEVELOPMENT, p.getDevelopmentId());
-            return response(p, ofKind(project, AppConstant.MEDIA_KIND_PHOTO),
-                    ofKind(project, AppConstant.MEDIA_KIND_SITE_PLAN));
+            photos.addAll(ofKind(project, AppConstant.MEDIA_KIND_PHOTO));
+            // The project's plans are the masterplan and the block layout; the typology's is the unit's
+            // own. Both answer "what am I buying and where does it sit", so both belong on the page.
+            plans.addAll(ofKind(project, AppConstant.MEDIA_KIND_SITE_PLAN));
+            plans.addAll(ofKind(project, AppConstant.MEDIA_KIND_FLOOR_PLAN));
         }
-        return response(p, own, ownPlans);
+        return response(p, photos.stream().distinct().toList(), plans.stream().distinct().toList());
     }
 
     private List<String> urls(List<String> keys) {

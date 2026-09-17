@@ -1,6 +1,7 @@
 package com.hodi.modules.developments;
 
 import com.hodi.common.AppConstant;
+import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.developments.DevelopmentUnitTypeDtos.SaveUnitTypeRequest;
 import com.hodi.modules.media.MediaAsset;
@@ -32,6 +33,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -112,6 +114,13 @@ class TypologyAndListingAreOneIT {
         SecurityContextHolder.clearContext();
     }
 
+    private MediaAsset asset(String ownerType, Long ownerId, String kind, String name, boolean primary) {
+        return mediaAssets.save(MediaAsset.builder()
+                .ownerType(ownerType).ownerId(ownerId).tenantId(tenantId).mediaKind(kind)
+                .storageKey("t" + tenantId + "/" + ownerType.toLowerCase() + "/2026/" + name)
+                .primary(primary).publicVisible(true).build());
+    }
+
     private SaveUnitTypeRequest typologyAs(String name, Short bedrooms, String description) {
         return new SaveUnitTypeRequest("2B", name, description, "APARTMENT", bedrooms,
                 (short) 2, (short) 1, new BigDecimal("92.00"), null,
@@ -158,6 +167,46 @@ class TypologyAndListingAreOneIT {
                 "the listings screen showed a coverless card beside a typology showing four photographs");
         assertEquals(1, card.photoCount(),
                 "and told the seller they had none");
+    }
+
+    @Test
+    @DisplayName("the project's photographs and plans are on the listing too, beside the typology's")
+    void theProjectsGalleryIsInherited() {
+        asset(AppConstant.MEDIA_OWNER_UNIT_TYPE, typology.getId(),
+                AppConstant.MEDIA_KIND_FLOOR_PLAN, "unit-plan.png", true);
+        asset(AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId(),
+                AppConstant.MEDIA_KIND_PHOTO, "site-one.jpg", true);
+        asset(AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId(),
+                AppConstant.MEDIA_KIND_SITE_PLAN, "masterplan.png", false);
+
+        List<com.hodi.modules.properties.PropertyDtos.MediaResponse> gallery =
+                propertyMedia.list(HashIdUtil.encodeId(listing.getId()));
+
+        assertEquals(3, gallery.size(),
+                "a typology holding one plan used to hide every photograph the project had");
+        assertTrue(gallery.stream().anyMatch(m -> "DEVELOPMENT".equals(m.source())
+                        && AppConstant.MEDIA_KIND_PHOTO.equals(m.mediaKind())),
+                "the site photography is what a buyer sees, so it is what the seller edits against");
+        assertTrue(gallery.stream().anyMatch(m -> "DEVELOPMENT".equals(m.source())
+                        && AppConstant.MEDIA_KIND_SITE_PLAN.equals(m.mediaKind())),
+                "and the masterplan with it");
+        assertTrue(gallery.stream().anyMatch(m -> "TYPOLOGY".equals(m.source())),
+                "the typology's own plan is still there");
+    }
+
+    @Test
+    @DisplayName("but the project's file cannot be deleted from a listing form")
+    void theProjectsFileIsNotTheListingsToRemove() {
+        MediaAsset projects = asset(AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId(),
+                AppConstant.MEDIA_KIND_PHOTO, "site-one.jpg", true);
+
+        HodiException e = assertThrows(HodiException.class, () -> propertyMedia.remove(
+                HashIdUtil.encodeId(listing.getId()), HashIdUtil.encodeId(projects.getId())));
+
+        assertTrue(e.getMessage().contains("development"), e.getMessage());
+        assertEquals(1, mediaAssets.findForOwner(
+                        AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId()).size(),
+                "one listing's bin icon must not empty the project's album");
     }
 
     // ── the facts ────────────────────────────────────────────────────────────
