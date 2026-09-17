@@ -68,10 +68,13 @@ public class PropertyService {
     private final com.hodi.modules.sellerops.CommissionService commissions;
     private final com.hodi.modules.bookings.BookingService bookings;
     private final PropertyMediaRepository media;
-    private final com.hodi.modules.media.MediaAssetRepository mediaAssets;
+    /* The service rather than the repository: a listing asks it the two questions — what is the cover,
+       how many photographs — that a typology card can only answer through the shared gallery. */
+    private final com.hodi.modules.media.MediaAssetService mediaAssets;
     private final TenantRepository tenants;
     private final ApprovalService approvals;
     private final AmenityService amenities;
+    private final com.hodi.modules.developments.TypologyListingMirror mirror;
     private final StorageService storage;
     private final AuditService audit;
 
@@ -184,6 +187,14 @@ public class PropertyService {
                     saved.getReference() + " — " + saved.getTitle(),
                     "Edited while live; needs re-approval before it goes back on the marketplace.");
         }
+        /*
+         * A typology card is the project's own description of a home, so the edit belongs to both.
+         *
+         * Without this the seller corrected the card, saw it saved, and the project screens went on showing
+         * what it used to say — and the next recount or reconcile could put the old figure back on the card.
+         * No-ops for an ordinary house, which is every listing that has no typology behind it.
+         */
+        mirror.toTypology(saved);
         audit.record(AppConstant.ACTION_UPDATE, "Property", saved.getId(), before, snapshot(saved));
         return toResponse(saved);
     }
@@ -396,17 +407,6 @@ public class PropertyService {
         }
     }
 
-    /**
-     * Photographs this listing can show, its own and the ones it inherits.
-     *
-     * <p>A typology's pictures usually belong to the development — a two-bed does not have its own site
-     * photography — and they are in {@code media_assets}, which the listing's own count knows nothing about.
-     * Counting only {@code property_media} refused a submission with "Add at least one photograph" while the
-     * screen in front of the author showed twelve, which is the kind of refusal nobody can act on.
-     *
-     * <p>The typology is asked first, because a typology with its own floor plan and gallery should not be
-     * gated on the project having any. An ordinary listing never reaches the second branch at all.
-     */
     /** Anything unrecognised is a sale, which is what every listing was before the control existed. */
     private static String listingType(String requested) {
         String value = requested == null ? "" : requested.trim().toUpperCase();
@@ -450,17 +450,55 @@ public class PropertyService {
         return band;
     }
 
+    /**
+     * Photographs this listing can show, its own and the ones it inherits.
+     *
+     * <p>A typology's pictures usually belong to the development — a two-bed does not have its own site
+     * photography — and they are in {@code media_assets}, which the listing's own count knows nothing about.
+     * Counting only {@code property_media} refused a submission with "Add at least one photograph" while the
+     * screen in front of the author showed twelve, which is the kind of refusal nobody can act on.
+     *
+     * <p>The typology is asked first, because a typology with its own floor plan and gallery should not be
+     * gated on the project having any. An ordinary listing never reaches the second branch at all.
+     */
     private long photographCount(Property property) {
         long own = media.countForProperty(property.getId());
         if (own > 0 || !property.isUnitTypeListing()) return own;
 
-        long forTypology = mediaAssets.countForOwner(
+        long forTypology = mediaAssets.count(
                 AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId());
         if (forTypology > 0) return forTypology;
 
         return property.getDevelopmentId() == null ? 0
-                : mediaAssets.countForOwner(
+                : mediaAssets.count(
                         AppConstant.MEDIA_OWNER_DEVELOPMENT, property.getDevelopmentId());
+    }
+
+    /**
+     * The card's cover, through the gallery the listing actually reads.
+     *
+     * <p>{@code properties.primary_image_key} is only ever written by the listing's own media service, and a
+     * typology card has no media of its own to write it — its pictures are the typology's. So the workspace
+     * showed every generated card coverless and "0 photographs" while the development screen beside it showed
+     * four, which is the report this fixes: the pictures were shared, and the screen that asked this DTO for
+     * them was the one door that did not know it.
+     *
+     * <p>Resolved here rather than trusted from the column, and by the same ladder as the count above, so
+     * the workspace and the marketplace answer the question identically.
+     */
+    private String coverUrl(Property property) {
+        String own = storage.urlFor(property.getPrimaryImageKey());
+        if (own != null) return own;
+        if (property.getUnitTypeId() != null) {
+            String shared = storage.urlFor(mediaAssets.coverKeyFor(
+                    AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId()));
+            if (shared != null) return shared;
+        }
+        if (property.getDevelopmentId() != null) {
+            return storage.urlFor(mediaAssets.coverKeyFor(
+                    AppConstant.MEDIA_OWNER_DEVELOPMENT, property.getDevelopmentId()));
+        }
+        return null;
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
@@ -626,8 +664,8 @@ public class PropertyService {
                 p.getSoldAt(),
                 p.getWithdrawnAt(),
                 p.getWithdrawnReason(),
-                storage.urlFor(p.getPrimaryImageKey()),
-                (int) media.countForProperty(p.getId()),
+                coverUrl(p),
+                (int) photographCount(p),
                 p.getListingOwnership(),
                 agentOf(p).map(AgentProfile::getReference).orElse(null),
                 agentOf(p).map(AgentProfile::getFullName).orElse(null),

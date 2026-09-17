@@ -258,3 +258,75 @@ which had no message text on its rows either — uses it as well.
 
 No UI was exercised in a browser, and no tests were written. Item 13 was confirmed by reading the code
 rather than by calling the endpoint, because the local bootstrap password has been rotated.
+
+---
+
+## Follow-up (17 September 2026): the sharing was half-built
+
+Reported after using the screens: "images are not being shared from listing", and "edits made on the
+listing are not reflected [on the development] and vice versa".
+
+Both were real. A probe test — `TypologyAndListingAreOneIT` — was written first, stating the three
+behaviours as assertions. One passed and two failed, which located the work exactly.
+
+### What was already right
+
+The gallery itself. `PropertyMediaService` does delegate a typology card's `list`/`add`/`makePrimary`/
+`remove` to `media_assets` under `UNIT_TYPE`, and the public card resolves its pictures through the same
+ladder. `GET /public/properties/PR260915CB7H` returns three images from unit type 195's gallery.
+
+### What was wrong — the pictures, from inside the workspace
+
+One store, two doors, and **only one door knew about the card's cover cache**:
+
+- `PropertyService.toResponse` — the DTO behind the listings list and the listing editor — read
+  `storage.urlFor(p.getPrimaryImageKey())` with no fallback, and counted `property_media`, which is empty
+  for every generated listing by design. So a typology card rendered coverless and "0 photographs" beside
+  a development screen showing four. The column was in fact null on every typology card in the database.
+- `DevelopmentMediaService.refreshCover` wrote the new cover onto `development_unit_types` and stopped,
+  while `PropertyMediaService.refreshSharedCover` also repointed the listings. An upload through the
+  development screen therefore left the card's cached key stale or null; the same upload through the
+  listing form did not.
+
+Fixed both ways round: the workspace DTO resolves the cover and the count through the shared gallery
+(the same ladder the public card uses, so the two answer identically), and the development door repoints
+every listing of that typology exactly as the listing door does. Existing rows need no backfill — the
+read resolves them.
+
+### What was wrong — the facts
+
+`cardFor` built the card from the typology once, at listing time, and nothing updated it afterwards.
+`mirrorToListing` carried availability and the "from" price and nothing else. Nothing at all travelled the
+other way. So a two-bed corrected to a three-bed in the project screens went on advertising two bedrooms,
+and a price fixed on the card was not the project's price.
+
+`TypologyListingMirror` holds the invariant in both directions:
+
+- **What travels**: property type, bedrooms, bathrooms, parking, floor area, service charge, description,
+  price and amenities.
+- **What does not**: the place (the development's, and moving the project is what moves its cards);
+  availability and the "from" price (`DevelopmentInventoryService` stays their single writer); and a card
+  title somebody wrote themselves — the generated form "Two bedroom at Highrise Apartments" is recognised
+  and regenerated on a rename, anything else is left alone.
+- **Re-approval travels with it.** An edit arriving through the listing form moves the same figures the
+  bank approved on the project, so it calls `requireReapproval` exactly as the typology's own editor does.
+  Otherwise the listing screen would have been a way round the project's gate.
+- **No loop**: both directions write through repositories, not through the two services that call them.
+
+### Verified
+
+`TypologyAndListingAreOneIT` — six tests: the shared gallery, the resolved cover and count, the typology's
+edit reaching the card, a hand-written title surviving a rename, the card's edit reaching the typology, and
+an ordinary house being untouched by all of it. Whole suite: 285 tests, green.
+
+### Also, on the same report: the blue focus ring on the map
+
+`LocationPicker`'s search box is Google's `gmp-place-autocomplete`, whose input lives in a shadow tree.
+`outline` is not inherited and a scoped stylesheet cannot cross that boundary, so the platform's focus ring
+never reached the one control that needed it and Chrome drew its own blue. The rule is now adopted into the
+shadow root itself, and the map canvas — which is ordinary light DOM — has its ring replaced rather than
+removed, because it is a real tab stop. Both are defensive: a closed shadow root leaves the field working
+and merely blue.
+
+**Unverified in the browser.** The picker only appears on three signed-in screens and the local bootstrap
+password has been rotated, so this one needs the reporter's eyes.

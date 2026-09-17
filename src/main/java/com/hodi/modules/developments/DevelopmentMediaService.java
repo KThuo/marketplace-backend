@@ -44,6 +44,7 @@ public class DevelopmentMediaService {
 
     private final MediaAssetService media;
     private final DevelopmentRepository developments;
+    private final com.hodi.modules.properties.PropertyRepository properties;
     private final DevelopmentPhaseRepository phases;
     private final DevelopmentUnitTypeRepository unitTypes;
     private final DevelopmentUnitRepository units;
@@ -118,6 +119,16 @@ public class DevelopmentMediaService {
             }
             case AppConstant.MEDIA_OWNER_UNIT_TYPE -> unitTypes.findById(ownerId).ifPresent(type -> {
                 type.setPrimaryImageKey(key);
+                /*
+                 * And every listing that reads this gallery.
+                 *
+                 * <p>The typology's card and each of its units show the typology's cover, because they show
+                 * the typology's pictures. {@code PropertyMediaService} already repoints them when the upload
+                 * comes through the listing form; doing it only there made the two doors behave differently —
+                 * a photograph added here left the card's cached key null, and the workspace listing list
+                 * rendered a card with no picture beside a typology showing four.
+                 */
+                properties.repointCover(ownerId, key);
                 /*
                  * And the plan, which is a separate cache because it answers a separate question.
                  *

@@ -51,6 +51,7 @@ public class DevelopmentUnitTypeService {
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final DevelopmentPublication publication;
+    private final TypologyListingMirror mirror;
     private final AuditService audit;
     private final AmenityService amenities;
     private final StorageService storage;
@@ -97,6 +98,8 @@ public class DevelopmentUnitTypeService {
 
         String before = snapshot(type);
         String materialBefore = material(type);
+        // Kept from before `apply`, so the mirror can tell a title it generated from one somebody wrote.
+        String nameBefore = type.getName();
         apply(type, request);
         /*
          * What the bank has not seen must not be what the marketplace shows.
@@ -129,6 +132,15 @@ public class DevelopmentUnitTypeService {
         amenities.apply(AmenityService.Scope.UNIT_TYPE, saved.getId(), request.amenityCodes());
         // A changed price moves the "from" figure on the typology, the development and the listing.
         inventory.recountUnitType(saved.getId());
+        /*
+         * And the rest of the edit reaches the card as well.
+         *
+         * The recount above carries availability and the "from" price, which is all the listing has ever
+         * been told. Everything a buyer actually reads — the bedroom count, the description, the service
+         * charge, what it comes with — stopped at the typology, so a two-bed corrected to a three-bed here
+         * went on advertising two bedrooms on the marketplace.
+         */
+        mirror.toListing(saved, nameBefore);
         audit.record(AppConstant.ACTION_UPDATE, "DevelopmentUnitType", saved.getId(), before,
                 snapshot(saved));
         return toResponse(repository.findById(saved.getId()).orElse(saved));
