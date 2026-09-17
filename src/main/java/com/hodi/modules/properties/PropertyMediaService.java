@@ -7,6 +7,7 @@ import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.media.MediaAssetService;
 import com.hodi.modules.properties.PropertyDtos.MediaResponse;
+import com.hodi.security.TenantScope;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
 import lombok.RequiredArgsConstructor;
@@ -76,7 +77,7 @@ public class PropertyMediaService {
      */
     @Transactional(readOnly = true)
     public List<MediaResponse> list(String propertyHashId) {
-        Property property = requireOwn(propertyHashId);
+        Property property = requireVisible(propertyHashId);
         List<MediaResponse> own = repository.findForProperty(property.getId()).stream()
                 .map(this::toResponse).toList();
         if (!sharesTypologyMedia(property)) return own;
@@ -300,9 +301,40 @@ public class PropertyMediaService {
 
     // ── guards ────────────────────────────────────────────────────────────────
 
-    private Property requireOwn(String hashId) {
+    /**
+     * A listing this caller may see — the same rule that let them open it.
+     *
+     * <p>Reading the gallery used to demand a matching tenant id, which the bank's own staff do not have:
+     * they hold no tenant at all. So somebody from the platform could open a listing, see it, watch its
+     * photographs on the marketplace — and be told by this one endpoint that it "belongs to another
+     * organisation", which the screen reported as an empty gallery. Meanwhile the same person could add
+     * photographs to that very album through the development screens, because those have always admitted
+     * them. One album, two doors, and only one of them locked.
+     */
+    private Property requireVisible(String hashId) {
         Property property = properties.findById(HashIdUtil.decodeId(hashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Listing", hashId));
+        if (TenantScope.unrestricted()) return property;
+        var visible = TenantScope.visibleIds();
+        if (visible == null || !visible.contains(property.getTenantId())) {
+            // Not found rather than forbidden, exactly as PropertyService answers: whether a listing exists
+            // is itself information, and a partnered lender reading a portfolio should learn no more here.
+            throw new ResourceNotFoundException("Listing", hashId);
+        }
+        return property;
+    }
+
+    /**
+     * A listing this caller may change the pictures of: their organisation's, or the platform's oversight.
+     *
+     * <p>Platform staff are admitted for the same reason {@code PropertyService.requireManageable} admits
+     * them to a withdrawal — whoever operates a marketplace has to be able to take down something unlawful
+     * without waiting for the seller to agree, and a photograph is the commonest such thing. A partnered
+     * lender is not: reading a seller's portfolio is not permission to edit it.
+     */
+    private Property requireOwn(String hashId) {
+        Property property = requireVisible(hashId);
+        if (AuthContext.require().isPlatformStaff()) return property;
         Long tenantId = AuthContext.tenantId();
         if (tenantId == null || !tenantId.equals(property.getTenantId())) {
             throw new HodiException("That listing belongs to another organisation.",

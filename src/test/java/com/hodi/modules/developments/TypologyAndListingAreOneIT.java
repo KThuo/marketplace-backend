@@ -2,6 +2,7 @@ package com.hodi.modules.developments;
 
 import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
+import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.developments.DevelopmentUnitTypeDtos.SaveUnitTypeRequest;
 import com.hodi.modules.media.MediaAsset;
@@ -207,6 +208,61 @@ class TypologyAndListingAreOneIT {
         assertEquals(1, mediaAssets.findForOwner(
                         AppConstant.MEDIA_OWNER_DEVELOPMENT, development.getId()).size(),
                 "one listing's bin icon must not empty the project's album");
+    }
+
+    @Test
+    @DisplayName("platform staff see the gallery they are allowed to see the listing through")
+    void platformStaffCanReadTheGallery() {
+        asset(AppConstant.MEDIA_OWNER_UNIT_TYPE, typology.getId(),
+                AppConstant.MEDIA_KIND_PHOTO, "show-unit.jpg", true);
+        signInAsPlatformStaff();
+
+        assertEquals(1, propertyMedia.list(HashIdUtil.encodeId(listing.getId())).size(),
+                "the bank runs this marketplace; a listing it can open is not a gallery it cannot");
+    }
+
+    @Test
+    @DisplayName("and a seller from another organisation still sees nothing")
+    void anotherSellersGalleryIsNotReadable() {
+        asset(AppConstant.MEDIA_OWNER_UNIT_TYPE, typology.getId(),
+                AppConstant.MEDIA_KIND_PHOTO, "show-unit.jpg", true);
+        signInAsAnotherSeller();
+
+        assertThrows(ResourceNotFoundException.class,
+                () -> propertyMedia.list(HashIdUtil.encodeId(listing.getId())),
+                "opening up the read for the platform must not open it for everybody");
+    }
+
+    /** A seller with a tenant of their own, which is not this listing's. */
+    private void signInAsAnotherSeller() {
+        SecurityContextHolder.clearContext();
+        Long otherTenant = tenantId + 9_000_000L;
+        User user = User.builder().id(3L).username("other-seller-test").password("x")
+                .email("x@example.invalid").firstName("Otto").lastName("Other")
+                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
+        UserProfile profile = UserProfile.builder().id(3L).userId(3L)
+                .profileType(AppConstant.ACTOR_SELLER).userTypeCode("SELLER_OWNER")
+                .tenantId(otherTenant).tenantName("Someone Else")
+                .status(AppConstant.STATUS_ACTIVE).build();
+        UserPrincipal principal = UserPrincipal.of(user, profile,
+                Set.of("PROPERTIES_UPDATE"), List.of(otherTenant), false, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The bank's own staff: no tenant of their own, and unrestricted visibility. */
+    private void signInAsPlatformStaff() {
+        SecurityContextHolder.clearContext();
+        User user = User.builder().id(2L).username("platform-test").password("x")
+                .email("p@example.invalid").firstName("Pat").lastName("Platform")
+                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
+        UserProfile profile = UserProfile.builder().id(2L).userId(2L)
+                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
+                .status(AppConstant.STATUS_ACTIVE).build();
+        UserPrincipal principal = UserPrincipal.of(user, profile,
+                Set.of("PROPERTIES_UPDATE"), List.of(), true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
     // ── the facts ────────────────────────────────────────────────────────────
