@@ -196,7 +196,7 @@ public class RulesAssistantProvider implements AssistantProvider {
                     null, List.of(new Link("Open the calculator", "/affordability")));
         }
         var estimate = affordability.estimate(new com.hodi.modules.finance.FinanceDtos
-                .AffordabilityRequest(income, null, null, null, null, null, null, null));
+                .AffordabilityRequest(income, null, null, null, null, null, null, null, null));
         /*
          * Said as it is.
          *

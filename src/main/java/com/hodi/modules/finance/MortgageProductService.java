@@ -83,17 +83,7 @@ public class MortgageProductService {
     @Transactional
     public ProductResponse create(SaveProductRequest request) {
         UserPrincipal caller = AuthContext.require();
-        Long institutionId = caller.getInstitutionId();
-        if (institutionId == null) {
-            // Platform staff administering the catalogue still have to say whose product it is, and there is
-            // nowhere in this request to say it. Refused with the sentence rather than silently filed under
-            // nobody — a product with no bank is a rate a buyer cannot act on.
-            throw new HodiException(
-                    "Only a bank's own staff can create a product. Ask the institution to add it.",
-                    HttpStatus.FORBIDDEN);
-        }
-        Bank institution = institutions.findById(institutionId)
-                .orElseThrow(() -> new ResourceNotFoundException("Institution", institutionId));
+        Bank institution = institutionFor(caller);
 
         MortgageProduct product = MortgageProduct.builder()
                 .institutionId(institution.getId())
@@ -202,9 +192,50 @@ public class MortgageProductService {
      * editing another organisation's published rate is not, and a support administrator with a typo could put
      * a number in front of the public that the bank never agreed to.
      */
+    /**
+     * Whose product this is going to be.
+     *
+     * <p>Co-operative Bank is the only institution on this platform — it operates the marketplace rather
+     * than competing on it — so there is nothing to choose and no screen asks. A bank's own staff get
+     * theirs; platform staff, who hold no institution because that is what platform staff are, get the one
+     * that exists.
+     *
+     * <p>That last line is the fix for a catalogue nobody could add to: creation used to refuse any caller
+     * without an institution of their own, which is every person who administers this platform.
+     *
+     * <p>If a second institution is ever onboarded this stops guessing and says so, rather than filing a
+     * product under whichever row sorted first.
+     */
+    private Bank institutionFor(UserPrincipal caller) {
+        Long own = caller.getInstitutionId();
+        if (own != null) {
+            return institutions.findById(own)
+                    .orElseThrow(() -> new ResourceNotFoundException("Institution", own));
+        }
+        java.util.List<Bank> live = institutions.findByStatusNotOrderByNameAsc(AppConstant.STATUS_DELETED);
+        if (live.isEmpty()) {
+            throw new HodiException("No institution is configured to hold a mortgage product.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (live.size() > 1) {
+            throw new HodiException(
+                    "There is more than one institution now, so a product has to say which one it belongs to.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        return live.getFirst();
+    }
+
+    /**
+     * A product this caller may change: their own institution's, or the platform's oversight.
+     *
+     * <p>Platform staff are admitted for the reason they are admitted to a listing's withdrawal — they
+     * operate the marketplace, they already see every product in the list, and refusing them the one screen
+     * where they could act on it left a catalogue that could be read and not maintained.
+     */
     private MortgageProduct loadOwn(String hashId) {
         MortgageProduct product = repository.findById(HashIdUtil.decodeId(hashId))
                 .orElseThrow(() -> new ResourceNotFoundException("Product", hashId));
+        if (AuthContext.require().isPlatformStaff()) return product;
         Long callerInstitution = AuthContext.institutionId();
         if (callerInstitution == null || !product.getInstitutionId().equals(callerInstitution)) {
             throw new HodiException("That product belongs to another institution.", HttpStatus.FORBIDDEN);

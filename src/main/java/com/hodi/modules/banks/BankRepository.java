@@ -12,6 +12,9 @@ public interface BankRepository
 
     Optional<Bank> findBySlug(String slug);
 
+    /** By the reference the catalogue quotes — what a product's author names a bank by. */
+    Optional<Bank> findByInstitutionRef(String institutionRef);
+
     boolean existsBySlugIgnoreCase(String slug);
 
     boolean existsByInstitutionRef(String institutionRef);

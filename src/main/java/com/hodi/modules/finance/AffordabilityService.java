@@ -99,6 +99,8 @@ public class AffordabilityService {
                 .assumedRate(computed.assumedRate())
                 .provider(computed.provider())
                 .providerPayload(computed.working())
+                .productReference(computed.productReference())
+                .productName(computed.productName())
                 .createdBy(AuthContext.username())
                 .updatedBy(AuthContext.username())
                 .build();
@@ -123,7 +125,8 @@ public class AffordabilityService {
 
         Property property = resolveProperty(request.propertyReference());
         short term = resolveTerm(request.termMonths());
-        BigDecimal rate = mock.defaultRate();
+        MortgageProduct product = resolveProduct(request.productReference());
+        BigDecimal rate = product != null ? product.getInterestRate() : mock.defaultRate();
         String currency = property != null ? property.getCurrency() : "KES";
 
         AffordabilityProvider provider = resolveProvider();
@@ -137,7 +140,10 @@ public class AffordabilityService {
                 request.dependants(),
                 property == null ? null : property.getPrice(),
                 rate,
-                currency));
+                currency,
+                termsOf(product)));
+        // The product may have moved the term into its own band, and the answer is about the term used.
+        term = decision.termMonths();
 
         // What the money would actually buy, at the banks in play. Against a listing that is the seller's
         // partnered banks; with no listing named it is everything on offer, because the question has
@@ -145,7 +151,8 @@ public class AffordabilityService {
         BigDecimal carryable = decision.monthlyRepayment();
         List<FinanceOption> options = property != null
                 ? matcher.forListing(property.getReference(), term, netIncomeFor(request)).options()
-                : marketOptions(decision.maxPropertyPrice(), term, netIncomeFor(request));
+                : marketOptions(decision.maxPropertyPrice(), term, netIncomeFor(request),
+                        nz(request.depositAmount()));
 
         return new AffordabilityResponse(
                 null,
@@ -166,6 +173,11 @@ public class AffordabilityService {
                 decision.dtiCeilingPercent(),
                 decision.assumedRate(),
                 provider.name(),
+                provider.label(),
+                product == null ? null : product.getReference(),
+                product == null ? null : product.getName(),
+                product == null ? null : product.getInstitutionName(),
+                decision.steps(),
                 property == null ? null : property.getReference(),
                 property == null ? null : property.getTitle(),
                 property == null ? null : property.getPrice(),
@@ -181,13 +193,14 @@ public class AffordabilityService {
      * <p>No partnership filter: with no listing named there is no seller whose arrangements could narrow it,
      * and the honest answer to "what could I borrow" is the whole market rather than an arbitrary slice.
      */
-    private List<FinanceOption> marketOptions(BigDecimal price, short term, BigDecimal netIncome) {
+    private List<FinanceOption> marketOptions(BigDecimal price, short term, BigDecimal netIncome,
+                                              BigDecimal buyersDeposit) {
         if (price == null || price.signum() <= 0) return List.of();
         List<MortgageProduct> onOffer = products.findOnOffer(
                 org.springframework.data.domain.PageRequest.of(0, 10));
         List<FinanceOption> options = new ArrayList<>(onOffer.size());
         for (MortgageProduct product : onOffer) {
-            FinanceOption option = matcher.cost(product, price, term, netIncome);
+            FinanceOption option = matcher.cost(product, price, term, netIncome, buyersDeposit);
             if (option != null) options.add(option);
         }
         return options;
@@ -270,6 +283,35 @@ public class AffordabilityService {
         return net.signum() > 0 ? net : BigDecimal.ZERO;
     }
 
+    /**
+     * The mortgage named on the request, if one was.
+     *
+     * <p>Only something on offer: a draft or withdrawn product is not a rate anybody can act on, and
+     * costing a household against one would be quoting them a price the bank has not published. A reference
+     * that matches nothing is refused rather than ignored — silently falling back to the default rate would
+     * hand somebody an answer computed against a mortgage they did not choose.
+     */
+    private MortgageProduct resolveProduct(String reference) {
+        String wanted = blankToNull(reference);
+        if (wanted == null) return null;
+        return products.findOnOfferByReference(wanted)
+                .orElseThrow(() -> new HodiException(
+                        "That mortgage is not on offer. Choose one from the list.",
+                        HttpStatus.BAD_REQUEST));
+    }
+
+    /** The product's own columns, in the shape the assessor's contract asks for. */
+    private static AffordabilityProvider.ProductTerms termsOf(MortgageProduct p) {
+        if (p == null) return null;
+        return new AffordabilityProvider.ProductTerms(
+                p.getReference(), p.getName(), p.getInstitutionName(),
+                p.getInterestRate(), p.getRateType(),
+                p.getMinTermMonths(), p.getMaxTermMonths(),
+                p.getMaxLtvPercent(), p.getMinDepositPercent(),
+                p.getMaxDtiPercent(), p.getMinMonthlyIncome(),
+                p.getProcessingFeePercent(), p.getInsurancePercent());
+    }
+
     private AffordabilityResponse withReference(AffordabilityResponse computed, String reference,
                                                 java.time.OffsetDateTime createdAt) {
         return new AffordabilityResponse(reference, computed.decision(), computed.decisionReason(),
@@ -278,6 +320,8 @@ public class AffordabilityService {
                 computed.employmentType(), computed.dependants(), computed.maxLoanAmount(),
                 computed.maxPropertyPrice(), computed.monthlyRepayment(), computed.dtiPercent(),
                 computed.dtiCeilingPercent(), computed.assumedRate(), computed.provider(),
+                computed.providerLabel(), computed.productReference(), computed.productName(),
+                computed.institutionName(), computed.steps(),
                 computed.propertyReference(), computed.propertyTitle(), computed.propertyPrice(),
                 computed.working(), computed.options(), computed.disclaimer(), createdAt);
     }
@@ -286,7 +330,8 @@ public class AffordabilityService {
     private AffordabilityResponse toFullResponse(AffordabilityCheck c) {
         List<FinanceOption> options = c.getPropertyReference() != null
                 ? safeListingOptions(c)
-                : marketOptions(c.getMaxPropertyPrice(), c.getTermMonths(), netIncomeOf(c));
+                : marketOptions(c.getMaxPropertyPrice(), c.getTermMonths(), netIncomeOf(c),
+                        c.getDepositAmount());
 
         return new AffordabilityResponse(
                 c.getReference(), c.getDecision(), c.getDecisionReason(), c.getCurrency(),
@@ -295,6 +340,10 @@ public class AffordabilityService {
                 c.getDependants() == null ? null : c.getDependants().intValue(),
                 c.getMaxLoanAmount(), c.getMaxPropertyPrice(), c.getMonthlyRepayment(),
                 c.getDtiPercent(), c.getDtiCeilingPercent(), c.getAssumedRate(), c.getProvider(),
+                labelFor(c.getProvider()), c.getProductReference(), c.getProductName(), null,
+                // A stored check keeps the assessor's payload, not the rendered derivation: the steps are
+                // built from figures that were true on the day and are not re-derived from today's product.
+                java.util.List.of(),
                 c.getPropertyReference(), null, c.getPropertyPrice(),
                 c.getProviderPayload(), options, FinanceMatchService.DISCLAIMER, c.getCreatedAt());
     }
@@ -325,7 +374,22 @@ public class AffordabilityService {
                 c.getReference(), c.getDecision(), c.getCurrency(), c.getMaxLoanAmount(),
                 c.getMaxPropertyPrice(), c.getMonthlyRepayment(), c.getDtiPercent(),
                 c.getDtiCeilingPercent(), c.getAssumedRate(), c.getTermMonths(), c.getProvider(),
+                labelFor(c.getProvider()), c.getProductReference(), c.getProductName(),
                 c.getPropertyReference(), c.getPropertyPrice(), c.getCreatedAt());
+    }
+
+    /**
+     * The display name for a stored provider code.
+     *
+     * <p>Rows keep the code — it is what the configuration names and what a migration would have to change
+     * — and every screen shows this instead. The list of checks used to print "MOCK" in a column beside
+     * people's salaries.
+     */
+    private String labelFor(String providerCode) {
+        for (AffordabilityProvider candidate : providers) {
+            if (candidate.name().equalsIgnoreCase(providerCode)) return candidate.label();
+        }
+        return providerCode;
     }
 
     private String nextReference() {

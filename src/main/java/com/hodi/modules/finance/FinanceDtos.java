@@ -190,7 +190,17 @@ public final class FinanceDtos {
             Short termMonths,
             String employmentType,
             Integer dependants,
-            String propertyReference) {}
+            String propertyReference,
+
+            /**
+             * The mortgage to cost this against, by its public reference.
+             *
+             * <p>Optional, and deliberately. Somebody who has not shopped for a bank yet still deserves a
+             * number, and refusing to answer until they choose would make the calculator useless at the
+             * moment it is most useful. With no product the platform's own indicative rules stand, which is
+             * what every check did before products were carried at all.
+             */
+            String productReference) {}
 
     /** Everything back, and only ever to the person who entered it. */
     public record AffordabilityResponse(
@@ -212,6 +222,14 @@ public final class FinanceDtos {
             BigDecimal dtiCeilingPercent,
             BigDecimal assumedRate,
             String provider,
+            /** What to call the author of these figures on screen. Never the code. */
+            String providerLabel,
+            /** The mortgage this was computed against, or null for the platform's own rules. */
+            String productReference,
+            String productName,
+            String institutionName,
+            /** The working, in order, as a person would check it by hand. */
+            List<AffordabilityProvider.Step> steps,
             String propertyReference,
             String propertyTitle,
             BigDecimal propertyPrice,
@@ -242,6 +260,9 @@ public final class FinanceDtos {
             BigDecimal assumedRate,
             Short termMonths,
             String provider,
+            String providerLabel,
+            String productReference,
+            String productName,
             String propertyReference,
             BigDecimal propertyPrice,
             OffsetDateTime createdAt) {}

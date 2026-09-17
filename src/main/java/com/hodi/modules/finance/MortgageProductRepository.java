@@ -19,6 +19,16 @@ public interface MortgageProductRepository
     Optional<MortgageProduct> findByReference(String reference);
 
     /**
+     * One product by reference, but only if a buyer could have chosen it.
+     *
+     * <p>The same published-and-live test the public catalogue starts from. A check costed against a draft
+     * would quote a household a rate the bank has not published.
+     */
+    @Query("select p from MortgageProduct p where p.reference = :reference and p.published = true "
+            + "and p.status <> 5 and p.status <> 4")
+    Optional<MortgageProduct> findOnOfferByReference(@Param("reference") String reference);
+
+    /**
      * The products of these banks, on offer, cheapest first.
      *
      * <p>The finance panel's only query. The institution list comes from the partnership table, so a seller's

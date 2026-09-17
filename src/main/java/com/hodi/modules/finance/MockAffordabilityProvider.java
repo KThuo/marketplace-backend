@@ -9,7 +9,9 @@ import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -58,56 +60,163 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         return AppConstant.PROVIDER_MOCK;
     }
 
+    /**
+     * What a buyer sees. Never the code.
+     *
+     * <p>The code is {@code MOCK}, it is stored on every check and named in a configuration row, and it
+     * was reaching the screen — a household reading "MOCK" beside their own salary concludes the platform
+     * is a demonstration. The arithmetic here is not a demonstration; it is the platform's own indicative
+     * rules, which is what this says.
+     */
+    @Override
+    public String label() {
+        return "Hodi indicative rules";
+    }
+
     @Override
     public Decision assess(Request request) {
-        BigDecimal ceiling = ceilingPercent();
-        BigDecimal marginalBand = new BigDecimal(configs.getInt(ConfigKey.AFFORDABILITY_MARGINAL_BAND));
-        BigDecimal rate = request.annualRate();
+        ProductTerms product = request.product();
+        List<Step> steps = new ArrayList<>();
 
-        BigDecimal grossTotal = nz(request.grossMonthlyIncome()).add(nz(request.otherMonthlyIncome()));
-        BigDecimal netIncome = grossTotal.subtract(nz(request.monthlyObligations())).max(BigDecimal.ZERO);
+        BigDecimal ceiling = ceilingFor(product);
+        BigDecimal marginalBand = new BigDecimal(configs.getInt(ConfigKey.AFFORDABILITY_MARGINAL_BAND));
+        BigDecimal rate = product != null && product.annualRate() != null
+                ? product.annualRate() : request.annualRate();
+        // Computed here, reported further down: the term is an assumption about the loan, and a reader
+        // meets it at the line where it starts to matter rather than before they know what they earn.
+        List<Step> termStep = new ArrayList<>();
+        short term = termFor(product, request.termMonths(), termStep);
+
+        BigDecimal gross = nz(request.grossMonthlyIncome());
+        BigDecimal other = nz(request.otherMonthlyIncome());
+        BigDecimal obligations = nz(request.monthlyObligations());
+        BigDecimal deposit = nz(request.depositAmount());
+
+        BigDecimal grossTotal = gross.add(other);
+        BigDecimal netIncome = grossTotal.subtract(obligations).max(BigDecimal.ZERO);
+
+        steps.add(Step.money("Income each month", money(gross) + " + " + money(other), grossTotal,
+                other.signum() > 0 ? "Your salary and the other income you told us about."
+                        : "What you told us you earn."));
+        steps.add(Step.money("Less what you already owe each month", "− " + money(obligations), netIncome,
+                "Existing repayments come off the top rather than out of the ceiling: a household already "
+                        + "paying a car loan has that much less to give."));
+
+        /*
+         * The product's own floor, before anything else is worked out.
+         *
+         * Checked against gross rather than net, because that is the figure a bank's product sheet quotes,
+         * and named in the answer — "you do not qualify" without the number is not something anybody can act
+         * on.
+         */
+        if (product != null && product.minMonthlyIncome() != null
+                && grossTotal.compareTo(product.minMonthlyIncome()) < 0) {
+            steps.add(Step.check("Minimum income for " + product.name(), false,
+                    product.name() + " starts at " + money(product.minMonthlyIncome())
+                            + " a month. You told us " + money(grossTotal) + "."));
+            Map<String, Object> payload = payload(request, product, grossTotal, netIncome, ceiling, rate,
+                    term, BigDecimal.ZERO, BigDecimal.ZERO, deposit,
+                    AppConstant.AFFORDABILITY_NOT_ELIGIBLE);
+            return new Decision(AppConstant.AFFORDABILITY_NOT_ELIGIBLE,
+                    product.name() + " is for households earning at least "
+                            + money(product.minMonthlyIncome()) + " a month.",
+                    BigDecimal.ZERO, deposit, BigDecimal.ZERO, BigDecimal.ZERO, ceiling, rate,
+                    null, payload, term, List.copyOf(steps));
+        }
+        if (product != null && product.minMonthlyIncome() != null) {
+            steps.add(Step.check("Minimum income for " + product.name(), true,
+                    "This product starts at " + money(product.minMonthlyIncome()) + " a month."));
+        }
 
         BigDecimal affordableRepayment = Amortisation.percentOf(netIncome, ceiling);
-        BigDecimal maxLoan = Amortisation.loanFor(affordableRepayment, rate, request.termMonths());
-        BigDecimal maxPrice = maxLoan.add(nz(request.depositAmount()));
+        steps.add(Step.money("What you could put to a mortgage", money(netIncome) + " × "
+                + plain(ceiling) + "%", affordableRepayment,
+                product != null && product.maxDtiPercent() != null
+                        ? product.name() + " lends up to " + plain(ceiling) + "% of net income."
+                        : "Banks here commonly allow between 35% and 50% of net income."));
 
-        Map<String, Object> working = new LinkedHashMap<>();
-        working.put("provider", name());
-        working.put("grossTotalMonthlyIncome", grossTotal);
-        working.put("monthlyObligations", nz(request.monthlyObligations()));
-        working.put("netMonthlyIncome", netIncome);
-        working.put("dtiCeilingPercent", ceiling);
-        working.put("affordableMonthlyRepayment", affordableRepayment);
-        working.put("assumedAnnualRatePercent", rate);
-        working.put("termMonths", request.termMonths());
-        working.put("maxLoanAmount", maxLoan);
-        working.put("depositAmount", nz(request.depositAmount()));
-        working.put("maxPropertyPrice", maxPrice);
+        steps.addAll(termStep);
+        BigDecimal annuityLoan = Amortisation.loanFor(affordableRepayment, rate, term);
+        steps.add(Step.money("What that repayment borrows", money(affordableRepayment) + " a month at "
+                + rate(rate) + "% over " + term + " months", annuityLoan,
+                "The repayment read backwards: the loan whose monthly instalment is exactly that figure."));
+
+        /*
+         * The deposit rule, as a cap on the loan rather than a warning after it.
+         *
+         * A product lending at most 90% of the price is the same statement as "your deposit is at least
+         * 10%", and with a deposit of D the largest price that satisfies it is D ÷ 10% — so the loan cannot
+         * exceed D × 90 ÷ 10 however much income there is. Applying it here rather than printing a warning
+         * afterwards is the difference between a figure the bank would honour and one it would not.
+         */
+        BigDecimal maxLoan = annuityLoan;
+        BigDecimal ltv = product == null ? null : product.maxLtvPercent();
+        if (ltv != null && ltv.signum() > 0 && ltv.compareTo(HUNDRED) < 0) {
+            BigDecimal capByDeposit = deposit.multiply(ltv)
+                    .divide(HUNDRED.subtract(ltv), 2, RoundingMode.HALF_UP);
+            if (capByDeposit.compareTo(annuityLoan) < 0) {
+                BigDecimal depositNeeded = annuityLoan.multiply(HUNDRED.subtract(ltv))
+                        .divide(ltv, 2, RoundingMode.HALF_UP);
+                maxLoan = capByDeposit;
+                steps.add(Step.money("Capped by your deposit", money(deposit) + " × " + plain(ltv)
+                        + "% ÷ " + plain(HUNDRED.subtract(ltv)) + "%", capByDeposit,
+                        product.name() + " lends at most " + plain(ltv) + "% of the price, so a deposit of "
+                                + money(deposit) + " only reaches this far. To borrow the "
+                                + money(annuityLoan) + " your income supports you would need "
+                                + money(depositNeeded) + " down."));
+            } else {
+                steps.add(Step.check("Deposit meets the " + plain(HUNDRED.subtract(ltv)) + "% minimum", true,
+                        "Your deposit covers the share " + product.name() + " asks you to put in."));
+            }
+        }
+
+        BigDecimal maxPrice = maxLoan.add(deposit);
+        steps.add(Step.money("The most you could pay for a home", money(maxLoan) + " + "
+                + money(deposit) + " deposit", maxPrice, null));
+
+        addFeeSteps(product, maxLoan, steps);
 
         // No particular property: the answer is the headline, and there is nothing to be ineligible for.
         if (request.propertyPrice() == null || request.propertyPrice().signum() <= 0) {
-            String outcome = netIncome.signum() > 0
-                    ? AppConstant.AFFORDABILITY_ELIGIBLE
-                    : AppConstant.AFFORDABILITY_NOT_ELIGIBLE;
-            String reason = netIncome.signum() > 0
-                    ? "Based on what you can set aside each month at the ceiling of "
-                            + ceiling.stripTrailingZeros().toPlainString() + "% of net income."
-                    : "Your monthly commitments take everything you have told us you earn.";
-            working.put("outcome", outcome);
+            boolean can = netIncome.signum() > 0 && maxLoan.signum() > 0;
+            String outcome = can
+                    ? AppConstant.AFFORDABILITY_ELIGIBLE : AppConstant.AFFORDABILITY_NOT_ELIGIBLE;
+            String reason = reasonForHeadline(can, netIncome, maxLoan, ceiling, product, deposit);
+            Map<String, Object> payload = payload(request, product, grossTotal, netIncome, ceiling, rate,
+                    term, maxLoan, maxPrice, deposit, outcome);
             return new Decision(outcome, reason, maxLoan, maxPrice, affordableRepayment,
-                    Amortisation.shareOf(affordableRepayment, netIncome), ceiling, rate, null, working);
+                    Amortisation.shareOf(affordableRepayment, netIncome), ceiling, rate, null, payload,
+                    term, List.copyOf(steps));
         }
 
         // A property is named: the question becomes whether this one fits.
-        BigDecimal required = request.propertyPrice().subtract(nz(request.depositAmount()))
-                .max(BigDecimal.ZERO);
-        BigDecimal repaymentNeeded = Amortisation.monthlyRepayment(required, rate, request.termMonths());
+        BigDecimal price = request.propertyPrice();
+        BigDecimal required = price.subtract(deposit).max(BigDecimal.ZERO);
+        BigDecimal repaymentNeeded = Amortisation.monthlyRepayment(required, rate, term);
         BigDecimal dti = Amortisation.shareOf(repaymentNeeded, netIncome);
 
-        working.put("propertyPrice", request.propertyPrice());
-        working.put("loanRequired", required);
-        working.put("repaymentRequired", repaymentNeeded);
-        working.put("repaymentAsShareOfNetIncome", dti);
+        steps.add(Step.money("This home", null, price, "The listing you are looking at."));
+        steps.add(Step.money("What you would have to borrow", money(price) + " − " + money(deposit),
+                required, null));
+        steps.add(Step.money("What that would cost each month", money(required) + " at " + rate(rate)
+                + "% over " + term + " months", repaymentNeeded, null));
+        steps.add(Step.percent("Share of your net income", money(repaymentNeeded) + " ÷ "
+                + money(netIncome), dti, "Against a ceiling of " + plain(ceiling) + "%."));
+
+        boolean depositOk = true;
+        if (product != null && product.minDepositPercent() != null
+                && product.minDepositPercent().signum() > 0) {
+            BigDecimal depositNeeded = Amortisation.percentOf(price, product.minDepositPercent());
+            depositOk = deposit.compareTo(depositNeeded) >= 0;
+            steps.add(Step.check("Deposit of at least " + plain(product.minDepositPercent()) + "%",
+                    depositOk,
+                    depositOk
+                            ? "This home needs " + money(depositNeeded) + " down and you have "
+                                    + money(deposit) + "."
+                            : "This home needs " + money(depositNeeded) + " down — "
+                                    + money(depositNeeded.subtract(deposit)) + " more than you have."));
+        }
+        addFeeSteps(product, required, steps);
 
         String outcome;
         String reason;
@@ -117,24 +226,139 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
         } else if (netIncome.signum() <= 0) {
             outcome = AppConstant.AFFORDABILITY_NOT_ELIGIBLE;
             reason = "Your monthly commitments take everything you have told us you earn.";
+        } else if (!depositOk) {
+            outcome = AppConstant.AFFORDABILITY_MARGINAL;
+            reason = product.name() + " needs a deposit of at least "
+                    + plain(product.minDepositPercent()) + "% on this home, which is more than you have "
+                    + "told us about. The repayment itself would take " + plain(dti) + "% of your income.";
         } else if (dti.compareTo(ceiling) <= 0) {
             outcome = AppConstant.AFFORDABILITY_ELIGIBLE;
             reason = "The repayment would take " + plain(dti) + "% of your net income, inside the "
-                    + plain(ceiling) + "% the bank typically allows.";
+                    + plain(ceiling) + "% " + lender(product) + " allows.";
         } else if (dti.compareTo(ceiling.add(marginalBand)) <= 0) {
             outcome = AppConstant.AFFORDABILITY_MARGINAL;
             reason = "The repayment would take " + plain(dti) + "% of your net income, just past the "
-                    + plain(ceiling) + "% the bank typically allows. A longer term or a larger deposit "
+                    + plain(ceiling) + "% " + lender(product) + " allows. A longer term or a larger deposit "
                     + "would bring it within reach.";
         } else {
             outcome = AppConstant.AFFORDABILITY_NOT_ELIGIBLE;
             reason = "The repayment would take " + plain(dti) + "% of your net income, well past the "
-                    + plain(ceiling) + "% the bank typically allows.";
+                    + plain(ceiling) + "% " + lender(product) + " allows.";
         }
-        working.put("outcome", outcome);
 
+        Map<String, Object> payload = payload(request, product, grossTotal, netIncome, ceiling, rate, term,
+                maxLoan, maxPrice, deposit, outcome);
+        payload.put("propertyPrice", price);
+        payload.put("loanRequired", required);
+        payload.put("repaymentRequired", repaymentNeeded);
+        payload.put("repaymentAsShareOfNetIncome", dti);
         return new Decision(outcome, reason, maxLoan, maxPrice, repaymentNeeded, dti, ceiling, rate,
-                null, working);
+                null, payload, term, List.copyOf(steps));
+    }
+
+    /** The ceiling this product allows, or the platform's configured default where it names none. */
+    private BigDecimal ceilingFor(ProductTerms product) {
+        if (product != null && product.maxDtiPercent() != null
+                && product.maxDtiPercent().signum() > 0) {
+            return product.maxDtiPercent().min(HUNDRED);
+        }
+        return ceilingPercent();
+    }
+
+    /**
+     * The term, moved into the product's band if it is outside it — and said out loud when it moves.
+     *
+     * <p>A silent clamp is how somebody asks for twenty-five years, is quoted twenty, and finds out at the
+     * branch. The step is added whether or not it bound, because "we used the term you asked for" is also
+     * worth knowing on a page that exists to be checked.
+     */
+    private short termFor(ProductTerms product, int requested, List<Step> steps) {
+        short term = (short) requested;
+        if (product == null) {
+            steps.add(Step.months("Over a term of", BigDecimal.valueOf(term), null));
+            return term;
+        }
+        short min = product.minTermMonths() == null ? term : product.minTermMonths();
+        short max = product.maxTermMonths() == null ? term : product.maxTermMonths();
+        short bounded = (short) Math.min(Math.max(term, min), max);
+        steps.add(Step.months("Over a term of", BigDecimal.valueOf(bounded),
+                bounded == term
+                        ? product.name() + " runs from " + min + " to " + max + " months."
+                        : "You asked for " + term + " months; " + product.name() + " runs from " + min
+                                + " to " + max + ", so this is worked out over " + bounded + "."));
+        return bounded;
+    }
+
+    /**
+     * What is payable on the day, named rather than folded into the loan.
+     *
+     * <p>Adding fees to the principal would quietly change every figure above them; a buyer needs to know
+     * what cash the completion asks for, which is a different question from what they can borrow.
+     */
+    private void addFeeSteps(ProductTerms product, BigDecimal loan, List<Step> steps) {
+        if (product == null || loan.signum() <= 0) return;
+        BigDecimal processing = pct(product.processingFeePercent());
+        BigDecimal insurance = pct(product.insurancePercent());
+        if (processing.signum() > 0) {
+            steps.add(Step.money("Arrangement fee", money(loan) + " × " + plain(processing) + "%",
+                    Amortisation.percentOf(loan, processing), "Payable on completion, not borrowed."));
+        }
+        if (insurance.signum() > 0) {
+            steps.add(Step.money("Insurance", money(loan) + " × " + plain(insurance) + "%",
+                    Amortisation.percentOf(loan, insurance), "Payable on completion, not borrowed."));
+        }
+    }
+
+    private String reasonForHeadline(boolean can, BigDecimal netIncome, BigDecimal maxLoan,
+                                     BigDecimal ceiling, ProductTerms product, BigDecimal deposit) {
+        if (netIncome.signum() <= 0) {
+            return "Your monthly commitments take everything you have told us you earn.";
+        }
+        if (!can && product != null && deposit.signum() == 0) {
+            return product.name() + " lends at most " + plain(product.maxLtvPercent())
+                    + "% of a home's price, so it needs a deposit to lend against. Tell us what you have "
+                    + "saved and this becomes a figure.";
+        }
+        return "Based on what you can set aside each month at the ceiling of " + plain(ceiling)
+                + "% of net income" + (product == null ? "." : ", under " + product.name() + ".");
+    }
+
+    private static String lender(ProductTerms product) {
+        return product == null ? "the bank typically" : product.institutionName();
+    }
+
+    /** The response kept verbatim on the row. Unchanged in shape; richer now there is a product. */
+    private Map<String, Object> payload(Request request, ProductTerms product, BigDecimal grossTotal,
+                                        BigDecimal netIncome, BigDecimal ceiling, BigDecimal rate,
+                                        short term, BigDecimal maxLoan, BigDecimal maxPrice,
+                                        BigDecimal deposit, String outcome) {
+        Map<String, Object> working = new LinkedHashMap<>();
+        working.put("provider", name());
+        if (product != null) {
+            working.put("productReference", product.reference());
+            working.put("productName", product.name());
+            working.put("institutionName", product.institutionName());
+        }
+        working.put("grossTotalMonthlyIncome", grossTotal);
+        working.put("monthlyObligations", nz(request.monthlyObligations()));
+        working.put("netMonthlyIncome", netIncome);
+        working.put("dtiCeilingPercent", ceiling);
+        working.put("affordableMonthlyRepayment", Amortisation.percentOf(netIncome, ceiling));
+        working.put("assumedAnnualRatePercent", rate);
+        working.put("termMonths", term);
+        working.put("maxLoanAmount", maxLoan);
+        working.put("depositAmount", deposit);
+        working.put("maxPropertyPrice", maxPrice);
+        working.put("outcome", outcome);
+        return working;
+    }
+
+    private static BigDecimal pct(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
+    }
+
+    private static String money(BigDecimal value) {
+        return nz(value).setScale(0, RoundingMode.HALF_UP).toPlainString();
     }
 
     /**
@@ -166,6 +390,17 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
 
     private static String plain(BigDecimal value) {
         return value.setScale(1, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
+
+    /**
+     * A rate, as it is quoted.
+     *
+     * <p>Not {@link #plain}, which rounds to one place: 13.25% printed as 13.3% is a different rate from
+     * the one on the product, and this is a panel whose entire job is being checkable against the bank's
+     * own sheet.
+     */
+    private static String rate(BigDecimal value) {
+        return nz(value).stripTrailingZeros().toPlainString();
     }
 
     private static BigDecimal nz(BigDecimal value) {

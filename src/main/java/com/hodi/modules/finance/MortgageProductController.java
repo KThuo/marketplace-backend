@@ -37,7 +37,7 @@ public class MortgageProductController {
         return ApiResponse.success(service.find(hashId));
     }
 
-    @PostMapping("/create")
+@PostMapping("/create")
     @PreAuthorize("hasAuthority('MORTGAGE_PRODUCTS_CREATE')")
     @RequestAction("CREATE MORTGAGE PRODUCT")
     public ApiResponse<ProductResponse> create(@Valid @RequestBody SaveProductRequest request) {

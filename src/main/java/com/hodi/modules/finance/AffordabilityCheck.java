@@ -67,6 +67,16 @@ public class AffordabilityCheck {
     @Builder.Default private String provider = AppConstant.PROVIDER_MOCK;
     @Column(name = "provider_reference", length = 64) private String providerReference;
 
+    /**
+     * The mortgage the figures were computed against, if one was chosen.
+     *
+     * <p>The reference and the name, not a foreign key: a check is what somebody was told on a day, and a
+     * product whose rate moves afterwards must not silently rewrite the answer they were given. The same
+     * reasoning the listing reference on this row already follows.
+     */
+    @Column(name = "product_reference", length = 16) private String productReference;
+    @Column(name = "product_name", length = 160) private String productName;
+
     // jsonb needs the explicit JDBC type code — columnDefinition only drives DDL, and without this
     // Hibernate binds the map as bytea. Same annotation the audit log carries, for the same reason.
     @JdbcTypeCode(SqlTypes.JSON)

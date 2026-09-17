@@ -78,9 +78,26 @@ public class FinanceMatchService {
      */
     public FinanceOption cost(MortgageProduct product, BigDecimal price, Short requestedTerm,
                               BigDecimal netMonthlyIncome) {
+        return cost(product, price, requestedTerm, netMonthlyIncome, null);
+    }
+
+    /**
+     * One product costed against one price, with the deposit the buyer actually has.
+     *
+     * <p>{@code buyersDeposit} is the money on the table; the product's minimum is a floor under it, not a
+     * substitute for it. Costing every row at the product's minimum produced a row that contradicted the
+     * answer above it: a household told they could reach ten million with two million down was then shown
+     * the same mortgage, at the same price, borrowing nine — because the row had quietly put the deposit
+     * back to the product's 10% — and marked "above what your income carries".
+     *
+     * <p>Null keeps the old behaviour, which is the right one where nobody has said what they have saved:
+     * the question is then "what would this bank ask for", and the answer is its minimum.
+     */
+    public FinanceOption cost(MortgageProduct product, BigDecimal price, Short requestedTerm,
+                              BigDecimal netMonthlyIncome, BigDecimal buyersDeposit) {
         if (price == null || price.signum() <= 0) return null;
 
-        BigDecimal deposit = product.depositOn(price);
+        BigDecimal deposit = depositFor(product, price, buyersDeposit);
         BigDecimal loan = price.subtract(deposit);
         if (loan.signum() <= 0) return null;
 
@@ -113,6 +130,14 @@ public class FinanceMatchService {
 
         return new FinanceOption(publicView(product), deposit, loan, repayment, term, processingFee,
                 totalPayable, affordable);
+    }
+
+    /** The buyer's own deposit where it meets the product's floor, otherwise the floor. */
+    private static BigDecimal depositFor(MortgageProduct product, BigDecimal price,
+                                         BigDecimal buyersDeposit) {
+        BigDecimal minimum = product.depositOn(price);
+        if (buyersDeposit == null || buyersDeposit.signum() <= 0) return minimum;
+        return buyersDeposit.max(minimum).min(price);
     }
 
     /** The bank-facing row, reduced to what is on offer. */
