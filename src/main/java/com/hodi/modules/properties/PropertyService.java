@@ -533,6 +533,26 @@ public class PropertyService {
      * corrected, not a fact with a history worth keeping — unlike a listing, which is why this is the one
      * place in the module that hard-deletes.
      */
+    /**
+     * What this listing comes with without anybody ticking it here: its typology's, and its project's.
+     *
+     * <p>The listing's own codes are excluded, so the two lists never claim the same amenity twice and the
+     * editor can render one set as editable and the other as inherited.
+     */
+    private java.util.List<String> inheritedAmenityCodesFor(Property p) {
+        if (p.getUnitTypeId() == null && p.getDevelopmentId() == null) return java.util.List.of();
+        java.util.Set<String> own = new java.util.HashSet<>(amenityCodesFor(p.getId()));
+        java.util.LinkedHashSet<String> inherited = new java.util.LinkedHashSet<>();
+        if (p.getUnitTypeId() != null) {
+            inherited.addAll(amenities.codesFor(AmenityService.Scope.UNIT_TYPE, p.getUnitTypeId()));
+        }
+        if (p.getDevelopmentId() != null) {
+            inherited.addAll(amenities.codesFor(AmenityService.Scope.DEVELOPMENT, p.getDevelopmentId()));
+        }
+        inherited.removeAll(own);
+        return java.util.List.copyOf(inherited);
+    }
+
     /** Every amenity the platform knows, in the catalogue's own order. Feeds the picker. */
     @Transactional(readOnly = true)
     public java.util.List<PropertyDtos.PublicAmenity> amenityCatalogue() {
@@ -692,7 +712,8 @@ public class PropertyService {
                 p.getStatusFlag(),
                 p.getCreatedAt(),
                 p.getCreatedBy(),
-                amenityCodesFor(p.getId()));
+                amenityCodesFor(p.getId()),
+                inheritedAmenityCodesFor(p));
     }
 
     private java.util.Optional<AgentProfile> agentOf(Property p) {

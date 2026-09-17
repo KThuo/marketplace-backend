@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -59,6 +60,7 @@ class TypologyAndListingAreOneIT {
     @Autowired DevelopmentRepository developments;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
     @Autowired MediaAssetRepository mediaAssets;
+    @Autowired AmenityService amenities;
     @Autowired JdbcTemplate jdbc;
 
     private Long tenantId;
@@ -292,6 +294,32 @@ class TypologyAndListingAreOneIT {
                 HashIdUtil.encodeId(listing.getId()),
                 listingAs("Mine now", (short) 2, "Not theirs to write.")),
                 "opening the door for the platform must not open it for a competitor");
+    }
+
+    // ── what it comes with ───────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("the editor is told what the listing inherits, apart from what it holds itself")
+    void inheritedAmenitiesAreReportedSeparately() {
+        List<String> catalogue = propertyService.amenityCatalogue().stream()
+                .map(com.hodi.modules.properties.PropertyDtos.PublicAmenity::code).toList();
+        // Three distinct codes, whatever this platform's catalogue happens to hold.
+        String onTheListing = catalogue.get(0);
+        String onTheTypology = catalogue.get(1);
+        String onTheProject = catalogue.get(2);
+
+        amenities.apply(AmenityService.Scope.LISTING, listing.getId(), List.of(onTheListing));
+        amenities.apply(AmenityService.Scope.UNIT_TYPE, typology.getId(), List.of(onTheTypology));
+        amenities.apply(AmenityService.Scope.DEVELOPMENT, development.getId(), List.of(onTheProject));
+
+        var card = propertyService.find(HashIdUtil.encodeId(listing.getId()));
+
+        assertEquals(List.of(onTheListing), card.amenityCodes(),
+                "its own set is the only one a save may change");
+        assertTrue(card.inheritedAmenityCodes().containsAll(List.of(onTheTypology, onTheProject)),
+                "the buyer's page has always shown these; the form showed none of them");
+        assertFalse(card.inheritedAmenityCodes().contains(onTheListing),
+                "an amenity it already carries is not also inherited — one fact, one chip");
     }
 
     // ── the facts ────────────────────────────────────────────────────────────

@@ -80,7 +80,19 @@ public final class PropertyDtos {
             OffsetDateTime createdAt,
             String createdBy,
             /** What it comes with, as codes, so the form opens with them already ticked. */
-            java.util.List<String> amenityCodes) {}
+            java.util.List<String> amenityCodes,
+            /**
+             * What it comes with by belonging to something bigger: its typology's amenities, and its
+             * project's.
+             *
+             * <p>Separate from {@code amenityCodes}, which is what this listing carries in its own right and
+             * is the only set a save may change. The buyer's page has always shown both — a flat's balcony
+             * is recorded on the flat and the estate's borehole on the project — so an editor showing only
+             * the first describes less of the home than the page it is editing, which is the complaint.
+             *
+             * <p>Empty for a house, which belongs to nothing and inherits nothing.
+             */
+            java.util.List<String> inheritedAmenityCodes) {}
 
     public record MediaResponse(
             String id,
