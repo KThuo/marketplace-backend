@@ -258,3 +258,82 @@ shipped ahead of the rest: `approval_workflows` carries the maker's own before a
 difference is computed once on the server, and the queue lists the fields that moved. A transfer's
 approval will use the same mechanism, so the checker sees the amount, the destination account and the
 resolved account name before releasing money.
+
+---
+
+# Part III — correction: there is no intermediary
+
+**18 September 2026.** Parts I and II assumed the marketplace was one of pesi's business clients — calling
+`/api/ext/v1/transactions/...` with an `X-API-Key`, and receiving notifications signed with
+`X-Pesi-Signature`. **That is wrong and everything resting on it is withdrawn.**
+
+The topology is:
+
+```
+Marketplace ──OAuth2 client credentials (consumerKey/consumerSecret → Bearer)──▶ Co-op APIs
+     ▲                                                                              │
+     └──────────── Co-op posts to us, HTTP Basic ───────────────────────────────────┘
+```
+
+**We are the end system.** Co-op reaches this platform directly. `X-Pesi-Signature` is pesi's own device
+for authenticating *its* business clients and has no place here; `PESI_IPN_SECRET` is the same mistake
+already in the code.
+
+"Take what pesi does" therefore means **port pesi's Co-op adapters**, not call pesi.
+
+## 12. The Co-op protocol, as pesi implements it
+
+Read out of `CoopBankComponent` rather than guessed:
+
+| Flow | Call |
+|---|---|
+| Token | OAuth2 client credentials, form-urlencoded, separate sandbox and production hosts. The token is cached against its own JWT expiry — one token serves many calls, and asking per request would rate-limit us into failures. |
+| STK push | `POST {base}/FT/stk/1.0.0`, Bearer |
+| STK status | `POST {base}/Enquiry/STK/1.0.0/` |
+| Transaction status | `POST {base}/Enquiry/TransactionStatus_V3/3.0.0/` |
+| Account validation | `POST {base}/Enquiry/Validation/IPSL/1.0.0/` |
+| PesaLink transfer | `POST {base}/FundsTransfer/External/A2A/PesaLink_v2/2.0.0` — two legs on one token |
+
+Requests and responses carry Co-op's own header envelope (`CoopRequestHeader` / `CoopResponseHeader`), and
+the body's status decides the outcome, not the HTTP code.
+
+## 13. Inbound: Co-op → us
+
+pesi authenticates Co-op with **HTTP Basic** against a configured username and password, and — the part
+worth copying exactly — **refuses every request when those are not configured**, rather than falling open.
+A misconfigured deployment that accepts anonymous payment notifications is worse than one that accepts
+none.
+
+So `PesiIpnController` becomes the Co-op IPN endpoint: Basic auth, verified against the stored inbound
+credentials, 401 when it fails or is unset. The current "store it but do not credit it without a person"
+rule stops being the security boundary and goes back to being what it should be — a rule about *matching*,
+for notifications that authenticate correctly but cannot be placed.
+
+## 14. What this correction costs, honestly
+
+The names in the codebase now assert an architecture that is not true:
+
+- `infra/pesi/` — `PesiIpnController`, `PesiIpnService`, `PesiStatement`, `PesiStatementRepository`
+- `pesi_statements` table, `PESI_IPN_SECRET` config key, `X-Pesi-Signature` header
+- `PesiChannel`, whose values include `DARAJA_*`, `BUNI_*` and `EQUITY_*` — pesi's provider catalogue, not
+  Co-op's products
+
+None of it is wrong *code*; the IPN receiver's logic is sound and stays. It is wrong *naming*, and naming
+that encodes a false architecture is a trap for whoever reads it next — it already trapped me into
+designing two parts of this plan around an intermediary that does not exist.
+
+Recommended, and to be confirmed before it is done: rename the Java types to `Coop*` and move them to
+`infra/coop`, rename the config key, drop the signature header, and cut the channel catalogue down to the
+Co-op products this platform actually offers. The table rename is the only part with data behind it and
+can be done in the same migration or left with a comment — the client's call.
+
+## 15. Sequence, corrected
+
+1. ~~Only configured channels~~ · ~~cards not dropdowns~~ · ~~approvals show what changed~~ — **done**.
+2. Co-op credentials as an encrypted, descriptor-driven configuration: consumer key and secret, the
+   environment, and the inbound Basic pair.
+3. `CoopClient` — OAuth with a cached token, Co-op's header envelope, `Outcome<T>` that never throws, two
+   timeouts, body status deciding.
+4. Inbound Basic auth on the notification endpoint, refusing when unconfigured.
+5. Intents, status query and the sweep.
+6. Account validation, then funds transfer behind Maker/Checker.
