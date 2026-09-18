@@ -45,6 +45,27 @@ public class PaymentTypeController {
     }
 
     /**
+     * A channel's configuration — where it points and what it authenticates with.
+     *
+     * <p>Behind {@code PAYMENT_TYPES_MANAGE}, the same permission the rest of the catalogue's writes use
+     * and one the platform holds: the catalogue is shared by every organisation, so where a channel points
+     * is not one organisation's decision. Secrets read back masked, never in clear.
+     */
+    @GetMapping("/{hashId}/configuration")
+    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    public ApiResponse<PaymentTypeDtos.ChannelConfiguration> configuration(@PathVariable String hashId) {
+        return ApiResponse.success(channels.configurationOf(hashId));
+    }
+
+    @PostMapping("/{hashId}/configuration")
+    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    public ApiResponse<PaymentTypeDtos.ChannelConfiguration> configure(
+            @PathVariable String hashId,
+            @RequestBody PaymentTypeDtos.SaveChannelConfiguration request) {
+        return ApiResponse.success(channels.configure(hashId, request));
+    }
+
+    /**
      * What this owner may be given.
      *
      * <p>Platform staff name the organisation; everybody else gets their own. The list carries nothing about

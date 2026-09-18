@@ -4,9 +4,12 @@ import com.hodi.common.AppConstant;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 
 /**
  * One way money can be taken — the channel, not the account.
@@ -53,6 +56,33 @@ public class PaymentType {
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
     @Builder.Default private String statusFlag = AppConstant.FLAG_ACTIVE;
+
+    /**
+     * Which fields this channel needs configuring, as a form descriptor.
+     *
+     * <p>Key, label, type and whether it is required — the screen renders from it and the adapter reads
+     * the values by key. Nothing here knows what a Co-op token path <em>is</em>, which is the point:
+     * adding a channel, or a field to one, is a row rather than a deploy.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "required_config_fields", columnDefinition = "jsonb")
+    private Map<String, Object> requiredConfigFields;
+
+    /**
+     * The values for those fields, secrets encrypted.
+     *
+     * <p>Including the hosts and the paths. A URL compiled into the application has to be redeployed when
+     * the bank moves it, opens a second environment or versions an endpoint — all three of which banks do
+     * — so where the calls go is configuration, and only the credentials and the environment switch are
+     * platform settings.
+     *
+     * <p>Every field whose descriptor says {@code "type":"password"} is stored through
+     * {@code EncryptionUtil}, the same AES-256-GCM that protects a secret configuration value. A read
+     * never returns one: see {@code PaymentTypeService.configOf}.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> config;
 
     @Column(name = "search_text", insertable = false, updatable = false) private String searchText;
 

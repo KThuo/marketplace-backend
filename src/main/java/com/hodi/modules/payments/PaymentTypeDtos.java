@@ -134,6 +134,25 @@ public final class PaymentTypeDtos {
      * <p>Deliberately narrow: the account's own id, its channel and the numbers a person would recognise it
      * by. Choosing one fixes the payment's method from the channel.
      */
+    /**
+     * A channel's configuration as the screen needs it: the fields it declares, with values.
+     *
+     * <p>Secrets read back as a mask and are sent back unchanged to mean "leave it alone" — see
+     * {@link ChannelConfig}. {@code missing} names the required fields still empty, so "not configured
+     * yet" is something an operator can act on rather than a state they have to deduce.
+     */
+    public record ChannelConfiguration(
+            String id,
+            String code,
+            String name,
+            String providerName,
+            java.util.List<ChannelConfig.Field> fields,
+            java.util.List<String> missing,
+            boolean ready) {}
+
+    /** What a save sends: key to value, with a masked secret meaning "unchanged". */
+    public record SaveChannelConfiguration(java.util.Map<String, Object> values) {}
+
     public record OfferedAccount(
             String id,
             String name,

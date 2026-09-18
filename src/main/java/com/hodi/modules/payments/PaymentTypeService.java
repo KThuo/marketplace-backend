@@ -48,6 +48,8 @@ public class PaymentTypeService {
     private final PaymentTypeRepository types;
     private final PaymentAccountRepository accounts;
     private final ConfigurationService configs;
+    /** The same AES-256-GCM that protects a secret setting, for the secrets in a channel's own config. */
+    private final com.hodi.common.EncryptionUtil crypto;
     private final AuditService audit;
 
     @Transactional(readOnly = true)
@@ -61,6 +63,45 @@ public class PaymentTypeService {
         Map<Long, Long> inUse = scopedCounts(AuthContext.require());
         var page = types.findAll(spec, request.toPageable(Sort.by("sortOrder", "id")));
         return PagedResponse.from(page, t -> toResponse(t, inUse.getOrDefault(t.getId(), 0L)));
+    }
+
+    /**
+     * One channel's configuration, for the screen that fills it in.
+     *
+     * <p>Driven by the channel's own descriptor rather than by what happens to be stored, so a field the
+     * bank has added since appears empty and asking to be filled instead of not appearing at all.
+     */
+    @Transactional(readOnly = true)
+    public PaymentTypeDtos.ChannelConfiguration configurationOf(String hashId) {
+        PaymentType type = require(hashId);
+        var fields = ChannelConfig.describe(type.getRequiredConfigFields(), type.getConfig(), crypto);
+        var missing = ChannelConfig.missing(type.getRequiredConfigFields(), type.getConfig());
+        return new PaymentTypeDtos.ChannelConfiguration(
+                HashIdUtil.encodeId(type.getId()), type.getCode(), type.getName(),
+                type.getProviderName(), fields, missing, missing.isEmpty());
+    }
+
+    /**
+     * Saves it, keeping the secrets the form did not change.
+     *
+     * <p>Platform-only, like every other write here: where a channel points is shared by every organisation
+     * on the platform, so pointing it somewhere else is not one organisation's decision.
+     */
+    @Transactional
+    public PaymentTypeDtos.ChannelConfiguration configure(
+            String hashId, PaymentTypeDtos.SaveChannelConfiguration request) {
+        PaymentType type = require(hashId);
+        String before = snapshot(type);
+        type.setConfig(ChannelConfig.merge(type.getRequiredConfigFields(), type.getConfig(),
+                request == null ? null : request.values(), crypto));
+        type.setUpdatedBy(AuthContext.username());
+        PaymentType saved = types.save(type);
+
+        // The values are never audited: half of them are credentials, and the audit trail is the one table
+        // designed to be widely readable. That it was configured, by whom, is the part worth keeping.
+        audit.record(AppConstant.ACTION_UPDATE, "PaymentType", saved.getId(), before,
+                saved.getCode() + " configuration updated");
+        return configurationOf(hashId);
     }
 
     @Transactional(readOnly = true)
