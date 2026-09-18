@@ -61,6 +61,7 @@ class TypologyAndListingAreOneIT {
     @Autowired DevelopmentUnitTypeRepository unitTypes;
     @Autowired MediaAssetRepository mediaAssets;
     @Autowired AmenityService amenities;
+    @Autowired com.hodi.modules.approvals.ApprovalService approvals;
     @Autowired JdbcTemplate jdbc;
 
     private Long tenantId;
@@ -294,6 +295,31 @@ class TypologyAndListingAreOneIT {
                 HashIdUtil.encodeId(listing.getId()),
                 listingAs("Mine now", (short) 2, "Not theirs to write.")),
                 "opening the door for the platform must not open it for a competitor");
+    }
+
+    @Test
+    @DisplayName("an edit that needs re-approval tells the checker what changed")
+    void theApprovalCarriesTheDifference() {
+        listing.setListingState(AppConstant.LISTING_LIVE);
+        listing.setPublishedAt(java.time.OffsetDateTime.now());
+        properties.save(listing);
+
+        propertyService.update(HashIdUtil.encodeId(listing.getId()),
+                listingAs("Two bedroom at Highrise Apartments", (short) 3, "Now with a garden."));
+
+        var pending = approvals.pendingFor(AppConstant.APPROVAL_ENTITY_PROPERTY, listing.getId(),
+                AppConstant.APPROVAL_ACTION_PUBLISH).orElseThrow();
+        var changes = com.hodi.modules.approvals.ChangeSet.between(
+                pending.getBeforePayload(), pending.getAfterPayload(), pending.getFieldLabels());
+
+        assertTrue(changes.stream().anyMatch(c -> "bedrooms".equals(c.field())
+                        && "2".equals(c.from()) && "3".equals(c.to())),
+                "a checker approving 'somebody edited something' is a rubber stamp: " + changes);
+        assertTrue(changes.stream().anyMatch(c -> "description".equals(c.field())), "and the description");
+        assertTrue(changes.stream().noneMatch(c -> "title".equals(c.field())),
+                "the title did not move, so it is not in the list — noise is what makes a diff unread");
+        assertTrue(changes.stream().noneMatch(c -> "price".equals(c.field())),
+                "and a price re-read as 9500000.00 is not an edit of 9500000");
     }
 
     // ── what it comes with ───────────────────────────────────────────────────

@@ -89,7 +89,16 @@ public class ApprovalService {
             /** Whether <em>this</em> caller may decide it — so the queue does not offer buttons that refuse. */
             boolean decidable,
             /** Why not, when they cannot. Answers "why is this greyed out" without a failed attempt. */
-            String blockedReason) {}
+            String blockedReason,
+            /**
+             * What the edit changed, field by field.
+             *
+             * <p>Computed here rather than in each client, so the queue, the detail drawer and anything
+             * else that grows later all show one list rather than three readings of the same two
+             * snapshots. Empty for a request that carried no before and after — an older row, or a
+             * submission that is not an edit at all, like a first publication.
+             */
+            java.util.List<ChangeSet.Change> changes) {}
 
     public record DecisionRequest(String decision, String reason) {}
 
@@ -127,10 +136,27 @@ public class ApprovalService {
     public void submitOrRestate(String entityType, Long entityId, String action,
                                 Long scopeTenantId, Long scopeInstitutionId,
                                 String subjectLabel, String note) {
+        submitOrRestate(entityType, entityId, action, scopeTenantId, scopeInstitutionId,
+                subjectLabel, note, null, null);
+    }
+
+    /**
+     * The same, carrying what the edit changed.
+     *
+     * <p>Restating replaces the <em>after</em> and keeps the original <em>before</em>: two edits before
+     * anybody decides are one difference from the last approved state, not two from each other. A checker
+     * shown the second edit's delta alone would approve a change they had never seen the start of.
+     */
+    @Transactional
+    public void submitOrRestate(String entityType, Long entityId, String action,
+                                Long scopeTenantId, Long scopeInstitutionId,
+                                String subjectLabel, String note,
+                                ChangeSet.Snapshot before, ChangeSet.Snapshot after) {
         UserPrincipal caller = AuthContext.require();
         ApprovalWorkflow waiting = repository.findPending(entityType, entityId, action).orElse(null);
         if (waiting == null) {
-            submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId, subjectLabel, note);
+            submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId, subjectLabel, note,
+                    before, after);
             return;
         }
 
@@ -138,6 +164,14 @@ public class ApprovalService {
         waiting.setSubmittedAt(OffsetDateTime.now());
         waiting.setSubmittedByUserId(caller.getUserId());
         waiting.setSubmittedByUsername(caller.getUsername());
+        // The after moves, the before stays: see this method's note on two edits being one difference.
+        if (after != null) {
+            waiting.setAfterPayload(after.values());
+            waiting.setFieldLabels(after.labels());
+            if (waiting.getBeforePayload() == null && before != null) {
+                waiting.setBeforePayload(before.values());
+            }
+        }
         repository.save(waiting);
         audit.record(AppConstant.AUDIT_APPROVAL_SUBMIT, "ApprovalWorkflow", waiting.getId(), null,
                 entityType + "/" + action + " restated — " + note);
@@ -147,6 +181,16 @@ public class ApprovalService {
     public ApprovalWorkflow submit(String entityType, Long entityId, String action,
                                    Long scopeTenantId, Long scopeInstitutionId,
                                    String subjectLabel, String note) {
+        return submit(entityType, entityId, action, scopeTenantId, scopeInstitutionId,
+                subjectLabel, note, null, null);
+    }
+
+    /** The same, carrying the maker's own before and after so the checker can be shown the difference. */
+    @Transactional
+    public ApprovalWorkflow submit(String entityType, Long entityId, String action,
+                                   Long scopeTenantId, Long scopeInstitutionId,
+                                   String subjectLabel, String note,
+                                   ChangeSet.Snapshot before, ChangeSet.Snapshot after) {
         UserPrincipal caller = AuthContext.require();
         repository.findPending(entityType, entityId, action).ifPresent(existing -> {
             throw new HodiException("That is already waiting for a decision.", HttpStatus.CONFLICT);
@@ -163,6 +207,9 @@ public class ApprovalService {
                 .submittedByUsername(caller.getUsername())
                 .submittedAt(OffsetDateTime.now())
                 .submissionNote(note)
+                .beforePayload(before == null ? null : before.values())
+                .afterPayload(after == null ? null : after.values())
+                .fieldLabels(after == null ? null : after.labels())
                 .state(AppConstant.APPROVAL_PENDING)
                 .status(AppConstant.STATUS_ACTIVE)
                 .statusFlag(AppConstant.FLAG_ACTIVE)
@@ -393,7 +440,8 @@ public class ApprovalService {
                 w.getDecisionReason(),
                 w.getState(),
                 blocked == null,
-                blocked);
+                blocked,
+                ChangeSet.between(w.getBeforePayload(), w.getAfterPayload(), w.getFieldLabels()));
     }
 
     private static String snapshot(ApprovalWorkflow w) {

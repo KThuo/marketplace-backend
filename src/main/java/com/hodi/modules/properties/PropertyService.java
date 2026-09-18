@@ -148,6 +148,9 @@ public class PropertyService {
             throw new HodiException("A sold listing cannot be edited.", HttpStatus.CONFLICT);
         }
         String before = snapshot(property);
+        // The checker's copy, taken before the edit is applied — see ChangeSet for why it is recorded
+        // rather than re-derived when the queue is opened.
+        com.hodi.modules.approvals.ChangeSet.Snapshot was = describe(property);
         apply(property, request);
         applyOwnership(property, request, AuthContext.require());
         applyAmenities(property, request);
@@ -185,7 +188,8 @@ public class PropertyService {
             approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_PROPERTY, saved.getId(),
                     AppConstant.APPROVAL_ACTION_PUBLISH, saved.getTenantId(), null,
                     saved.getReference() + " — " + saved.getTitle(),
-                    "Edited while live; needs re-approval before it goes back on the marketplace.");
+                    "Edited while live; needs re-approval before it goes back on the marketplace.",
+                    was, describe(saved));
         }
         /*
          * A typology card is the project's own description of a home, so the edit belongs to both.
@@ -551,6 +555,34 @@ public class PropertyService {
         }
         inherited.removeAll(own);
         return java.util.List.copyOf(inherited);
+    }
+
+    /**
+     * The listing as a checker reads it.
+     *
+     * <p>The fields a buyer decides on, in the order the form asks them, and nothing else: an approval
+     * queue listing every column would bury the price change that matters among timestamps and flags. The
+     * labels are the form's own words rather than the column names, because the checker and the maker
+     * should be looking at the same listing described the same way.
+     */
+    private com.hodi.modules.approvals.ChangeSet.Snapshot describe(Property p) {
+        return com.hodi.modules.approvals.ChangeSet.of()
+                .put("title", "Title", p.getTitle())
+                .put("description", "Description", p.getDescription())
+                .put("propertyType", "Kind of property", p.getPropertyType())
+                .put("listingType", "For sale or to let", p.getListingType())
+                .put("price", "Price", p.getPrice())
+                .put("serviceCharge", "Service charge", p.getServiceCharge())
+                .put("bedrooms", "Bedrooms", p.getBedrooms())
+                .put("bathrooms", "Bathrooms", p.getBathrooms())
+                .put("parkingSpaces", "Parking", p.getParkingSpaces())
+                .put("floorAreaSqm", "Floor area", p.getFloorAreaSqm())
+                .put("county", "County", p.getCounty())
+                .put("town", "Town", p.getTown())
+                .put("estate", "Estate", p.getEstate())
+                .put("addressLine", "Address", p.getAddressLine())
+                .put("energyRating", "Energy rating", p.getEnergyRating())
+                .put("greenCertification", "Green certification", p.getGreenCertification());
     }
 
     /** Every amenity the platform knows, in the catalogue's own order. Feeds the picker. */

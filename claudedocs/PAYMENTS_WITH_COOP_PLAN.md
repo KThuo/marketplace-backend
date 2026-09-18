@@ -227,3 +227,34 @@ and the person are on the payment, not inferred. That is §3 C and B of Part I, 
   supports both (`company` scope versus `accounts`), and the answer changes who fills the form in.
 - **Funds transfer — who may send money out?** It is the one flow that moves money away from the platform,
   and it should probably need Maker/Checker rather than a single permission.
+
+## 11. The client's answers (18 September 2026)
+
+**One credential set, not one per seller.** Only Co-op has the financial ability to transact, so the
+Co-op configuration is the platform's. In the descriptor's terms that means the fields live in the
+`company` scope, not `accounts`, and one screen — platform-only — fills them in. A per-seller override is
+not built, and should not be: it would imply a second bank that does not exist.
+
+**Inbound credentials too, and pesi names them.** The descriptor for `COOP_BILLER_B2B` carries both
+directions, and the comment above it in pesi's own migration says which is which:
+
+- `connectionID` / `connectionPassword` — Co-op → pesi ingress auth.
+- `callbackUsername` / `callbackPassword` — **pesi → the end system**. This platform *is* the end system,
+  so this is the pair pesi presents when it calls us.
+
+Today `PesiIpnController` accepts an optional `X-Pesi-Signature` and treats its absence as untrusted —
+stored, never credited without a person. That is a sound floor and it stays. What it gains is the pair
+above: HTTP Basic on the notification endpoint, verified against the stored `callbackUsername` and the
+encrypted `callbackPassword`, so an unauthenticated caller cannot even write a statement row. The
+signature stays supported, because a deployment already using it must not break on the day this ships.
+
+**Maker/Checker on funds transfer, without a doubt.** Sending money out is the one flow where a single
+permission is not enough. It goes through `ApprovalService` like any other — an intent is raised, a second
+person approves, and only then does the adapter call pesi.
+
+**And the consequence the client named:** an approval must show *what is being approved*, in detail. That
+is not specific to payments — it is true of every row in that queue, and it was not being done. Built and
+shipped ahead of the rest: `approval_workflows` carries the maker's own before and after as jsonb, the
+difference is computed once on the server, and the queue lists the fields that moved. A transfer's
+approval will use the same mechanism, so the checker sees the amount, the destination account and the
+resolved account name before releasing money.

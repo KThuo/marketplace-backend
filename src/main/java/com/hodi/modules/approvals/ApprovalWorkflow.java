@@ -4,6 +4,8 @@ import com.hodi.common.AppConstant;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
@@ -50,6 +52,26 @@ public class ApprovalWorkflow {
     @Column(name = "submitted_by_username", length = 64) private String submittedByUsername;
     @Column(name = "submitted_at", nullable = false) private OffsetDateTime submittedAt;
     @Column(name = "submission_note", columnDefinition = "TEXT") private String submissionNote;
+
+    /**
+     * What the edit changed, as the maker's own before and after.
+     *
+     * <p>Stored rather than re-derived: the entity holds the new values, so asking it later would compare
+     * the new value with itself. See {@link ChangeSet} for why the difference is computed from these two
+     * rather than described in the note.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "before_payload", columnDefinition = "jsonb")
+    private java.util.Map<String, Object> beforePayload;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "after_payload", columnDefinition = "jsonb")
+    private java.util.Map<String, Object> afterPayload;
+
+    /** Field key to the words the submitting screen used, so the queue names things as the maker saw them. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "field_labels", columnDefinition = "jsonb")
+    private java.util.Map<String, String> fieldLabels;
 
     @Column(name = "checked_by_user_id") private Long checkedByUserId;
     @Column(name = "checked_by_username", length = 64) private String checkedByUsername;
