@@ -33,6 +33,18 @@ public enum CoopChannel {
 
     /** A phone prompt. The customer approves on their handset and the money moves. */
     COOP_STK_PUSH(Category.STK_PUSH),
+    /**
+     * The same prompt's second endpoint: what became of it.
+     *
+     * <p>Its own channel rather than a second path on the prompt, because a payment type is one
+     * operation against the bank and the endpoint is configured against the type. It collects nothing —
+     * it asks about somebody else's payment — so it is never offered as a way to pay.
+     */
+    COOP_STK_STATUS(Category.ENQUIRY),
+    /** What became of a transfer. An enquiry, like the prompt's own status call. */
+    COOP_FT_STATUS(Category.ENQUIRY),
+    /** Who holds an account, asked before money is sent to it. Part of the transfer flow, not inbound. */
+    COOP_ACCOUNT_VALIDATION(Category.ENQUIRY),
 
     /** Money out, to an account at Co-op or over PesaLink. Staff only, and behind Maker/Checker. */
     COOP_FUNDS_TRANSFER(Category.TRANSFER),
@@ -92,16 +104,28 @@ public enum CoopChannel {
         CHEQUE,
         STK_PUSH,
         TRANSFER,
-        VALIDATE;
+        VALIDATE,
+        /**
+         * A question about a payment that already exists.
+         *
+         * <p>Its own category rather than borrowing the one it asks about: filing a status check under
+         * TRANSFER made a screen say this platform had three ways to send money out, two of which send
+         * nothing. What it asks about is not what it is.
+         */
+        ENQUIRY;
 
         /** Recorded by hand, with no account behind it. */
         public boolean isManual() {
             return this == CASH || this == CHEQUE;
         }
 
-        /** Whether a payment through it can be written down by staff. Only a transfer cannot: it is money out. */
+        /**
+         * Whether a payment through it can be written down by staff.
+         *
+         * <p>Not a transfer, which is money out, and not an enquiry, which moves nothing at all.
+         */
         public boolean isReceivable() {
-            return this != TRANSFER;
+            return this != TRANSFER && this != ENQUIRY;
         }
 
         /**
@@ -113,6 +137,7 @@ public enum CoopChannel {
                 case STK_PUSH -> "STK";
                 case VALIDATE -> "VALIDATE";
                 case TRANSFER -> "TRANSFER";
+                case ENQUIRY -> "ENQUIRY";
                 case CHEQUE -> "CHEQUE";
                 case CASH -> "CASH";
             };

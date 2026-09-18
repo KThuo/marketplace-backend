@@ -639,6 +639,25 @@ public enum ConfigKey {
      * type, configured against it, because a platform that hardcodes a bank's URL has to be redeployed
      * when that bank moves a path or opens a second environment. These two are the credentials only.
      */
+    /**
+     * Which addresses may notify us, and the reason it is here rather than on an account.
+     *
+     * <p>It was a field on the inbound-account form, copied across from a gateway where each business
+     * declared the addresses <em>it</em> would be called from. That is the wrong way round here: nobody
+     * calls out to a business — Co-op calls this platform, and which of Co-op's addresses may reach us is
+     * one fact about one bank, not a property of each account somebody sets up.
+     *
+     * <p><b>Empty accepts every address</b>, deliberately. The alternative reading turns a setting nobody
+     * has filled in yet into a deployment that silently drops every payment notification it receives, and
+     * the money would already be in the bank. HTTP Basic is the control that fails closed; this one
+     * narrows it.
+     */
+    COOP_IPN_ALLOWED_IPS(
+            "coop.ipn.allowed.ips", "STRING", "INTEGRATION", "",
+            "Addresses Co-op notifies us from",
+            "Comma-separated IP addresses allowed to post payment notifications. Empty accepts any "
+                    + "address, leaving HTTP Basic as the control.", false, false),
+
     COOP_CONSUMER_KEY(
             "coop.consumer.key", "STRING", "INTEGRATION", "",
             "Co-op consumer key",
@@ -650,16 +669,120 @@ public enum ConfigKey {
             "The OAuth2 client secret issued by Co-op. Stored encrypted.", true, false),
 
     /**
-     * Which environment the credentials belong to.
+     * Where every Co-op call goes, and the endpoint that authenticates it.
      *
-     * <p>A row rather than a build profile, so moving a deployment from Co-op's sandbox to production is a
-     * setting somebody changes and can change back — not a rebuild. The value is matched by the payment
-     * type's own configuration, which is where the hosts live.
+     * <p><strong>One host, and no environment switch.</strong> There used to be a sandbox host and a
+     * production host on each payment type and a setting saying which was live. That is two sources of
+     * truth for one fact: an address that reads sandbox <em>is</em> the sandbox, and a switch that can
+     * disagree with it is a way to pay the wrong bank. What is in here decides, and nothing else does.
+     *
+     * <p>Shared by every channel, because a bank has one base address — what differs per channel is the
+     * endpoint hanging off it, which is configured against the payment type.
+     *
+     * <p>Blank means no outbound call is attempted, so a deployment that has not been configured cannot
+     * quietly reach somebody else's sandbox.
      */
-    COOP_ENVIRONMENT(
-            "coop.environment", "STRING", "INTEGRATION", "SANDBOX",
-            "Co-op environment",
-            "SANDBOX or PRODUCTION. Decides which of a payment type's configured hosts is used.",
+    COOP_BASE_URL(
+            "coop.base.url", "STRING", "INTEGRATION", "",
+            "Co-op host",
+            "The base address every Co-op call is made against. Whether this deployment talks to the "
+                    + "sandbox or to production is decided by what is in here and nothing else.",
+            false, false),
+    COOP_TOKEN_PATH(
+            "coop.token.path", "STRING", "INTEGRATION", "",
+            "Co-op token path",
+            "The OAuth2 endpoint on that host, exchanged for the bearer token every call carries. One "
+                    + "for the bank rather than one per channel.", false, false),
+
+    /**
+     * Whether an organisation may collect money into an account of its own.
+     *
+     * <p>{@code PLATFORM} — every payment is collected to the platform's account, and an organisation
+     * cannot attach one. This is the default and what the platform did before the setting existed.
+     *
+     * <p>{@code ORGANISATION} — an organisation configures its own account and collects to it; one that
+     * has not falls back to the platform's, so turning this on cannot leave anybody unable to take money.
+     *
+     * <p>Read where an account is <em>set up</em>, which is the only moment it can be applied: the
+     * ownership columns already exist and {@code PaymentScope} already decides who may read which, so
+     * what this decides is whether a non-platform owner may be written at all.
+     *
+     * <p>Not overridable. A setting that says whether organisations may collect their own money is not
+     * one an organisation may answer for itself.
+     */
+    PAYMENT_COLLECTION_SCOPE(
+            "payments.collection.scope", "STRING", "PAYMENTS", "PLATFORM",
+            "Who collects payments",
+            "PLATFORM: every payment is collected to the platform's own account. ORGANISATION: an "
+                    + "organisation with a configured account of its own collects to it, and one without "
+                    + "falls back to the platform's.", false, false),
+
+    /**
+     * Who we are to Co-op on the calls that ask for it.
+     *
+     * <p>Their {@code UserID} — account validation and transfer status both carry it, while the phone
+     * prompt does not. One value for the institution, so it is a setting rather than something repeated
+     * on every account.
+     */
+    COOP_USER_ID(
+            "coop.user.id", "STRING", "INTEGRATION", "",
+            "Co-op user ID",
+            "The UserID Co-op issued, sent on account validation and transfer status enquiries.",
+            false, false),
+
+    /**
+     * How a Co-op status answer is read.
+     *
+     * <p>Their "still processing" is a MessageCode and a MessageDescription rather than an HTTP state,
+     * and the exact values are theirs to change — so they are configured rather than compiled. Anything
+     * unrecognised is read as still-processing: a payment failed on a code we simply did not know is a
+     * customer told their money did not arrive when it did.
+     */
+    COOP_PENDING_STATUS_CODES(
+            "coop.pending.status.codes", "STRING", "INTEGRATION", "S_001",
+            "Co-op still-processing codes",
+            "Comma-separated MessageCode values meaning the payment is still in progress.",
+            false, false),
+    COOP_PENDING_STATUS_DESCRIPTIONS(
+            "coop.pending.status.descriptions", "STRING", "INTEGRATION", "PROCESSING",
+            "Co-op still-processing descriptions",
+            "Comma-separated MessageDescription values meaning the payment is still in progress.",
+            false, false),
+
+    /**
+     * How many times the sweep may ask about one stuck payment.
+     *
+     * <p>Capped because an uncapped sweep re-queries a stuck payment every thirty seconds for as long
+     * as it exists. Past the cap it stops and leaves a sentence for a person. A person's own query is
+     * neither counted nor limited — the cap exists to stop a machine looping, not to stop an operator
+     * working.
+     */
+    COOP_STATUS_QUERY_MAX_ATTEMPTS(
+            "coop.status.query.max.attempts", "INTEGER", "INTEGRATION", "2",
+            "Automatic status queries per payment",
+            "How many times the sweep asks Co-op about one stuck payment before leaving it for a person.",
+            false, false),
+    /**
+     * How long the request holds open while the customer decides.
+     *
+     * <p>A phone prompt is answered by a person walking to their handset and typing a PIN, so the honest
+     * interaction is to wait for them rather than to answer "sent" and make somebody watch a list. The
+     * request is held, the answer is the payment itself, and the screen closes on it.
+     *
+     * <p>Under the client's own timeout on purpose — the browser gives it three minutes — so a wait that
+     * runs out is answered by this server with an intent still in flight rather than by the browser with a
+     * network error and nothing to show.
+     */
+    COOP_STK_WAIT_SECONDS(
+            "coop.stk.wait.seconds", "INTEGER", "INTEGRATION", "150",
+            "Seconds to wait at the screen",
+            "How long a phone prompt holds the screen while the customer approves it. After this the "
+                    + "payment is left in flight and the status query settles it.",
+            false, false),
+    COOP_CALLBACK_TIMEOUT_SECONDS(
+            "coop.callback.timeout.seconds", "INTEGER", "INTEGRATION", "60",
+            "Seconds to wait for a callback",
+            "How long a payment waits for Co-op to call back before the sweep asks what became of it.",
             false, false),
 
     /**

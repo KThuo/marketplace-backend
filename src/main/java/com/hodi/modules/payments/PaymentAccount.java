@@ -1,12 +1,15 @@
 package com.hodi.modules.payments;
 
 import com.hodi.common.AppConstant;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -51,6 +54,21 @@ public class PaymentAccount {
     @Column(name = "account_name", length = 160) private String accountName;
     /** A secondary reference the bank may quote. Optional; unique when present. */
     @Column(name = "short_code", length = 64) private String shortCode;
+
+    /**
+     * Everything this channel asks of one of its accounts, by descriptor key.
+     *
+     * <p>An operator code and a consumer secret on a Co-op prompt; nine fields on a Co-op biller,
+     * credentials in both directions among them. The four columns above could express none of that, so
+     * they were filled with whatever the form happened to show — a paybill on a channel that has none.
+     *
+     * <p>Secrets are encrypted through {@code EncryptionUtil} and a read answers {@link ChannelConfig#MASK};
+     * {@link ChannelConfig} is the only door to a stored value, and this is deliberately the same machinery
+     * the channel's own configuration already uses.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> config;
 
     /** Copied from the catalogue row so an inbound match is one table and one index. */
     @Column(name = "provider_code", length = 50) private String providerCode;

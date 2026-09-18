@@ -55,10 +55,23 @@ public class CoopClient {
     /** Co-op's own success marker, in the body. The HTTP status says only that it was processed. */
     private static final String OK = "0";
 
+    /**
+     * Who we say we are.
+     *
+     * <p>Not decoration. Java's HTTP client identifies itself as {@code Java-http-client/<version>} by
+     * default, and the firewall in front of Co-op's gateway answers that with an F5 "Request Rejected"
+     * page — HTTP 200, HTML body, no mention of a payment. The same request from Postman is allowed,
+     * which is what makes it look like the application is at fault when nothing about the request but
+     * this header differs.
+     */
+    private static final String AGENT = "Hodi-Marketplace/1.0";
+
     private static final Duration QUICK = Duration.ofSeconds(30);
     private static final Duration PATIENT = Duration.ofMinutes(3);
 
     private final ConfigurationService configs;
+    private final com.fasterxml.jackson.databind.ObjectMapper mapper =
+            new com.fasterxml.jackson.databind.ObjectMapper();
     private final EncryptionUtil crypto;
 
     private final RestClient quick = client(QUICK);
@@ -97,57 +110,154 @@ public class CoopClient {
      *
      * @param failure null when it worked; otherwise something a person could act on
      */
-    public record Outcome<T>(T value, String failure) {
+    public record Outcome<T>(T value, String failure, boolean sent) {
 
         public static <T> Outcome<T> ok(T value) {
-            return new Outcome<>(value, null);
+            return new Outcome<>(value, null, true);
         }
 
+        /**
+         * We tried, and cannot say what happened.
+         *
+         * <p>The request may have reached the bank. A caller must treat this as unknown and let the status
+         * query settle it — never as a failure.
+         */
         public static <T> Outcome<T> failed(String why) {
-            return new Outcome<>(null, why);
+            return new Outcome<>(null, why, true);
+        }
+
+        /**
+         * Nothing left this process, so nothing happened at the bank.
+         *
+         * <p>A missing host, a missing endpoint, credentials nobody has filled in: all of them are reasons
+         * the call was never attempted. Conflating this with a transport failure is what left a payment
+         * "in flight" — and burning status queries against the bank — for a prompt no customer ever saw.
+         * The difference is not cosmetic: one is settled by fixing a setting, the other by waiting.
+         */
+        public static <T> Outcome<T> unsent(String why) {
+            return new Outcome<>(null, why, false);
         }
 
         public boolean succeeded() {
             return failure == null;
         }
+
+        /** True when the request never left us, so the caller may conclude nothing happened. */
+        public boolean neverSent() {
+            return failure != null && !sent;
+        }
     }
 
     /**
-     * Posts a body to one of a channel's configured paths.
+     * Posts a body to a channel's own endpoint.
      *
-     * @param pathKey which path in the channel's own configuration — the request one, the status one
+     * <p>One endpoint, not a choice of several: each payment type is one operation against the bank, and
+     * where a second is needed — a status query against a prompt — it is a payment type of its own, which
+     * keeps "which path" from being a parameter every caller can get wrong.
+     *
      * @param patientCall true when a person is waiting on the other end of it
      */
-    public Outcome<Map<String, Object>> post(PaymentType channel, String pathKey,
-                                             Map<String, Object> body, boolean patientCall) {
-        String base = baseUrlOf(channel);
-        String path = config(channel, pathKey);
-        if (base == null || path == null) {
-            return Outcome.failed("This channel has no " + pathKey + " configured yet.");
+    public Outcome<Map<String, Object>> post(PaymentType channel, Map<String, Object> body,
+                                             boolean patientCall) {
+        String base = baseUrl();
+        String path = config(channel, "endpoint");
+        if (base == null) {
+            return Outcome.unsent("The Co-op host is not configured yet. Set it under Integration "
+                    + "settings.");
+        }
+        if (path == null) {
+            return Outcome.unsent(channel.getName() + " has no endpoint configured yet. Set it on the "
+                    + "payment method.");
         }
 
         Outcome<String> token = token(channel);
-        if (!token.succeeded()) return Outcome.failed(token.failure());
+        if (!token.succeeded()) {
+            return token.neverSent() ? Outcome.unsent(token.failure()) : Outcome.failed(token.failure());
+        }
 
-        String url = base.endsWith("/") && path.startsWith("/")
-                ? base + path.substring(1)
-                : base + path;
+        return send(join(base, path), token.value(), body, patientCall, channel.getCode());
+    }
+
+    /**
+     * The call itself.
+     *
+     * @param called what to name in a log line — never the body, which carries a customer's phone
+     *               number and an amount
+     */
+    private Outcome<Map<String, Object>> send(String url, String token, Map<String, Object> body,
+                                              boolean patientCall, String called) {
         try {
+            /*
+             * Taken as text, then parsed.
+             *
+             * <p>Asking for a Map directly means a gateway answering with an error page raises "no
+             * suitable HttpMessageConverter found ... content type [text/html]" — a sentence about Java
+             * that says nothing about what went wrong. The bank's proxies answer with HTML routinely:
+             * a wrong path, an expired route, a gateway between us and them having a bad minute. What
+             * somebody needs to be told is that an HTML page came back from this URL, and its status.
+             */
+            org.springframework.http.ResponseEntity<String> answer =
+                    (patientCall ? patient : quick).post()
+                            .uri(url)
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                            .header(HttpHeaders.USER_AGENT, AGENT)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .accept(MediaType.APPLICATION_JSON)
+                            .body(body)
+                            .retrieve()
+                            .toEntity(String.class);
+
+            String text = answer.getBody();
+            if (text == null || text.isBlank()) return Outcome.failed("Co-op answered with nothing.");
+
+            String trimmed = text.trim();
+            if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+                log.error("Co-op answered {} with {} for {}: {}", url, answer.getStatusCode(), called,
+                        firstLineOf(trimmed));
+                /*
+                 * A firewall, not the bank. F5 answers a blocked request with exactly this: HTTP 200,
+                 * an HTML page titled "Request Rejected", and a support ID. Telling somebody the
+                 * endpoint is wrong would send them to change a setting that is already correct.
+                 */
+                boolean blocked = trimmed.toLowerCase(java.util.Locale.ROOT).contains("request rejected");
+
+                /*
+                 * unsent, not failed — and the difference is two and a half minutes of somebody's time.
+                 *
+                 * <p>A web page is never a payment response. Whatever answered — a firewall, a proxy's
+                 * 404 — the bank's own application did not process this request, so no prompt exists and
+                 * there is nothing for a status query to find. Reporting it as "we tried and cannot say"
+                 * left the payment in flight, and the screen then waited the full wait for a customer who
+                 * was never asked anything.
+                 */
+                return Outcome.unsent(blocked
+                        ? "The firewall in front of Co-op rejected the request before it reached them. "
+                                + "Nothing was prompted. The support ID is in the server log — Co-op's "
+                                + "team need it to say why."
+                        : "Co-op answered with a web page rather than a payment response ("
+                                + answer.getStatusCode() + "). The endpoint on this method may be wrong "
+                                + "for this host.");
+            }
+
             @SuppressWarnings("unchecked")
-            Map<String, Object> response = (patientCall ? patient : quick).post()
-                    .uri(url)
-                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + token.value())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(body)
-                    .retrieve()
-                    .body(Map.class);
-            if (response == null) return Outcome.failed("Co-op answered with nothing.");
-            return Outcome.ok(response);
+            Map<String, Object> parsed = mapper.readValue(trimmed, Map.class);
+            return Outcome.ok(parsed);
         } catch (Exception e) {
-            // Logged with the channel, never the body: it carries a customer's phone number and an amount.
-            log.error("Co-op call failed for {} ({}): {}", channel.getCode(), pathKey, e.getMessage());
+            log.error("Co-op call failed for {} at {}: {}", called, url, e.getMessage());
             return Outcome.failed("Could not reach Co-op just now.");
         }
+    }
+
+    /**
+     * The readable part of an error page.
+     *
+     * <p>Tags stripped and whitespace collapsed, because the one thing worth having off a firewall's
+     * rejection page is its support ID — the reference Co-op's own people need to say why the request
+     * was blocked — and it is never on the first line.
+     */
+    private static String firstLineOf(String text) {
+        String stripped = text.replaceAll("(?s)<[^>]*>", " ").replaceAll("\\s+", " ").trim();
+        return stripped.length() > 400 ? stripped.substring(0, 400) + "…" : stripped;
     }
 
     /** Whether the body says it worked. Co-op's status, not the HTTP code — they disagree routinely. */
@@ -160,18 +270,25 @@ public class CoopClient {
     // ── the token ─────────────────────────────────────────────────────────────
 
     private Outcome<String> token(PaymentType channel) {
-        Token held = tokens.get(channel.getCode());
+        return token(channel.getCode());
+    }
+
+    private Outcome<String> token(String cacheKey) {
+        Token held = tokens.get(cacheKey);
         if (held != null && held.usable()) return Outcome.ok(held.value());
 
-        String key = configs.getString(ConfigKey.COOP_CONSUMER_KEY);
-        String secret = configs.getString(ConfigKey.COOP_CONSUMER_SECRET);
-        if (key == null || key.isBlank() || secret == null || secret.isBlank()) {
-            return Outcome.failed("Co-op credentials are not configured yet.");
+        // Trimmed, because these are pasted from a bank's onboarding e-mail and a trailing space in a
+        // credential fails authentication with a message that blames the credential rather than the space.
+        String key = trimmed(configs.getString(ConfigKey.COOP_CONSUMER_KEY));
+        String secret = trimmed(configs.getString(ConfigKey.COOP_CONSUMER_SECRET));
+        if (key == null || secret == null) {
+            return Outcome.unsent("Co-op credentials are not configured yet. Set the consumer key and "
+                    + "secret under Integration settings.");
         }
-        String base = baseUrlOf(channel);
-        String path = config(channel, "tokenPath");
+        String base = baseUrl();
+        String path = trimmed(configs.getString(ConfigKey.COOP_TOKEN_PATH));
         if (base == null || path == null) {
-            return Outcome.failed("This channel has no token path configured yet.");
+            return Outcome.unsent("The Co-op host or token path is not configured yet.");
         }
 
         String basic = Base64.getEncoder().encodeToString(
@@ -179,8 +296,9 @@ public class CoopClient {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> body = (Map<String, Object>) quick.post()
-                    .uri(base + path)
+                    .uri(join(base, path))
                     .header(HttpHeaders.AUTHORIZATION, "Basic " + basic)
+                    .header(HttpHeaders.USER_AGENT, AGENT)
                     .contentType(MediaType.APPLICATION_FORM_URLENCODED)
                     .body("grant_type=client_credentials")
                     .retrieve()
@@ -199,27 +317,53 @@ public class CoopClient {
                     // Co-op's own default, kept rather than failing over a field we can live without.
                 }
             }
-            tokens.put(channel.getCode(),
-                    new Token(token, System.currentTimeMillis() / 1000 + ttl));
+            tokens.put(cacheKey, new Token(token, System.currentTimeMillis() / 1000 + ttl));
             return Outcome.ok(token);
         } catch (Exception e) {
-            log.error("Could not get a Co-op token for {}: {}", channel.getCode(), e.getMessage());
+            log.error("Could not get a Co-op token for {}: {}", cacheKey, e.getMessage());
+            // Tried and could not: a token call that failed means nothing was posted afterwards either,
+            // but we cannot prove the bank was never reached, so the caller keeps its own judgement.
             return Outcome.failed("Could not authenticate with Co-op.");
         }
     }
 
     /**
-     * Which host, decided by the platform's environment switch.
+     * A base and a configured path, joined — or the path alone when it is already a whole address.
      *
-     * <p>A setting rather than a build profile, so moving a deployment to production is an edit somebody
-     * can make and can undo.
+     * <p>People configure both. A bank's onboarding sheet lists the token endpoint as a full URL, so that
+     * is what gets pasted into a field labelled "path", and concatenating it onto the host produces
+     * {@code https://bank.example/https://bank.example/token} — a call that fails with a message about the
+     * host rather than about the mistake. Accepting either spelling is cheaper than a support call.
      */
-    private String baseUrlOf(PaymentType channel) {
-        boolean production = "PRODUCTION".equalsIgnoreCase(
-                String.valueOf(configs.getString(ConfigKey.COOP_ENVIRONMENT)).trim());
-        String url = config(channel, production ? "productionBaseUrl" : "sandboxBaseUrl");
-        // A deployment switched to production before its production host is set falls back rather than
-        // calling the sandbox by accident — there is nothing safe about guessing which bank to pay.
+    private static String join(String base, String path) {
+        if (path.regionMatches(true, 0, "http://", 0, 7)
+                || path.regionMatches(true, 0, "https://", 0, 8)) {
+            return path;
+        }
+        boolean baseEnds = base.endsWith("/");
+        boolean pathStarts = path.startsWith("/");
+        if (baseEnds && pathStarts) return base + path.substring(1);
+        if (!baseEnds && !pathStarts) return base + "/" + path;
+        return base + path;
+    }
+
+    private static String trimmed(String value) {
+        if (value == null) return null;
+        String out = value.trim();
+        return out.isEmpty() ? null : out;
+    }
+
+    /**
+     * Which host — the platform's, shared by every channel.
+     *
+     * <p>There is no environment switch beside it, and that is the point: an address that reads sandbox
+     * <em>is</em> the sandbox. A separate setting saying which environment is live is a second source of
+     * truth for the same fact, and the way it fails is paying the wrong bank.
+     *
+     * <p>Null while it is blank, so an unconfigured deployment makes no call at all rather than guessing.
+     */
+    private String baseUrl() {
+        String url = configs.getString(ConfigKey.COOP_BASE_URL);
         return url == null || url.isBlank() ? null : url.trim();
     }
 

@@ -200,12 +200,15 @@ public class PaymentTypeService {
 
     static ChannelResponse toResponse(PaymentType t, long inUse) {
         CoopChannel.Category category = t.channelCategory();
+        // Cash and cheque declare no fields, so they are configured by having nothing to configure.
+        java.util.List<String> missing = ChannelConfig.missing(t.getRequiredConfigFields(), t.getConfig());
         return new ChannelResponse(
                 HashIdUtil.encodeId(t.getId()), t.getCode(), t.getName(), t.getDescription(),
                 t.getProviderName(), t.getProviderType(), t.getCategory(), category.renderAs(),
                 t.getMethod(), PaymentMethods.label(t.getMethod()),
                 t.isElectronic(), t.isAccountBased(), t.isRequiresShortCode(),
-                t.getSortOrder(), t.getStatus(), t.getStatusFlag(), inUse);
+                t.getSortOrder(), t.getStatus(), t.getStatusFlag(), inUse,
+                missing.isEmpty(), missing);
     }
 
     private static String snapshot(PaymentType t) {

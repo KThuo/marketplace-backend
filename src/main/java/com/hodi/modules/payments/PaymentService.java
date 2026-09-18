@@ -118,7 +118,7 @@ public class PaymentService {
             type = types.findById(account.getPaymentTypeId())
                     .orElseThrow(() -> new HodiException("That payment method no longer exists.",
                             HttpStatus.CONFLICT));
-            if (!type.channelCategory().isReceivable()) {
+            if (!type.selectable() || !type.channelCategory().isReceivable()) {
                 throw new HodiException(type.getName() + " sends money out; it is not a way to receive it.",
                         HttpStatus.BAD_REQUEST);
             }
@@ -159,6 +159,33 @@ public class PaymentService {
                 method, type, statement.getReference(), statement.getRefNo(),
                 orElse(statement.getCustomerName(), booking.getBuyerName()), statement.getPhoneNo(),
                 null, statement.getId(), AppConstant.USERNAME_SYSTEM);
+        audit.record(AppConstant.AUDIT_PAYMENT_RECEIVED, "Payment", saved.getId(), null, snapshot(saved));
+        return saved;
+    }
+
+    /**
+     * Records the money for an intent Co-op has confirmed.
+     *
+     * <p>Used when the status query settles a payment the callback never reported. The alternative —
+     * crediting only on a callback — loses the money whose callback was lost, which is the whole reason
+     * the status query exists.
+     *
+     * <p>Deduplication is the caller's: {@code CoopIntentSettlement} writes this once per intent and
+     * never again, and a statement arriving later for the same reference is linked to this payment rather
+     * than creating a second one.
+     */
+    @Transactional
+    public Payment recordFromIntent(UnitBooking booking, PaymentIntent intent, PaymentAccount account) {
+        Development development = booking.getDevelopmentId() == null ? null
+                : developments.findById(booking.getDevelopmentId())
+                .orElseThrow(() -> new HodiException("That development no longer exists.", HttpStatus.CONFLICT));
+        PaymentType type = types.findById(intent.getPaymentTypeId()).orElse(null);
+        String method = type == null ? AppConstant.PAY_MOBILE_MONEY : type.getMethod();
+
+        Payment saved = write(booking, development, intent.getAmount(), LocalDate.now(),
+                AppConstant.PAY_GATEWAY, method, type, intent.getReference(),
+                intent.getReceipt() == null ? intent.getBankReference() : intent.getReceipt(),
+                booking.getBuyerName(), intent.getPhoneNo(), null, null, AppConstant.USERNAME_SYSTEM);
         audit.record(AppConstant.AUDIT_PAYMENT_RECEIVED, "Payment", saved.getId(), null, snapshot(saved));
         return saved;
     }

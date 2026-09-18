@@ -1,8 +1,10 @@
 package com.hodi.modules.payments;
 
 import com.hodi.common.AppConstant;
+import com.hodi.infra.coop.CoopRoutes;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
+import com.hodi.modules.approvals.ApprovalService;
 import com.hodi.modules.auth.OtpChallenge;
 import com.hodi.modules.auth.OtpChallengeRepository;
 import com.hodi.modules.auth.OtpChallengeService;
@@ -33,6 +35,7 @@ import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -57,6 +60,9 @@ class PaymentTypeServiceIT {
     @Autowired OtpChallengeRepository challenges;
     @Autowired DevelopmentRepository developments;
     @Autowired JdbcTemplate jdbc;
+    @Autowired ApprovalService approvals;
+    @Autowired com.hodi.modules.configurations.ConfigurationService configs;
+    @jakarta.persistence.PersistenceContext jakarta.persistence.EntityManager em;
 
     private Long tenantId;
     private Long userId;
@@ -72,6 +78,10 @@ class PaymentTypeServiceIT {
                 tenantId);
         // The KCB till channel ships switched off until somebody has a till on it. Rolled back with the test.
         jdbc.update("update payment_types set status = 1 where provider_type = 'BUNI_IPN_TILL'");
+        // Every test below attaches an account to an organisation, which the platform only permits while
+        // payments.collection.scope says so. Stated here rather than assumed, because the shipped default
+        // is the other answer.
+        organisationsMayCollect(true);
         signInAs(AppConstant.ACTOR_SELLER, "SELLER_OWNER", tenantId, "PAYMENT_TYPES_VIEW",
                 "PAYMENT_TYPES_MANAGE");
     }
@@ -82,6 +92,27 @@ class PaymentTypeServiceIT {
         return jdbc.queryForObject(
                 "insert into tenants (name, slug, tenant_ref, created_by) values (?, ?, ?, 'test') returning id",
                 Long.class, "Elsewhere Ltd " + ref, "elsewhere-" + ref.toLowerCase(), ref);
+    }
+
+    /**
+     * A second person, holding the approve permission and nothing else.
+     *
+     * <p>A second <em>user row</em>, not just a second permission: ck_approval_maker_checker is a database
+     * CHECK barring the submitter from deciding their own request, and that is the control being tested.
+     */
+    private void signInAsChecker() {
+        Long checkerId = jdbc.queryForObject(
+                "select id from users order by id offset 1 limit 1", Long.class);
+        User user = User.builder().id(checkerId).username("checker-test").password("x")
+                .email("checker@example.invalid").firstName("Chi").lastName("Checker")
+                .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
+        UserProfile profile = UserProfile.builder().id(2L).userId(checkerId)
+                .profileType(AppConstant.ACTOR_PLATFORM).userTypeCode("SUPER_ADMIN")
+                .status(AppConstant.STATUS_ACTIVE).build();
+        UserPrincipal principal = UserPrincipal.of(user, profile,
+                Set.of("PAYMENTS_ACCOUNT_APPROVE", "APPROVALS_VIEW"), List.of(), true, true);
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
     }
 
     private void signInAs(String actorClass, String userType, Long tenant, String... permissions) {
@@ -101,6 +132,20 @@ class PaymentTypeServiceIT {
     @AfterEach
     void clearContext() {
         SecurityContextHolder.clearContext();
+        // The row is rolled back with the test; the cache is not, so it is put back by hand.
+        organisationsMayCollect(false);
+    }
+
+    /** Flips {@code payments.collection.scope} and evicts the cache that would otherwise hide the change. */
+    private void organisationsMayCollect(boolean may) {
+        jdbc.update("update configurations set config_value = ? where config_key = ?",
+                may ? PaymentAccountService.SCOPE_ORGANISATION : "PLATFORM", "payments.collection.scope");
+        // Two caches stand between that row and the next read, and both have to go. The Spring cache is
+        // the obvious one; the persistence context is the one that cost an hour — the update above is
+        // plain JDBC, so Hibernate goes on serving the row it already loaded and the flip looks ignored.
+        em.flush();
+        em.clear();
+        configs.evictAll();
     }
 
     /**
@@ -132,7 +177,7 @@ class PaymentTypeServiceIT {
 
     private SaveAccountRequest till(String accountNo, String[] code) {
         return new SaveAccountRequest(channel("BUNI_IPN_TILL"), null, null, null,
-                "522522", accountNo, "Test Seller Ltd", null, code[0], code[1]);
+                "522522", accountNo, "Test Seller Ltd", null, null, code[0], code[1]);
     }
 
     // ── the fields are the channel's ─────────────────────────────────────────
@@ -161,7 +206,7 @@ class PaymentTypeServiceIT {
     void missingFieldsRefusedBeforeTheCodeIsSpent() {
         String[] code = code();
         HodiException e = assertThrows(HodiException.class, () -> service.assign(new SaveAccountRequest(
-                channel("BUNI_IPN_TILL"), null, null, null, null, null, null, null, code[0], code[1])));
+                channel("BUNI_IPN_TILL"), null, null, null, null, null, null, null, null, code[0], code[1])));
         assertTrue(e.getMessage().contains("account"), e.getMessage());
 
         OtpChallenge challenge = challenges.findByChallengeToken(code[0]).orElseThrow();
@@ -175,17 +220,17 @@ class PaymentTypeServiceIT {
         String cash = HashIdUtil.encodeId(types.findByCode("CASH").orElseThrow().getId());
 
         HodiException e = assertThrows(HodiException.class, () -> service.assign(new SaveAccountRequest(
-                cash, null, null, null, null, "12345", "Somebody", null, code[0], code[1])));
+                cash, null, null, null, null, "12345", "Somebody", null, null, code[0], code[1])));
         assertTrue(e.getMessage().contains("recorded by hand"), e.getMessage());
 
         AccountResponse saved = service.assign(new SaveAccountRequest(
-                cash, null, null, null, null, null, null, null, code[0], code[1]));
+                cash, null, null, null, null, null, null, null, null, code[0], code[1]));
         assertNull(saved.accountNo());
 
         // And once per owner: cash twice would be two ways to record the same thing.
         String[] again = code();
         HodiException dup = assertThrows(HodiException.class, () -> service.assign(new SaveAccountRequest(
-                cash, null, null, null, null, null, null, null, again[0], again[1])));
+                cash, null, null, null, null, null, null, null, null, again[0], again[1])));
         assertTrue(dup.getMessage().contains("already set up"), dup.getMessage());
         assertTrue(service.assignable(null, null).stream()
                 .noneMatch(c -> c.name().equals("Cash")), "and the form no longer offers it");
@@ -246,7 +291,7 @@ class PaymentTypeServiceIT {
         String[] code = code();
         HodiException e = assertThrows(HodiException.class, () -> service.assign(new SaveAccountRequest(
                 channel("BUNI_IPN_TILL"), null, null, HashIdUtil.encodeId(other.getId()),
-                null, "T" + RrnGenerator.generate("A").substring(0, 9), "Name", null, code[0], code[1])));
+                null, "T" + RrnGenerator.generate("A").substring(0, 9), "Name", null, null, code[0], code[1])));
         assertTrue(e.getMessage().contains("does not belong"), e.getMessage());
     }
 
@@ -293,6 +338,12 @@ class PaymentTypeServiceIT {
     @org.junit.jupiter.api.Test
     @org.junit.jupiter.api.DisplayName("only cash and cheque are offered to an organisation with no channel set up")
     void withNothingConfiguredOnlyCounterMethodsAreOffered() {
+        // Nothing configured anywhere — not on this organisation and not on the platform behind it.
+        // Without the second half the assertion below would pass or fail on whatever somebody had set
+        // up on this shared database, which is how it used to read.
+        jdbc.update("update payment_accounts set status = 5 "
+                + "where tenant_id is null and institution_id is null and status <> 5");
+
         var offered = service.methodsOnOffer().stream()
                 .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
 
@@ -301,7 +352,26 @@ class PaymentTypeServiceIT {
         org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_CARD),
                 "a form offering a card channel nobody configured is a payment recorded against nothing");
         org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_MOBILE_MONEY),
-                "mobile money needs a till or a paybill behind it, and this organisation has none");
+                "mobile money needs a till or a paybill behind it, and nobody has one");
+    }
+
+    @Test
+    @DisplayName("an organisation with no account of its own collects into the platform's")
+    void thePlatformsAccountStandsBehindAnOrganisationWithNone() {
+        // The account exists, is approved, and belongs to the platform — which is the ordinary shape on
+        // a deployment where the platform collects everything.
+        PaymentType prompt = coop("COOP_STK_PUSH");
+        accounts.save(PaymentAccount.builder()
+                .paymentTypeId(prompt.getId())
+                .category(prompt.getCategory())
+                .accountNo("PLAT" + RrnGenerator.generate("A").substring(0, 8))
+                .status(AppConstant.STATUS_ACTIVE).statusFlag(AppConstant.FLAG_ACTIVE).build());
+
+        var offered = service.methodsOnOffer().stream()
+                .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
+
+        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_MOBILE_MONEY),
+                "otherwise a seller is told no method is set up while an approved account sits unused");
     }
 
     @org.junit.jupiter.api.Test
@@ -328,5 +398,334 @@ class PaymentTypeServiceIT {
                 "configuring the channel is what puts its method on the form");
         org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_CARD),
                 "and it puts nothing else there");
+    }
+
+    // ── who is allowed to collect at all ─────────────────────────────────────
+
+    /*
+     * payments.collection.scope decides whether an organisation may hold an account of its own, and
+     * set-up is the only moment it can be applied: afterwards money has been routed through the account
+     * and a setting cannot unwind a payment already taken.
+     */
+
+    @Test
+    @DisplayName("while the platform collects everything, an organisation cannot be given an account")
+    void organisationRefusedWhilePlatformCollects() {
+        organisationsMayCollect(false);
+        String[] code = code();
+
+        HodiException refused = assertThrows(HodiException.class,
+                () -> service.assign(till("T" + RrnGenerator.generate("A").substring(0, 9), code)));
+
+        assertTrue(refused.getMessage().contains("Who collects payments"),
+                "the refusal names the setting that would change the answer, not just the answer");
+    }
+
+    @Test
+    @DisplayName("and the form offers it nothing, rather than refusing after it is filled in")
+    void nothingIsAssignableWhilePlatformCollects() {
+        organisationsMayCollect(false);
+
+        assertTrue(service.assignable(null, null).isEmpty(),
+                "a channel offered is a channel somebody will fill a form in for");
+    }
+
+    @Test
+    @DisplayName("platform staff cannot attach one on the organisation's behalf either")
+    void platformStaffCannotStepAroundIt() {
+        organisationsMayCollect(false);
+        String[] code = code();
+        signInAs(AppConstant.ACTOR_PLATFORM, "SUPER_ADMIN", null, "PAYMENT_TYPES_VIEW",
+                "PAYMENT_TYPES_MANAGE");
+
+        SaveAccountRequest forTheTenant = new SaveAccountRequest(channel("BUNI_IPN_TILL"),
+                HashIdUtil.encodeId(tenantId), null, null, "522522",
+                "T" + RrnGenerator.generate("A").substring(0, 9), "Test Seller Ltd", null,
+                null, code[0], code[1]);
+
+        assertThrows(HodiException.class, () -> service.assign(forTheTenant),
+                "a control the operator can step around only documents an intention");
+    }
+
+    @Test
+    @DisplayName("the platform's own account is unaffected — it is the one collecting")
+    void thePlatformMayAlwaysCollect() {
+        organisationsMayCollect(false);
+        String[] code = code();
+        signInAs(AppConstant.ACTOR_PLATFORM, "SUPER_ADMIN", null, "PAYMENT_TYPES_VIEW",
+                "PAYMENT_TYPES_MANAGE");
+
+        AccountResponse saved = service.assign(new SaveAccountRequest(channel("BUNI_IPN_TILL"),
+                null, null, null, "522522", "T" + RrnGenerator.generate("A").substring(0, 9),
+                "Hodi Platform", null, null, code[0], code[1]));
+
+        assertEquals("PLATFORM", saved.ownerKind());
+    }
+
+    @Test
+    @DisplayName("an account that already exists can still be withdrawn, but not brought back")
+    void existingAccountsAreNotStranded() {
+        String[] code = code();
+        AccountResponse saved = service.assign(till("T" + RrnGenerator.generate("A").substring(0, 9), code));
+
+        // The platform takes collection back in-house after the account was attached.
+        organisationsMayCollect(false);
+
+        assertDoesNotThrow(() -> service.setStatus(saved.id(), false),
+                "stopping collection needs no permission");
+        assertThrows(HodiException.class, () -> service.setStatus(saved.id(), true),
+                "bringing it back is the same act as attaching one");
+    }
+
+    // ── the channel describes its own account ────────────────────────────────
+
+    /*
+     * The four fixed columns asked every channel for a paybill, an account number, a name and a short
+     * code. A Co-op phone prompt has none of those: it has an operator code and two credentials. These
+     * prove the descriptor is what is read, that a secret never comes back out, and that the code an
+     * inbound notification will be matched on is composed from the fields the descriptor names.
+     */
+
+    /** Co-op channels ship switched off until somebody points them at a host. Rolled back with the test. */
+    private PaymentType coop(String providerType) {
+        PaymentType type = types.findByProviderType(providerType).orElseThrow();
+        jdbc.update("update payment_types set status = 1 where id = ?", type.getId());
+        em.flush();
+        em.clear();
+        return types.findById(type.getId()).orElseThrow();
+    }
+
+    @Test
+    @DisplayName("a phone prompt asks for an operator code and its credentials, and no paybill")
+    void thePromptAsksForWhatItActuallyNeeds() {
+        PaymentType prompt = coop("COOP_STK_PUSH");
+        String[] code = code();
+        // Unique per run: this suite shares a database with the running application, so a fixed code
+        // collides with whatever somebody has genuinely set up through the screens.
+        String operator = "OP" + RrnGenerator.generate("A").substring(0, 8);
+
+        AccountResponse saved = service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(prompt.getId()), null, null, null,
+                null, null, null, null,
+                Map.of("accountNumber", operator),
+                code[0], code[1]));
+
+        assertEquals(operator.toLowerCase(java.util.Locale.ROOT), saved.accountNo(),
+                "the code is composed from the descriptor's accountKey, lowercased for matching");
+        assertNull(saved.payBillNo(), "a prompt has no paybill, so none is stored");
+        assertNull(saved.accountName(), "nor a name — no Co-op channel has that field");
+
+        Map<String, String> byKey = saved.config().stream()
+                .collect(java.util.stream.Collectors.toMap(ChannelConfig.Field::key,
+                        f -> f.value() == null ? "" : f.value()));
+        assertEquals(operator, byKey.get("accountNumber"), "a plain field reads back as itself");
+        assertEquals(1, byKey.size(),
+                "and nothing else is asked for: the OAuth credentials are the platform's, held once");
+    }
+
+    @Test
+    @DisplayName("a missing field is refused by name, before the code is spent")
+    void missingDescriptorFieldIsNamed() {
+        PaymentType prompt = coop("COOP_STK_PUSH");
+        String[] code = code();
+
+        HodiException refused = assertThrows(HodiException.class, () -> service.assign(
+                new SaveAccountRequest(HashIdUtil.encodeId(prompt.getId()), null, null, null,
+                        null, null, null, null,
+                        Map.of(), code[0], code[1])));
+
+        assertTrue(refused.getMessage().contains("Operator code"), refused.getMessage());
+        assertTrue(challenges.findByChallengeToken(code[0]).isPresent(),
+                "a refusal must never cost a text message");
+    }
+
+    @Test
+    @DisplayName("a biller is keyed on two fields composed, because its advice carries no id")
+    void aBillerIsKeyedOnThePairItIsAdvisedWith() {
+        PaymentType biller = coop("COOP_BILLER");
+        String[] code = code();
+        String institution = "21" + RrnGenerator.generate("A").substring(0, 7);
+
+        AccountResponse saved = service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(biller.getId()), null, null, null,
+                null, null, null, null,
+                Map.of("institutionCode", institution, "serviceName", "Breeze Estate",
+                       "institutionName", "Breeze Estate Ltd", "connectionID", "conn-1",
+                       "connectionPassword", "conn-pass"),
+                code[0], code[1]));
+
+        assertEquals(institution.toLowerCase(java.util.Locale.ROOT) + "breezeestate", saved.accountNo(),
+                "the pair composed, whitespace out and lowercased, is what an advice can be matched on");
+        assertEquals("Biller", saved.accountsLabel(), "and the screen calls it what the bank calls it");
+    }
+
+    @Test
+    @DisplayName("one organisation may hold the same code on two channels, but not twice on one")
+    void aCodeIsUniquePerChannel() {
+        PaymentType prompt = coop("COOP_STK_PUSH");
+        PaymentType ipn = coop("COOP_IPN_ACCOUNT");
+        String shared = "SH" + RrnGenerator.generate("A").substring(0, 8);
+
+        service.assign(new SaveAccountRequest(HashIdUtil.encodeId(prompt.getId()), null, null, null,
+                null, null, null, null,
+                Map.of("consumerKey", "ck", "consumerSecret", "cs", "accountNumber", shared),
+                codeFor(), "123456"));
+
+        // The same string on a different channel is a different thing, and the bank resolves both.
+        assertDoesNotThrow(() -> service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(ipn.getId()), null, null, null, null, null, null, null,
+                Map.of("accountNumber", shared), codeFor(), "123456")));
+
+        // The same string twice on one channel would make every notification on it unattributable.
+        assertThrows(HodiException.class, () -> service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(prompt.getId()), null, null, null, null, null, null, null,
+                Map.of("consumerKey", "ck2", "consumerSecret", "cs2", "accountNumber", shared),
+                codeFor(), "123456")));
+    }
+
+    /** A fresh challenge token, for a test that assigns more than once. */
+    private String codeFor() {
+        return code()[0];
+    }
+
+    // ── the second pair of eyes ──────────────────────────────────────────────
+
+    /*
+     * An account decides where a buyer's deposit physically lands, so proposing one and letting it collect
+     * are two acts by two people. The one-time code is not a substitute and is not replaced: it proves the
+     * person typing holds their own handset, which is a different question from whether anybody agreed.
+     */
+
+    @Test
+    @DisplayName("a new account is written but collects nothing until somebody approves it")
+    void aNewAccountWaits() {
+        String accountNo = "T" + RrnGenerator.generate("A").substring(0, 9);
+        AccountResponse saved = service.assign(till(accountNo, code()));
+
+        assertEquals(AppConstant.STATUS_NEW, saved.status(), "written, and deliberately not live");
+        assertTrue(accountRepositoryLive(accountNo).isEmpty(),
+                "so no inbound notification on it can be matched to anybody yet");
+
+        // Decoded while still signed in as the maker: the hashid salt is per-user, so an id encoded for
+        // one person does not decode for another. The queue hands a checker its own handle.
+        Long accountId = HashIdUtil.decodeId(saved.id());
+        signInAsChecker();
+        approvals.decideFor(AppConstant.APPROVAL_ENTITY_PAYMENT_ACCOUNT,
+                accountId, AppConstant.APPROVAL_ACTION_CREATE,
+                new ApprovalService.DecisionRequest(AppConstant.APPROVAL_APPROVED, "Checked with the bank"));
+        em.flush();
+        em.clear();
+
+        assertTrue(accountRepositoryLive(accountNo).isPresent(), "approved, it collects");
+    }
+
+    @Test
+    @DisplayName("editing a live account takes it out of use until the change is approved")
+    void anEditGoesBackInTheQueue() {
+        String accountNo = "T" + RrnGenerator.generate("A").substring(0, 9);
+        AccountResponse saved = service.assign(till(accountNo, code()));
+        Long accountId = HashIdUtil.decodeId(saved.id());
+        signInAsChecker();
+        approvals.decideFor(AppConstant.APPROVAL_ENTITY_PAYMENT_ACCOUNT,
+                accountId, AppConstant.APPROVAL_ACTION_CREATE,
+                new ApprovalService.DecisionRequest(AppConstant.APPROVAL_APPROVED, "ok"));
+        em.flush();
+        em.clear();
+        signIn();
+
+        String[] again = code();
+        String changed = "T" + RrnGenerator.generate("A").substring(0, 9);
+        AccountResponse edited = service.update(HashIdUtil.encodeId(accountId), new SaveAccountRequest(
+                channel("BUNI_IPN_TILL"), null, null, null, "522522", changed, "Test Seller Ltd", null,
+                null, again[0], again[1]));
+
+        assertEquals(AppConstant.STATUS_NEW, edited.status(),
+                "an unapproved destination must not go on collecting");
+        assertTrue(accountRepositoryLive(changed).isEmpty(), "and nothing matches the new number yet");
+    }
+
+    @Test
+    @DisplayName("the queue shows what changed, and never shows a secret")
+    void theQueueCarriesTheDifferenceButNotTheSecret() {
+        // The biller, because that is where a secret now lives: the prompt's only field is its
+        // operator code, and the OAuth credentials are the platform's.
+        PaymentType biller = coop("COOP_BILLER");
+        AccountResponse saved = service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(biller.getId()), null, null, null, null, null, null, null,
+                Map.of("institutionCode", "21" + RrnGenerator.generate("A").substring(0, 7),
+                       "serviceName", "Queue Estate", "connectionID", "ck-1",
+                       "connectionPassword", "the-real-secret"),
+                codeFor(), "123456"));
+
+        var pending = approvals.pendingFor(AppConstant.APPROVAL_ENTITY_PAYMENT_ACCOUNT,
+                HashIdUtil.decodeId(saved.id()), AppConstant.APPROVAL_ACTION_CREATE).orElseThrow();
+
+        String rendered = String.valueOf(pending.getAfterPayload());
+        assertTrue(rendered.contains("ck-1"), "a checker sees the values they are approving");
+        assertFalse(rendered.contains("the-real-secret"),
+                "but a queue that printed a consumer secret would leak more than the control is worth");
+        assertTrue(rendered.contains(ChannelConfig.MASK), "the mask says a credential is set, which is enough");
+    }
+
+    private java.util.Optional<PaymentAccount> accountRepositoryLive(String accountNo) {
+        return accounts.findLiveByAccountNo(accountNo);
+    }
+
+    // ── our own addresses are ours to state ──────────────────────────────────
+
+    @Test
+    @DisplayName("the notification URL is shown, not asked for, and cannot be overwritten by a form")
+    void theNotificationUrlIsOurs() {
+        PaymentType ipn = coop("COOP_IPN_ACCOUNT");
+        String account = "AC" + RrnGenerator.generate("A").substring(0, 8);
+
+        AccountResponse saved = service.assign(new SaveAccountRequest(
+                HashIdUtil.encodeId(ipn.getId()), null, null, null, null, null, null, null,
+                // A client posting a value for it — by accident or otherwise — must not be able to change
+                // the address Co-op is told to call.
+                Map.of("accountNumber", account, "notificationUrl", "https://attacker.invalid/hook"),
+                codeFor(), "123456"));
+
+        ChannelConfig.Field shown = saved.config().stream()
+                .filter(f -> "notificationUrl".equals(f.key())).findFirst().orElseThrow();
+        assertEquals(ChannelConfig.DISPLAY, shown.type(), "declared as ours to state");
+        assertTrue(shown.value() != null && shown.value().endsWith("/api/v1/public/coop/notifications"),
+                "and built from the platform's own public URL: " + shown.value());
+
+        String stored = jdbc.queryForObject(
+                "select config ->> 'notificationUrl' from payment_accounts where account_no = ?",
+                String.class, account.toLowerCase(java.util.Locale.ROOT));
+        assertNull(stored, "nothing is stored for it, so nothing posted back could have replaced it");
+    }
+
+    @Test
+    @DisplayName("the biller is told both of its addresses, and they match the routes we serve")
+    void theBillerIsToldWhereToPost() {
+        PaymentType biller = coop("COOP_BILLER");
+
+        var fields = service.assignable(null, null).stream()
+                .filter(c -> c.name().equals(biller.getName()))
+                .flatMap(c -> c.accountFields().stream())
+                .filter(f -> ChannelConfig.DISPLAY.equals(f.type()))
+                .toList();
+
+        assertEquals(2, fields.size(), "validation and advice, both ours to state");
+        assertTrue(fields.stream().allMatch(f -> f.value() != null && !f.value().isBlank()),
+                "shown rather than hedged: the bank asks for these in writing during onboarding");
+        assertTrue(fields.stream().anyMatch(f -> f.value().endsWith(CoopRoutes.BILLER_VALIDATION)));
+        assertTrue(fields.stream().anyMatch(f -> f.value().endsWith(CoopRoutes.BILLER_ADVICE)));
+    }
+
+    @Test
+    @DisplayName("no account asks for the addresses we are notified from — that is one setting for the bank")
+    void addressesAreNotAnAccountField() {
+        for (String providerType : List.of("COOP_STK_PUSH", "COOP_IPN_ACCOUNT", "COOP_BILLER")) {
+            PaymentType type = types.findByProviderType(providerType).orElseThrow();
+            assertTrue(service.assignable(null, null).stream()
+                            .filter(c -> c.name().equals(type.getName()))
+                            .flatMap(c -> c.accountFields().stream())
+                            .noneMatch(f -> "whitelistedIps".equals(f.key())),
+                    providerType + " still asks for an address list");
+        }
     }
 }

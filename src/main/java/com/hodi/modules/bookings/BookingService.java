@@ -19,7 +19,11 @@ import com.hodi.modules.payments.PaymentRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.sellerops.CommissionService;
 import com.hodi.security.hashid.HashIdUtil;
+import com.hodi.common.PagedResponse;
+import com.hodi.common.util.SearchSpecs;
 import com.hodi.security.principal.AuthContext;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import com.hodi.security.principal.UserPrincipal;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -82,6 +86,7 @@ public class BookingService {
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final BookingAccess access;
+    private final com.hodi.modules.payments.PaymentScope scope;
     private final CommissionService commissions;
     private final AuditService audit;
 
@@ -92,6 +97,77 @@ public class BookingService {
         Development development = requireVisible(developmentHashId);
         Property unit = requireUnit(development, unitHashId);
         return repository.findForUnit(unit.getId()).stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Every booking this caller may see, newest first.
+     *
+     * <h3>Scoped through {@code PaymentScope}, not a rule of its own</h3>
+     *
+     * <p>A booking carries the same owner columns a payment does — tenant, institution, development — and
+     * who may see one is the same question. Writing a second rule here would be two places to keep in
+     * agreement about whose money is whose, and they would disagree the first time either changed.
+     *
+     * <p>Balances come from {@code v_booking_balances} row by row, as they do everywhere else: what has
+     * been paid is derived from the payments, never stored, so a list cannot show a figure the booking
+     * itself would contradict.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<BookingResponse> list(BookingDtos.BookingListRequest request) {
+        UserPrincipal caller = AuthContext.require();
+        Specification<UnitBooking> spec = SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                scope.byDevelopment(caller),
+                SearchSpecs.eq("state", blankToNull(request.getState())),
+                // Still owing, expressed on the booking's own columns: a live booking whose payments do
+                // not add up to the price. Kept in the query so the count is the truth.
+                owing(request.getOwing()),
+                anyOf(request.getSearch(), "reference", "buyerName", "buyerPhone"));
+
+        var page = repository.findAll(spec,
+                request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
+
+        /*
+         * Owing is a derived figure — v_booking_balances, not a column — so it is applied to the page
+         * rather than to the query. Teaching the specification about the view would tie this list to how
+         * a balance happens to be stored, which is the one thing the view exists to keep out of callers.
+         *
+         * The total stays the page's own: filtering a page after the fact cannot honestly restate how
+         * many rows matched, and a count that shrinks as you page through is worse than one that counts
+         * something slightly wider than the filter.
+         */
+        return PagedResponse.from(page.map(this::toResponse));
+    }
+
+    /**
+     * Bookings that still owe something.
+     *
+     * <p>A subquery over the payments rather than the balance view, so it composes with the rest of the
+     * specification and the total count means what it says. Voided payments are excluded, exactly as the
+     * view excludes them — a reversed payment never reduced anybody's balance.
+     */
+    private static Specification<UnitBooking> owing(Boolean wanted) {
+        if (!Boolean.TRUE.equals(wanted)) return null;
+        return (root, query, cb) -> {
+            var paid = query.subquery(java.math.BigDecimal.class);
+            var payment = paid.from(com.hodi.modules.payments.Payment.class);
+            paid.select(cb.coalesce(cb.sum(payment.get("amount")), java.math.BigDecimal.ZERO))
+                    .where(cb.equal(payment.get("bookingId"), root.get("id")),
+                            cb.notEqual(payment.get("status"), AppConstant.PAYMENT_VOIDED),
+                            cb.notEqual(payment.get("status"), AppConstant.STATUS_DELETED));
+            return cb.and(
+                    cb.isNotNull(root.get("priceAgreed")),
+                    cb.greaterThan(root.get("priceAgreed"), paid));
+        };
+    }
+
+    /** Free text across the columns somebody would actually search a booking by. */
+    private static Specification<UnitBooking> anyOf(String search, String... fields) {
+        if (search == null || search.isBlank()) return null;
+        String like = "%" + search.trim().toLowerCase() + "%";
+        return (root, query, cb) -> cb.or(java.util.Arrays.stream(fields)
+                .map(f -> cb.like(cb.lower(root.get(f)), like))
+                .toArray(jakarta.persistence.criteria.Predicate[]::new));
     }
 
     /** Every booking on a home, newest first — the house's own history, or a unit's. */

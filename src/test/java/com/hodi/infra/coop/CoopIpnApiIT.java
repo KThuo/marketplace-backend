@@ -52,21 +52,27 @@ class CoopIpnApiIT {
         jdbc.update("delete from coop_statements where ref_no = ? or ref_no like 'UNKNOWN-%'", refNo);
     }
 
-    private String body(String refNoValue) {
+    /**
+     * Co-op's own shape, from the bank's Postman collection.
+     *
+     * <p>Not the shape this codebase invented. That one — {@code refNo}, {@code accountIdentifier},
+     * {@code phoneNo} — matched nothing Co-op sends, so every real notification bound to an empty record
+     * and was stored quoting nothing. A test written against our own names passed throughout.
+     */
+    private String body(String transactionId) {
         return """
                 {
-                  "refNo": "%s",
-                  "traceId": "PS-TEST",
-                  "timestamp": "2026-08-27 10:30:00",
-                  "amount": "500.00",
-                  "currency": "KES",
-                  "reference": "NOPE",
-                  "customerName": "Walk In",
-                  "phoneNo": "254700000000",
-                  "accountIdentifier": "not-a-till-of-ours",
-                  "transType": "BUNI_IPN_TILL"
+                  "AcctNo": "not-a-till-of-ours",
+                  "Amount": "500.00",
+                  "Currency": "KES",
+                  "EventType": "CREDIT",
+                  "Narration": "TIPTEST~254700000000~not-a-till-of-ours~MPESAC2B~WALK IN",
+                  "PaymentRef": "25092026_TEST",
+                  "PostingDate": "2026-08-27",
+                  "TransactionDate": "2026-08-27T10:30:00",
+                  "TransactionId": "%s"
                 }
-                """.formatted(refNoValue);
+                """.formatted(transactionId);
     }
 
     @Test
@@ -97,7 +103,7 @@ class CoopIpnApiIT {
          * this test is what says so out loud — the alternative is every notification 400ing on the day they
          * extend their payload, and every one of them retrying.
          */
-        String extended = body(refNo).replace("\"transType\": \"BUNI_IPN_TILL\"",
+        String extended = body(refNo).replace("\"EventType\": \"CREDIT\"",
                 "\"transType\": \"BUNI_IPN_TILL\", \"settlementBatch\": \"SB-99\"");
 
         mvc.perform(post("/api/v1/public/coop/notifications")
@@ -131,9 +137,12 @@ class CoopIpnApiIT {
     }
 
     @Test
-    @DisplayName("a notification with no refNo is still stored rather than lost")
+    @DisplayName("a notification with no reference of its own is still stored rather than lost")
     void missingRefNoIsStored() throws Exception {
-        String noRef = body("x").replace("\"refNo\": \"x\",", "");
+        // No TransactionId and no PaymentRef: nothing Co-op sends that we could deduplicate on.
+        String noRef = body("x")
+                .replace("\"TransactionId\": \"x\"", "\"TransactionId\": \"\"")
+                .replace("\"PaymentRef\": \"25092026_TEST\",", "");
 
         mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)

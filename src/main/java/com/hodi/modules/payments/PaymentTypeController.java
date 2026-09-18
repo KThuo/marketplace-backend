@@ -71,6 +71,12 @@ public class PaymentTypeController {
      * <p>Platform staff name the organisation; everybody else gets their own. The list carries nothing about
      * what is absent from it.
      */
+    @GetMapping("/accounts/setup")
+    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    public ApiResponse<PaymentTypeDtos.AccountSetupContext> setupContext() {
+        return ApiResponse.success(accounts.setupContext());
+    }
+
     @GetMapping("/assignable")
     @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
     public ApiResponse<List<AssignableChannel>> assignable(

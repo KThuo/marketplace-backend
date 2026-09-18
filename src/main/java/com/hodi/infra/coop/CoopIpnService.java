@@ -11,6 +11,7 @@ import com.hodi.modules.properties.Property;
 import com.hodi.modules.developments.DevelopmentUnitRepository;
 import com.hodi.modules.payments.Payment;
 import com.hodi.modules.payments.PaymentAccount;
+import com.hodi.modules.payments.PaymentIntent;
 import com.hodi.modules.payments.PaymentAccountRepository;
 import com.hodi.modules.payments.PaymentService;
 import lombok.RequiredArgsConstructor;
@@ -69,6 +70,8 @@ public class CoopIpnService {
     private final DevelopmentUnitRepository units;
     /** The one writer of a payment row, so a gateway credit is stamped exactly as a hand-keyed one is. */
     private final PaymentService payments;
+    private final com.hodi.modules.payments.PaymentIntentRepository intents;
+    private final CoopIntentSettlement settlement;
     private final ConfigurationService configs;
     private final ObjectMapper mapper;
 
@@ -181,6 +184,15 @@ public class CoopIpnService {
                     + " is not one of ours, or has not been registered here yet.");
             return;
         }
+        /*
+         * An intent first, when the reference is one of ours.
+         *
+         * <p>This is the payment somebody started from the app: we asked, and this is the answer. It is
+         * tried before the unit code because it needs no corroboration — we already know the amount, the
+         * booking and the person, because we chose them when we asked.
+         */
+        if (creditedAnIntent(statement)) return;
+
         if (statement.getReference() == null || statement.getReference().isBlank()) {
             unplaced(statement, "The payer quoted no reference, so there is nothing to match on.");
             return;
@@ -229,6 +241,73 @@ public class CoopIpnService {
 
         log.info("Co-op notification {} placed on booking {} as {}", statement.getRefNo(),
                 target.getReference(), payment.getReference());
+    }
+
+    /**
+     * Places a notification that answers a prompt we started.
+     *
+     * <h3>The same money arrives more than once, routinely</h3>
+     *
+     * <p>Co-op retries a callback it believes went unacknowledged, and the status query may already have
+     * settled the payment before the notification lands. So an intent that has already produced a payment
+     * is linked to this notification and credited no further — one payment, whichever path confirmed it
+     * first. Crediting both would double a buyer's balance, and a doubled balance is discovered by the
+     * buyer rather than by us.
+     *
+     * @return true when this notification belonged to an intent and has been dealt with
+     */
+    private boolean creditedAnIntent(CoopStatement statement) {
+        String quoted = trim(statement.getReference());
+        PaymentIntent intent = null;
+        if (quoted != null) {
+            intent = intents.findByReference(quoted)
+                    .or(() -> intents.findByBankReference(quoted))
+                    .orElse(null);
+        }
+        if (intent == null && trim(statement.getTraceId()) != null) {
+            intent = intents.findByReference(trim(statement.getTraceId())).orElse(null);
+        }
+        if (intent == null) return false;
+
+        if (intent.getPaymentId() != null) {
+            // Already credited — by the status query, or by an earlier delivery of this same money.
+            settlement.attachStatement(intent, statement.getId(), intent.getPaymentId());
+            statement.setState(AppConstant.STATEMENT_MAPPED);
+            statement.setMappedPaymentId(intent.getPaymentId());
+            statement.setMappedBookingId(intent.getBookingId());
+            statement.setMappedAt(OffsetDateTime.now());
+            statement.setMappedBy(AppConstant.USERNAME_SYSTEM);
+            statement.setUnmappedReason(null);
+            statements.save(statement);
+            log.info("Co-op notification {} answers payment {}, which was already credited as {}",
+                    statement.getRefNo(), intent.getReference(), intent.getPaymentId());
+            return true;
+        }
+
+        UnitBooking booking = intent.getBookingId() == null ? null
+                : bookings.findById(intent.getBookingId()).orElse(null);
+        if (booking == null) {
+            unplaced(statement, "This answers payment " + intent.getReference()
+                    + ", whose booking no longer exists. Place it by hand.");
+            return true;
+        }
+
+        PaymentAccount account = intent.getPaymentAccountId() == null ? null
+                : accounts.findById(intent.getPaymentAccountId()).orElse(null);
+        Payment payment = payments.recordFromGateway(booking, statement, account);
+
+        settlement.attachStatement(intent, statement.getId(), payment.getId());
+        statement.setState(AppConstant.STATEMENT_MAPPED);
+        statement.setMappedPaymentId(payment.getId());
+        statement.setMappedBookingId(booking.getId());
+        statement.setMappedAt(OffsetDateTime.now());
+        statement.setMappedBy(AppConstant.USERNAME_SYSTEM);
+        statement.setUnmappedReason(null);
+        statements.save(statement);
+
+        log.info("Co-op notification {} placed on payment {} for booking {} as {}", statement.getRefNo(),
+                intent.getReference(), booking.getReference(), payment.getReference());
+        return true;
     }
 
     /**
@@ -323,6 +402,28 @@ public class CoopIpnService {
         return java.security.MessageDigest.isEqual(
                 presented.getBytes(java.nio.charset.StandardCharsets.UTF_8),
                 (user + ":" + secret).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    }
+
+    /**
+     * Whether this address is one Co-op notifies us from.
+     *
+     * <p><b>Empty accepts any address.</b> A blank allow-list is "not narrowed yet", not "trust nobody" —
+     * the other reading turns an unconfigured deployment into one that silently discards notifications for
+     * money already sitting in the bank. HTTP Basic is the control that fails closed; this narrows it to a
+     * known set once somebody knows what that set is.
+     *
+     * <p>One list for the bank, not one per account: which of Co-op's addresses may reach us is a fact
+     * about Co-op.
+     */
+    public boolean isFromAllowedAddress(String remoteAddress) {
+        String allowed = configs.getString(ConfigKey.COOP_IPN_ALLOWED_IPS);
+        if (allowed == null || allowed.isBlank()) return true;
+        if (remoteAddress == null || remoteAddress.isBlank()) return false;
+        String caller = remoteAddress.trim();
+        for (String entry : allowed.split(",")) {
+            if (caller.equalsIgnoreCase(entry.trim())) return true;
+        }
+        return false;
     }
 
     /**

@@ -84,6 +84,55 @@ public class PaymentType {
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> config;
 
+    /**
+     * Which fields one <em>account</em> of this channel needs, as the same kind of descriptor.
+     *
+     * <p>A different question from {@link #requiredConfigFields}, and asked of a different person: that one
+     * is the channel's own wiring, set by the platform once — hosts, paths — while this is what an
+     * organisation fills in per account. A Co-op phone prompt wants an operator code and a consumer key; a
+     * Co-op biller wants nine fields, credentials in both directions among them.
+     *
+     * <p>Also carries {@code accountKey}, naming the fields that compose the code an inbound notification is
+     * matched on, and {@code accountsLabel} for what one of them is called on screen.
+     */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "account_config_fields", columnDefinition = "jsonb")
+    private Map<String, Object> accountConfigFields;
+
+    /**
+     * What this method is for, and therefore whether anybody may choose it.
+     *
+     * <p>{@code COLLECT} takes money and is the only kind offered when somebody picks how to pay.
+     * {@code SEND} moves money out — a method, chosen deliberately, never offered to a payer.
+     * {@code ENQUIRY} asks about a payment that already exists; it collects nothing and cannot be
+     * chosen, because on its own it means nothing.
+     *
+     * <p>An enquiry is still a method in every other respect — it has an endpoint, set here like all the
+     * others. Modelling it as anything else is what put a status check in a list of ways to pay.
+     */
+    @Column(nullable = false, length = 16) @Builder.Default private String kind = COLLECT;
+
+    public static final String COLLECT = "COLLECT";
+    public static final String SEND = "SEND";
+    public static final String ENQUIRY = "ENQUIRY";
+
+    /** Whether somebody may choose this as a way to be paid. Collecting only. */
+    public boolean selectable() {
+        return kind == null || COLLECT.equals(kind);
+    }
+
+    /**
+     * Whether an account can be set up on this method.
+     *
+     * <p>Wider than {@link #selectable()}, and the difference matters: money going out needs an account
+     * to go <em>from</em>, so a transfer method is configured like any other even though no payer will
+     * ever be offered it. Only an enquiry needs nothing — it asks about somebody else's payment and has
+     * no account of its own.
+     */
+    public boolean configurable() {
+        return !ENQUIRY.equals(kind);
+    }
+
     @Column(name = "search_text", insertable = false, updatable = false) private String searchText;
 
     @CreationTimestamp @Column(name = "created_at", nullable = false, updatable = false)

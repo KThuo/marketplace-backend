@@ -54,11 +54,45 @@ public class CoopIpnController {
      *                      either half is unset every caller fails, which is what keeps an unconfigured
      *                      deployment from accepting anonymous notifications.
      */
-    @PostMapping("/api/v1/public/coop/notifications")
+    @PostMapping(CoopRoutes.NOTIFICATIONS)
     @SkipRequestLog
     public ResponseEntity<IpnAck> receive(
-            @RequestBody IpnPayload payload,
-            @RequestHeader(value = "Authorization", required = false) String authorization) {
+            /*
+             * Taken raw, then normalised.
+             *
+             * Binding straight to a record meant every field Co-op spells differently — which is all of
+             * them — arrived null, and the notification was stored quoting nothing. See CoopInbound.
+             */
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestHeader(value = "Authorization", required = false) String authorization,
+            jakarta.servlet.http.HttpServletRequest request) {
+
+        /*
+         * Refused outright, before the body is read into anything.
+         *
+         * An address outside the allow-list is not a payment we failed to record — it is somebody who is
+         * not Co-op — so it gets no retry instruction and nothing is stored. The list being empty accepts
+         * everybody, which is what keeps an unconfigured deployment from discarding real notifications.
+         */
+        String caller = callerAddress(request);
+        if (!service.isFromAllowedAddress(caller)) {
+            log.warn("Refused a Co-op notification from {} — not in the allowed addresses", caller);
+            return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
+                    .body(IpnAck.retry("Not an address we accept notifications from"));
+        }
+
+        IpnPayload payload = CoopInbound.parse(body);
+
+        /*
+         * A debit on the same account is not money arriving.
+         *
+         * Acknowledged rather than refused: Co-op has nothing to retry and no error to report, and a
+         * non-zero status would have them redelivering a notification we will go on ignoring.
+         */
+        if (!CoopInbound.isCredit(body)) {
+            log.info("Ignoring a non-credit Co-op notification {}", payload.refNo());
+            return ResponseEntity.ok(IpnAck.accepted(payload.refNo()));
+        }
 
         try {
             CoopStatement stored = service.accept(payload, service.isTrusted(authorization));
@@ -79,5 +113,22 @@ public class CoopIpnController {
                     payload == null ? "(no body)" : payload.refNo(), e.getMessage(), e);
             return ResponseEntity.ok(IpnAck.retry("Could not record the notification; please retry"));
         }
+    }
+
+    /**
+     * Who called, through whatever sits in front of this.
+     *
+     * <p>{@code X-Forwarded-For} first, leftmost entry, because behind a load balancer every request
+     * appears to come from the balancer and an allow-list matched against that would admit the whole
+     * internet. A header can be forged by anybody who can reach the application directly, so this narrows
+     * a control rather than being one on its own — which is exactly how it is documented on the setting.
+     */
+    private static String callerAddress(jakarta.servlet.http.HttpServletRequest request) {
+        if (request == null) return null;
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 }

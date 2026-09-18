@@ -233,6 +233,15 @@ public enum AppPermissionEnum {
      */
     PAYMENT_TYPES_MANAGE("Set up, change and withdraw payment accounts", AppModuleEnum.PAYMENTS, true),
     /**
+     * The second pair of eyes on where money lands.
+     *
+     * <p>Separate from {@code PAYMENT_TYPES_MANAGE} on purpose, and the separation <em>is</em> the control:
+     * one permission to propose an account, another to let it start collecting. Held by one person, they
+     * are not Maker/Checker at all — and the database CHECK still bars the submitter from deciding their
+     * own, so even that person cannot wave their own change through.
+     */
+    PAYMENTS_ACCOUNT_APPROVE("Approve a payment account before it collects", AppModuleEnum.PAYMENTS, true),
+    /**
      * The catalogue is shared by every organisation on the platform, so switching a channel on or off is
      * the platform's decision and nobody else's.
      */

@@ -159,6 +159,9 @@ public final class AppConstant {
     public static final String APPROVAL_ENTITY_USER   = "USER";
     public static final String APPROVAL_ACTION_CREATE = "CREATE";
 
+    // ── Payment accounts (where an organisation's money lands) ───────────────
+    public static final String APPROVAL_ENTITY_PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT";
+
     // ── Developments (a project with many units) ─────────────────────────────
     /**
      * Why a development exists. FOR_SALE is the marketplace case; the rest are the tracking case, which is

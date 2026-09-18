@@ -40,7 +40,16 @@ public final class PaymentTypeDtos {
             int sortOrder,
             Integer status,
             String statusFlag,
-            long inUse) {}
+            long inUse,
+            /**
+             * Whether this channel has everything it needs to be called.
+             *
+             * <p>On the list rather than only inside the configure form, because "why did nothing happen"
+             * is asked of the list. A channel switched on but with no endpoint looks available and is not.
+             */
+            boolean configured,
+            /** What is still missing, by label, so the row can say so without opening anything. */
+            java.util.List<String> missingConfig) {}
 
     /** Rename or re-describe a channel. Its behaviour is not editable — that is what the code is for. */
     public record UpdateChannelRequest(
@@ -80,6 +89,12 @@ public final class PaymentTypeDtos {
             String accountNo,
             String accountName,
             String shortCode,
+            /**
+             * The channel's fields with this account's values — a secret reading back as a mask, which sent
+             * back unchanged on a save means "leave it alone".
+             */
+            java.util.List<ChannelConfig.Field> config,
+            String accountsLabel,
             Integer status,
             String statusFlag,
             OffsetDateTime createdAt,
@@ -108,6 +123,8 @@ public final class PaymentTypeDtos {
             @Size(max = 64, message = "That account number is too long") String accountNo,
             @Size(max = 160, message = "That account name is too long") String accountName,
             @Size(max = 64, message = "That short code is too long") String shortCode,
+            /** The descriptor's fields by key. Undeclared keys are dropped rather than stored. */
+            java.util.Map<String, Object> config,
             /** The challenge the code belongs to, from the OTP request. */
             String challengeToken,
             /** The code texted to the organisation. Refused without it, from one place with one message. */
@@ -126,7 +143,11 @@ public final class PaymentTypeDtos {
             String category,
             String method,
             boolean accountBased,
-            boolean requiresShortCode) {}
+            boolean requiresShortCode,
+            /** What an account of this channel asks for — rendered by the form, empty when it asks nothing. */
+            java.util.List<ChannelConfig.Field> accountFields,
+            /** What one of them is called: "Biller" on a Co-op biller, "Account" everywhere else. */
+            String accountsLabel) {}
 
     /**
      * An account the receive form may name for a booking.
@@ -152,6 +173,17 @@ public final class PaymentTypeDtos {
 
     /** What a save sends: key to value, with a masked secret meaning "unchanged". */
     public record SaveChannelConfiguration(java.util.Map<String, Object> values) {}
+
+    /**
+     * What the set-up form needs to know before it asks anything.
+     *
+     * <p>Chiefly whether an organisation may hold an account at all. While the platform collects everything,
+     * the owner question has one answer, and a select offering two where one is refusable is a question the
+     * form already knows the answer to.
+     */
+    public record AccountSetupContext(
+            boolean organisationsMayCollect,
+            boolean platformStaff) {}
 
     public record OfferedAccount(
             String id,

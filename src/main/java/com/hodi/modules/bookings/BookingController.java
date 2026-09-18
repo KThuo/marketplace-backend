@@ -1,6 +1,7 @@
 package com.hodi.modules.bookings;
 
 import com.hodi.common.ApiResponse;
+import com.hodi.common.PagedResponse;
 import com.hodi.logging.RequestAction;
 import com.hodi.modules.bookings.BookingDtos.*;
 import com.hodi.modules.payments.PaymentDtos.PaymentResponse;
@@ -47,6 +48,19 @@ public class BookingController {
     }
 
     // ── a booking by its own id ───────────────────────────────────────────────
+
+    /**
+     * Every booking this caller may see — the page that tracks what customers still owe.
+     *
+     * <p>{@code BOOKINGS_VIEW} rather than a development's own permission: the list crosses
+     * developments by definition, and what narrows it is who the caller is, which the service applies.
+     */
+    @GetMapping("/bookings/list")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<PagedResponse<BookingResponse>> list(
+            @ModelAttribute BookingDtos.BookingListRequest request) {
+        return ApiResponse.success(service.list(request));
+    }
 
     @GetMapping("/bookings/{bookingId}")
     @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")

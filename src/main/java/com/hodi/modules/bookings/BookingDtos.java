@@ -66,6 +66,24 @@ public final class BookingDtos {
 
     // ── responses ────────────────────────────────────────────────────────────
 
+    /**
+     * The bookings list — every home somebody is buying, and what they still owe.
+     *
+     * <p>Paginated and filtered on the server. A seller with four hundred units has four hundred
+     * bookings, and a page that fetched them all to sort them in the browser would be slow in exactly
+     * the deployment that matters.
+     */
+    @lombok.Getter
+    @lombok.Setter
+    public static class BookingListRequest extends com.hodi.common.dto.PagedDataRequest {
+        /** Buyer, reference, unit or property title. */
+        private String search;
+        /** RESERVED, AGREED, COMPLETED, CANCELLED, LAPSED. */
+        private String state;
+        /** True for the bookings that still owe something — the working list. */
+        private Boolean owing;
+    }
+
     public record BookingResponse(
             String id,
             String reference,
