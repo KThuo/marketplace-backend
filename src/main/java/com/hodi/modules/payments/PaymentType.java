@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
  * One way money can be taken — the channel, not the account.
  *
  * <p>Platform-owned and arriving by migration. An organisation does not invent a channel; it configures one
- * with a {@link PaymentAccount}. There is deliberately no "create" for these: a row with no Pesi provider
+ * with a {@link PaymentAccount}. There is deliberately no "create" for these: a row with no provider
  * behind it is a payment method that cannot collect anything, offered until somebody notices.
  *
  * <p>Everything about how a channel behaves derives from {@link #category}. The flags say what the
@@ -34,8 +34,8 @@ public class PaymentType {
     /** Who runs the rails. Display only — there is no banks table here. */
     @Column(name = "provider_name", length = 120) private String providerName;
 
-    /** Pesi's discriminator. Null for cash and cheque. */
-    @Column(name = "pesi_provider_type", length = 50) private String pesiProviderType;
+    /** Co-op's discriminator. Null for cash and cheque. */
+    @Column(name = "provider_type", length = 50) private String providerType;
 
     /** One of {@code AppConstant.CHANNEL_*}. What the channel is, and therefore how it behaves. */
     @Column(nullable = false, length = 16) private String category;
@@ -63,8 +63,8 @@ public class PaymentType {
     @Column(name = "created_by", length = 64) private String createdBy;
     @Column(name = "updated_by", length = 64) private String updatedBy;
 
-    public PesiChannel.Category channelCategory() {
-        return PesiChannel.Category.of(category);
+    public CoopChannel.Category channelCategory() {
+        return CoopChannel.Category.of(category);
     }
 
     /** Cash or cheque: recorded by hand, nothing to point it at. */

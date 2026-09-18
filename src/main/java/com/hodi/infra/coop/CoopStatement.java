@@ -1,4 +1,4 @@
-package com.hodi.infra.pesi;
+package com.hodi.infra.coop;
 
 import com.hodi.common.AppConstant;
 import jakarta.persistence.*;
@@ -12,7 +12,7 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * One payment Pesi has told us about, matched or not.
+ * One payment Co-op has told us about, matched or not.
  *
  * <h2>Separate from a booking payment on purpose</h2>
  *
@@ -22,22 +22,22 @@ import java.time.OffsetDateTime;
  *
  * <h2>refNo is the idempotency key, and the index is the guarantee</h2>
  *
- * <p>Pesi retries anything it does not get a clean answer to within thirty seconds. A timeout on our side is
+ * <p>Co-op retries anything it does not get a clean answer to within thirty seconds. A timeout on our side is
  * indistinguishable from a refusal on theirs, so the same money arrives twice — and the second arrival must be
  * recognised as the first. A "have I seen this?" check inside the service loses that race exactly the way the
  * booking check does; the unique index does not.
  */
 @Entity
-@Table(name = "pesi_statements")
+@Table(name = "coop_statements")
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
-public class PesiStatement {
+public class CoopStatement {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(name = "ref_no", nullable = false, length = 64) private String refNo;
     @Column(name = "trace_id", length = 64) private String traceId;
-    /** Ours, returned to Pesi as the RRN. Generated once and kept, so a retry echoes the same value. */
+    /** Ours, returned to Co-op as the RRN. Generated once and kept, so a retry echoes the same value. */
     @Column(name = "our_reference", nullable = false, unique = true, length = 16) private String ourReference;
 
     @Column(name = "trans_type", nullable = false, length = 48) private String transType;

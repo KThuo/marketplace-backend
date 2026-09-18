@@ -13,7 +13,7 @@ public interface PaymentTypeRepository
 
     Optional<PaymentType> findByCode(String code);
 
-    Optional<PaymentType> findByPesiProviderType(String pesiProviderType);
+    Optional<PaymentType> findByProviderType(String providerType);
 
     /** Every channel that has not been archived, in the platform's own order. */
     @Query("select t from PaymentType t where t.status <> 5 order by t.sortOrder, t.id")

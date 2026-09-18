@@ -1,8 +1,8 @@
-package com.hodi.infra.pesi;
+package com.hodi.infra.coop;
 
 import com.hodi.common.AppConstant;
 import com.hodi.common.util.RrnGenerator;
-import com.hodi.infra.pesi.PesiIpnDtos.IpnPayload;
+import com.hodi.infra.coop.CoopIpnDtos.IpnPayload;
 import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.configurations.ConfigurationService;
@@ -30,12 +30,12 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Taking in a payment Pesi has told us about, and placing it if we safely can.
+ * Taking in a payment Co-op has told us about, and placing it if we safely can.
  *
  * <h2>Store first. Everything else is best-effort.</h2>
  *
- * <p>The one thing that must succeed is writing the statement. If it does, Pesi is told 0 and stops; the money
- * is on our books whether or not we worked out whose it is. If it does not, Pesi is told to retry — which is
+ * <p>The one thing that must succeed is writing the statement. If it does, Co-op is told 0 and stops; the money
+ * is on our books whether or not we worked out whose it is. If it does not, Co-op is told to retry — which is
  * the only situation where a retry helps, because a payload we could not store might store next time.
  *
  * <p>A retry never helps a payment we could not <em>place</em>: the reference will be just as wrong on the
@@ -55,15 +55,15 @@ import java.util.Optional;
  * <h2>What this method must not do</h2>
  *
  * <p>No outbound HTTP and no email. Thirty seconds is the whole budget, and a gateway or an SMTP server having
- * a bad minute would spend it — turning a payment we had already stored into one Pesi retries, against a
+ * a bad minute would spend it — turning a payment we had already stored into one Co-op retries, against a
  * handler that has to be idempotent to survive it. Notifying anybody is a separate, later concern.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class PesiIpnService {
+public class CoopIpnService {
 
-    private final PesiStatementRepository statements;
+    private final CoopStatementRepository statements;
     private final PaymentAccountRepository accounts;
     private final UnitBookingRepository bookings;
     private final DevelopmentUnitRepository units;
@@ -72,8 +72,8 @@ public class PesiIpnService {
     private final ConfigurationService configs;
     private final ObjectMapper mapper;
 
-    /** Pesi's timestamps are "yyyy-MM-dd HH:mm:ss", not ISO-8601. Parsed leniently; never fatal. */
-    private static final DateTimeFormatter PESI_TIME =
+    /** Co-op's timestamps are "yyyy-MM-dd HH:mm:ss", not ISO-8601. Parsed leniently; never fatal. */
+    private static final DateTimeFormatter COOP_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
 
     /**
@@ -86,7 +86,7 @@ public class PesiIpnService {
      * @return the statement, whether mapped or not
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public PesiStatement accept(IpnPayload payload, boolean trusted) {
+    public CoopStatement accept(IpnPayload payload, boolean trusted) {
         String refNo = trim(payload.refNo());
 
         /*
@@ -94,15 +94,15 @@ public class PesiIpnService {
          * money can be in flight at once and both will pass this check — but answering here means the ordinary
          * retry costs one query rather than a failed insert.
          */
-        Optional<PesiStatement> seen = refNo == null ? Optional.empty() : statements.findByRefNo(refNo);
+        Optional<CoopStatement> seen = refNo == null ? Optional.empty() : statements.findByRefNo(refNo);
         if (seen.isPresent()) {
-            log.info("Pesi notification {} already recorded as {}", refNo, seen.get().getOurReference());
+            log.info("Co-op notification {} already recorded as {}", refNo, seen.get().getOurReference());
             return seen.get();
         }
 
         PaymentAccount account = resolveAccount(trim(payload.accountIdentifier()));
 
-        PesiStatement statement = PesiStatement.builder()
+        CoopStatement statement = CoopStatement.builder()
                 .refNo(refNo == null ? "UNKNOWN-" + RrnGenerator.generate("RX") : refNo)
                 .traceId(trim(payload.traceId()))
                 .ourReference(RrnGenerator.generate("PS"))
@@ -125,7 +125,7 @@ public class PesiIpnService {
                 .updatedBy(AppConstant.USERNAME_SYSTEM)
                 .build();
 
-        PesiStatement stored;
+        CoopStatement stored;
         try {
             stored = statements.saveAndFlush(statement);
         } catch (DataIntegrityViolationException e) {
@@ -133,7 +133,7 @@ public class PesiIpnService {
              * The race the check above cannot win: two deliveries of the same refNo at once. The index refused
              * the second, and the first one's row is the answer — so this is a success, not a failure.
              */
-            log.info("Concurrent delivery of Pesi notification {}; keeping the first", refNo);
+            log.info("Concurrent delivery of Co-op notification {}; keeping the first", refNo);
             return statements.findByRefNo(refNo).orElseThrow(() -> e);
         }
 
@@ -145,7 +145,7 @@ public class PesiIpnService {
     /**
      * Which of our accounts a notification landed in.
      *
-     * <p>The account number first, because that is what the Pesi contract carries; the short code as a
+     * <p>The account number first, because that is what the Co-op contract carries; the short code as a
      * fallback for a bank that quotes that instead. Live accounts only — a withdrawn account is exactly the
      * one a credit must not be matched to.
      */
@@ -163,17 +163,17 @@ public class PesiIpnService {
      * nobody can work through, and the reason is usually the whole answer — a reference nobody recognises, an
      * amount that does not correspond to anything owed.
      */
-    private void tryToPlace(PesiStatement statement, PaymentAccount account, boolean trusted) {
+    private void tryToPlace(CoopStatement statement, PaymentAccount account, boolean trusted) {
         if (!trusted) {
             /*
              * No shared secret configured, so this notification is unauthenticated.
              *
-             * It is still stored — refusing would make Pesi retry and eventually give up, losing real money —
+             * It is still stored — refusing would make Co-op retry and eventually give up, losing real money —
              * but nothing is credited automatically. A forged notification that guessed a four-character code
              * and an amount would otherwise move a buyer's balance.
              */
             unplaced(statement, "Notifications are not authenticated yet, so every payment is placed by "
-                    + "hand. Set the Pesi notification secret to allow automatic matching.");
+                    + "hand. Set the Co-op notification secret to allow automatic matching.");
             return;
         }
         if (account == null) {
@@ -227,7 +227,7 @@ public class PesiIpnService {
         statement.setUnmappedReason(null);
         statements.save(statement);
 
-        log.info("Pesi notification {} placed on booking {} as {}", statement.getRefNo(),
+        log.info("Co-op notification {} placed on booking {} as {}", statement.getRefNo(),
                 target.getReference(), payment.getReference());
     }
 
@@ -238,7 +238,7 @@ public class PesiIpnService {
      * mistyped character is enough to hit another live code; it is not enough to also match an amount or a
      * phone number.
      */
-    private boolean corroborated(PesiStatement statement, UnitBooking booking) {
+    private boolean corroborated(CoopStatement statement, UnitBooking booking) {
         if (samePhone(statement.getPhoneNo(), booking.getBuyerPhone())) return true;
 
         // The deposit, or the whole price. Deliberately not "any amount at all" — a round figure that happens
@@ -255,7 +255,7 @@ public class PesiIpnService {
     /**
      * Whether two phone numbers are the same one written differently.
      *
-     * <p>Compared on the last nine digits. Pesi sends {@code 254712345678}; a buyer's record may hold
+     * <p>Compared on the last nine digits. Co-op sends {@code 254712345678}; a buyer's record may hold
      * {@code +254 712 345 678} or {@code 0712345678}, and all three are the same phone. Nine digits is the
      * subscriber part of a Kenyan number — enough to identify it, short enough to survive every prefix.
      */
@@ -283,22 +283,46 @@ public class PesiIpnService {
         return cleaned.length() <= 4 ? cleaned : cleaned.substring(cleaned.length() - 4);
     }
 
-    private void unplaced(PesiStatement statement, String reason) {
+    private void unplaced(CoopStatement statement, String reason) {
         statement.setState(AppConstant.STATEMENT_UNMAPPED);
         statement.setUnmappedReason(reason);
         statements.save(statement);
-        log.info("Pesi notification {} stored unmapped: {}", statement.getRefNo(), reason);
+        log.info("Co-op notification {} stored unmapped: {}", statement.getRefNo(), reason);
     }
 
-    /** Whether the caller proved it is Pesi. Blank secret means no, and no means nothing is auto-placed. */
-    public boolean isTrusted(String signature) {
-        String expected = configs.getString(ConfigKey.PESI_IPN_SECRET);
-        if (expected == null || expected.isBlank()) return false;
-        // Constant-time: a timing-comparable equals on a shared secret leaks it a byte at a time.
-        return signature != null
-                && java.security.MessageDigest.isEqual(
-                        signature.getBytes(java.nio.charset.StandardCharsets.UTF_8),
-                        expected.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    /** Whether the caller proved it is Co-op. Blank secret means no, and no means nothing is auto-placed. */
+    /**
+     * Whether the caller proved it is Co-op.
+     *
+     * <h3>Closed when unset, not open</h3>
+     *
+     * <p>Co-op reaches this platform directly and authenticates with HTTP Basic. While either credential is
+     * blank this answers false for every caller, and the endpoint refuses: a deployment that accepts
+     * anonymous payment notifications records money that never arrived, which is worse than one that
+     * accepts none and stops.
+     *
+     * <p>Constant-time on both halves — a timing-comparable equals on a shared secret leaks it a byte at a
+     * time, and the username is as much a secret as the password when it is the whole of the credential.
+     */
+    public boolean isTrusted(String authorizationHeader) {
+        String user = configs.getString(ConfigKey.COOP_IPN_USERNAME);
+        String secret = configs.getString(ConfigKey.COOP_IPN_PASSWORD);
+        if (user == null || user.isBlank() || secret == null || secret.isBlank()) return false;
+        if (authorizationHeader == null
+                || !authorizationHeader.regionMatches(true, 0, "Basic ", 0, 6)) {
+            return false;
+        }
+        String presented;
+        try {
+            presented = new String(java.util.Base64.getDecoder()
+                    .decode(authorizationHeader.substring(6).trim()),
+                    java.nio.charset.StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+        return java.security.MessageDigest.isEqual(
+                presented.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                (user + ":" + secret).getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     /**
@@ -312,7 +336,7 @@ public class PesiIpnService {
         try {
             return new BigDecimal(amount == null ? "0" : amount.trim());
         } catch (NumberFormatException e) {
-            log.warn("Pesi notification carried an unreadable amount: {}", amount);
+            log.warn("Co-op notification carried an unreadable amount: {}", amount);
             return BigDecimal.ZERO;
         }
     }
@@ -321,9 +345,9 @@ public class PesiIpnService {
     private OffsetDateTime parseTimestamp(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return OffsetDateTime.now();
         try {
-            return LocalDateTime.parse(timestamp.trim(), PESI_TIME).atOffset(ZoneOffset.UTC);
+            return LocalDateTime.parse(timestamp.trim(), COOP_TIME).atOffset(ZoneOffset.UTC);
         } catch (RuntimeException e) {
-            log.debug("Pesi timestamp not in the documented format: {}", timestamp);
+            log.debug("Co-op timestamp not in the documented format: {}", timestamp);
             return OffsetDateTime.now();
         }
     }
@@ -333,7 +357,7 @@ public class PesiIpnService {
             return mapper.writeValueAsString(payload);
         } catch (RuntimeException e) {
             // The audit copy is worth having and not worth failing for.
-            log.warn("Could not serialise a Pesi payload for audit: {}", e.getMessage());
+            log.warn("Could not serialise a Co-op payload for audit: {}", e.getMessage());
             return null;
         }
     }

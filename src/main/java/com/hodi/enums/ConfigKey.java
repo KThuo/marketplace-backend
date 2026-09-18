@@ -575,10 +575,10 @@ public enum ConfigKey {
                     + "degraded further.", false, false),
 
     /**
-     * The shared secret an inbound Pesi notification must carry.
+     * The shared secret an inbound Co-op notification must carry.
      *
      * <p>Blank by default, and what that means is deliberate: the endpoint still accepts and stores every
-     * notification — refusing them would make Pesi retry and eventually give up, losing real money — but
+     * notification — refusing them would make Co-op retry and eventually give up, losing real money — but
      * nothing is matched to a booking automatically. Every payment waits for a person instead.
      *
      * <p>That is the safe failure. An unauthenticated endpoint that creates payment records is one where a
@@ -586,7 +586,7 @@ public enum ConfigKey {
      * no secret configured we will take the money in and let a human place it; with one configured we will
      * place it ourselves.
      *
-     * <p>Secret, and not tenant-overridable: there is one Pesi business — the marketplace — so there is one
+     * <p>Secret, and not tenant-overridable: there is one Co-op business — the marketplace — so there is one
      * key, held by the platform. A tenant able to set this could authorise notifications against everybody's
      * tills.
      */
@@ -602,35 +602,85 @@ public enum ConfigKey {
             "Platform support phone",
             "The number a one-time code is texted to when the platform's own payment accounts are changed.",
             false, false),
-    PESI_IPN_SECRET(
-            "pesi.ipn.secret", "STRING", "INTEGRATION", "",
-            "Pesi notification secret",
-            "Required in the X-Pesi-Signature header on inbound notifications. While blank, payments are "
-                    + "still accepted and stored but never matched automatically.", true, false),
+    /**
+     * What Co-op presents when it calls us, and what we answer it with.
+     *
+     * <h3>Basic, and closed when unset</h3>
+     *
+     * <p>Co-op reaches this platform directly — there is no gateway in between — and authenticates with
+     * HTTP Basic, which is what its own integration expects. While either of these is blank the
+     * notification endpoint refuses every request rather than falling open: a deployment that accepts
+     * anonymous payment notifications is worse than one that accepts none, because the first records money
+     * that never arrived and the second merely stops.
+     *
+     * <p>This replaces the notification secret that came before it. That was an {@code Authorization}
+     * header, which is how the Co-op gateway authenticates <em>its</em> business clients — a mechanism from
+     * a topology this platform does not use.
+     */
+    COOP_IPN_USERNAME(
+            "coop.ipn.username", "STRING", "INTEGRATION", "",
+            "Co-op notification username",
+            "The username Co-op sends on inbound payment notifications, as HTTP Basic. While this or the "
+                    + "password is blank, notifications are refused rather than accepted unauthenticated.",
+            false, false),
+    COOP_IPN_PASSWORD(
+            "coop.ipn.password", "STRING", "INTEGRATION", "",
+            "Co-op notification password",
+            "The password paired with the notification username. Stored encrypted.", true, false),
 
     /**
-     * Which gateway providers the payment catalogue offers.
+     * What we present to Co-op.
      *
-     * <p>Pesi fronts several banks, and the catalogue was seeded with all of them — Safaricom, KCB, Co-op
-     * and Equity — because the table describes what Pesi can do rather than what this deployment sells
-     * through. This deployment sells through Co-op, so the rest are noise on a platform screen and, worse,
-     * a list somebody can pick the wrong bank from when attaching an account.
+     * <p>OAuth2 client credentials: these are exchanged for a bearer token, which is cached until it
+     * expires rather than fetched per call — a token request against every payment is how an integration
+     * gets rate-limited into failures.
      *
-     * <p>A configuration row rather than a constant, following {@code AFFORDABILITY_PROVIDER}: adding a
-     * second bank is then an edit here, and the way back is the same edit. Empty means no restriction,
-     * matching {@code KYC_REQUIRED_SELLER_TYPES} — a blank allow-list allows everything, because the other
-     * reading turns an accidentally-cleared setting into "no way to take money".
+     * <p><strong>No host here, and no endpoint.</strong> Where the calls go is a property of each payment
+     * type, configured against it, because a platform that hardcodes a bank's URL has to be redeployed
+     * when that bank moves a path or opens a second environment. These two are the credentials only.
+     */
+    COOP_CONSUMER_KEY(
+            "coop.consumer.key", "STRING", "INTEGRATION", "",
+            "Co-op consumer key",
+            "The OAuth2 client id issued by Co-op, exchanged for the bearer token every outbound call "
+                    + "carries.", false, false),
+    COOP_CONSUMER_SECRET(
+            "coop.consumer.secret", "STRING", "INTEGRATION", "",
+            "Co-op consumer secret",
+            "The OAuth2 client secret issued by Co-op. Stored encrypted.", true, false),
+
+    /**
+     * Which environment the credentials belong to.
      *
-     * <p>Matched against a channel's provider name. Not tenant-overridable: the catalogue is platform-wide,
-     * so which banks it offers cannot be one organisation's decision.
+     * <p>A row rather than a build profile, so moving a deployment from Co-op's sandbox to production is a
+     * setting somebody changes and can change back — not a rebuild. The value is matched by the payment
+     * type's own configuration, which is where the hosts live.
+     */
+    COOP_ENVIRONMENT(
+            "coop.environment", "STRING", "INTEGRATION", "SANDBOX",
+            "Co-op environment",
+            "SANDBOX or PRODUCTION. Decides which of a payment type's configured hosts is used.",
+            false, false),
+
+    /**
+     * Which providers the payment catalogue offers.
      *
-     * <p>What this does <em>not</em> touch is inbound. A credit that arrives for a channel outside this list
-     * is still stored and still recorded — money that is already in the bank is not made to disappear by a
+     * <p>The catalogue was seeded with every bank the reference gateway fronts — Safaricom, KCB, Co-op and
+     * Equity — because that table described what <em>it</em> could do rather than what this deployment
+     * sells through. This deployment banks with Co-op, so the rest are noise on a platform screen and,
+     * worse, a list somebody can attach an account to the wrong bank from.
+     *
+     * <p>Empty means no restriction, matching {@code KYC_REQUIRED_SELLER_TYPES}: a blank allow-list allows
+     * everything, because the other reading turns an accidentally-cleared setting into "no way to take
+     * money".
+     *
+     * <p>What this does <em>not</em> touch is inbound. A credit that arrives for a channel outside this
+     * list is still stored and still recorded — money already in the bank is not made to disappear by a
      * setting about what to offer next.
      */
-    PESI_PROVIDERS(
-            "pesi.providers", "STRING", "INTEGRATION", "Co-operative Bank",
-            "Gateway providers offered",
+    PAYMENT_PROVIDERS(
+            "payment.providers", "STRING", "INTEGRATION", "Co-operative Bank",
+            "Payment providers offered",
             "Comma-separated provider names whose channels appear in the payment catalogue and can be "
                     + "given an account. Cash and cheque are always offered. Empty means every provider.",
             false, false);

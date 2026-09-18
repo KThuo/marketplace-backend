@@ -1,4 +1,4 @@
-package com.hodi.infra.pesi;
+package com.hodi.infra.coop;
 
 import com.hodi.common.util.RrnGenerator;
 import org.junit.jupiter.api.AfterEach;
@@ -19,18 +19,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * The endpoint as Pesi sees it: no session, its own response shape, and 200 for anything we stored.
+ * The endpoint as Co-op sees it: no session, its own response shape, and 200 for anything we stored.
  *
  * <p>Worth testing over HTTP rather than through the service, because everything that matters here is in the
  * layers around the method — the security chain letting an unauthenticated POST through, and the response body
- * carrying {@code statusCode} rather than the platform's envelope. Pesi reads that field and retries on
+ * carrying {@code statusCode} rather than the platform's envelope. Co-op reads that field and retries on
  * anything non-zero, so an envelope would turn every notification into an infinite redelivery.
  *
  * <p>Not {@code @Transactional}: the handler is {@code REQUIRES_NEW} and commits, so the rows are removed
  * afterwards instead.
  */
 @SpringBootTest
-class PesiIpnApiIT {
+class CoopIpnApiIT {
 
     @Autowired WebApplicationContext context;
     @Autowired JdbcTemplate jdbc;
@@ -49,7 +49,7 @@ class PesiIpnApiIT {
 
     @AfterEach
     void cleanUp() {
-        jdbc.update("delete from pesi_statements where ref_no = ? or ref_no like 'UNKNOWN-%'", refNo);
+        jdbc.update("delete from coop_statements where ref_no = ? or ref_no like 'UNKNOWN-%'", refNo);
     }
 
     private String body(String refNoValue) {
@@ -70,21 +70,21 @@ class PesiIpnApiIT {
     }
 
     @Test
-    @DisplayName("an unauthenticated notification is accepted and answered in Pesi's own shape")
+    @DisplayName("an unauthenticated notification is accepted and answered in Co-op's own shape")
     void acceptsWithoutASession() throws Exception {
-        mvc.perform(post("/api/v1/public/pesi/notifications")
+        mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(refNo)))
                 .andExpect(status().isOk())
                 /*
                  * Zero even though nothing could be placed — the till is not ours and the reference matches
                  * nothing. A retry would deliver the same wrong reference again while giving us another chance
-                 * to double-post, so this is a success as far as Pesi is concerned.
+                 * to double-post, so this is a success as far as Co-op is concerned.
                  */
                 .andExpect(jsonPath("$.statusCode").value(0))
                 .andExpect(jsonPath("$.transactionID").exists())
                 .andExpect(jsonPath("$.statusMessage").value("Notification received"))
-                // And no platform envelope: Pesi reads statusCode at the top level.
+                // And no platform envelope: Co-op reads statusCode at the top level.
                 .andExpect(jsonPath("$.success").doesNotExist())
                 .andExpect(jsonPath("$.data").doesNotExist());
     }
@@ -93,14 +93,14 @@ class PesiIpnApiIT {
     @DisplayName("a field we have never seen does not refuse the payment")
     void unknownFieldsAreIgnored() throws Exception {
         /*
-         * Pesi adding a field must not stop money arriving. Boot leaves FAIL_ON_UNKNOWN_PROPERTIES off, and
+         * Co-op adding a field must not stop money arriving. Boot leaves FAIL_ON_UNKNOWN_PROPERTIES off, and
          * this test is what says so out loud — the alternative is every notification 400ing on the day they
          * extend their payload, and every one of them retrying.
          */
         String extended = body(refNo).replace("\"transType\": \"BUNI_IPN_TILL\"",
                 "\"transType\": \"BUNI_IPN_TILL\", \"settlementBatch\": \"SB-99\"");
 
-        mvc.perform(post("/api/v1/public/pesi/notifications")
+        mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(extended))
                 .andExpect(status().isOk())
@@ -110,23 +110,23 @@ class PesiIpnApiIT {
     @Test
     @DisplayName("the same delivery twice answers with the same reference both times")
     void retryEchoesTheFirstReference() throws Exception {
-        String first = mvc.perform(post("/api/v1/public/pesi/notifications")
+        String first = mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(refNo)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
-        String again = mvc.perform(post("/api/v1/public/pesi/notifications")
+        String again = mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(refNo)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
 
         org.junit.jupiter.api.Assertions.assertEquals(first, again,
-                "Pesi stores our transactionID as its RRN, so a retry must not be told a different one");
+                "Co-op stores our transactionID as its RRN, so a retry must not be told a different one");
 
         Integer rows = jdbc.queryForObject(
-                "select count(*) from pesi_statements where ref_no = ?", Integer.class, refNo);
+                "select count(*) from coop_statements where ref_no = ?", Integer.class, refNo);
         org.junit.jupiter.api.Assertions.assertEquals(1, rows);
     }
 
@@ -135,7 +135,7 @@ class PesiIpnApiIT {
     void missingRefNoIsStored() throws Exception {
         String noRef = body("x").replace("\"refNo\": \"x\",", "");
 
-        mvc.perform(post("/api/v1/public/pesi/notifications")
+        mvc.perform(post("/api/v1/public/coop/notifications")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(noRef))
                 .andExpect(status().isOk())
@@ -144,7 +144,7 @@ class PesiIpnApiIT {
         // Given a placeholder key rather than dropped: money that arrived without an identifier is still money
         // that arrived, and a person can match it from the amount and the phone number.
         Integer rows = jdbc.queryForObject(
-                "select count(*) from pesi_statements where ref_no like 'UNKNOWN-%'", Integer.class);
+                "select count(*) from coop_statements where ref_no like 'UNKNOWN-%'", Integer.class);
         org.junit.jupiter.api.Assertions.assertTrue(rows >= 1);
     }
 }

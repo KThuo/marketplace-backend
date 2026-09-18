@@ -272,7 +272,7 @@ public final class AppConstant {
     public static final String AUDIENCE_STAKEHOLDERS = "STAKEHOLDERS";
 
     /*
-     * Where an inbound Pesi notification stands.
+     * Where an inbound Co-op notification stands.
      *
      * UNMAPPED is not a failure — it is a payment that arrived and is waiting for a person, which is the
      * normal outcome for a mistyped reference or a walk-in payer. IGNORED is a person's decision that it is

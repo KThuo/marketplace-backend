@@ -25,7 +25,7 @@ import java.util.Objects;
  *
  * <h2>The account number is the inbound match key</h2>
  *
- * <p>A Pesi notification names the till it landed in, and {@code PesiIpnService} resolves it against
+ * <p>A Co-op notification names the till it landed in, and {@code CoopIpnService} resolves it against
  * {@link #accountNo}. So the number is unique across every live row — two rows claiming one till would make
  * whose money it is depend on row order.
  */
@@ -53,7 +53,7 @@ public class PaymentAccount {
     @Column(name = "short_code", length = 64) private String shortCode;
 
     /** Copied from the catalogue row so an inbound match is one table and one index. */
-    @Column(name = "pesi_type", length = 50) private String pesiType;
+    @Column(name = "provider_code", length = 50) private String providerCode;
     @Column(nullable = false, length = 16) private String category;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
@@ -89,8 +89,8 @@ public class PaymentAccount {
         return Objects.equals(this.tenantId, tenantId) && Objects.equals(this.institutionId, institutionId);
     }
 
-    public PesiChannel.Category channelCategory() {
-        return PesiChannel.Category.of(category);
+    public CoopChannel.Category channelCategory() {
+        return CoopChannel.Category.of(category);
     }
 
     /** Live: offered to the receive form and matched by an inbound credit. Withdrawn rows are neither. */
@@ -101,12 +101,12 @@ public class PaymentAccount {
     /**
      * Copies the channel's identity from its catalogue row.
      *
-     * <p>One place, called on every write, because {@code pesi_type} and {@code category} exist to be queried
+     * <p>One place, called on every write, because {@code provider_code} and {@code category} exist to be queried
      * and a copy that can drift from its source is worse than a join.
      */
     public void stampChannel(PaymentType type) {
         this.paymentTypeId = type.getId();
-        this.pesiType = type.getPesiProviderType();
+        this.providerCode = type.getProviderType();
         this.category = type.getCategory();
     }
 }

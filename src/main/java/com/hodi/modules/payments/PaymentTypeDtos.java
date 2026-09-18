@@ -29,7 +29,7 @@ public final class PaymentTypeDtos {
             String name,
             String description,
             String providerName,
-            String pesiProviderType,
+            String providerType,
             String category,
             String renderAs,
             String method,

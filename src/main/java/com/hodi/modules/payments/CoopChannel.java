@@ -7,7 +7,14 @@ import java.util.Locale;
 import java.util.Optional;
 
 /**
- * Every way money can move through Pesi, and what each implies.
+ * Every way money can move through Co-op, and what each implies.
+ *
+ * <h2>One bank</h2>
+ *
+ * <p>This list used to carry Daraja, Buni and Equity as well — the provider catalogue of a gateway this
+ * platform was once assumed to sit behind. It does not: the marketplace reaches Co-op directly, Co-op is
+ * the only institution with the financial ability to transact here, and a catalogue offering three banks
+ * that cannot settle anything is a list somebody attaches an account to the wrong one from.
  *
  * <p>The central idea is worth stating once and keeping: <strong>the category decides the behaviour, never a
  * catalogue id.</strong> A screen that switches on primary keys breaks the moment a row is added and cannot
@@ -15,31 +22,29 @@ import java.util.Optional;
  *
  * <ul>
  *   <li>{@link Category#CASH} / {@link Category#CHEQUE} — recorded by staff, no gateway, no account.</li>
- *   <li>{@link Category#STK_PUSH} — the app asks Pesi to prompt a phone. Not wired here yet: there is no
- *       outbound client, so these channels stay switched off in the catalogue.</li>
+ *   <li>{@link Category#STK_PUSH} — the app asks Co-op to prompt a phone. Asynchronous: the call is
+ *       acknowledged and the outcome arrives later, by notification or by asking for the status.</li>
  *   <li>{@link Category#TRANSFER} — outbound, staff only. Money going out, never a way to pay.</li>
  *   <li>{@link Category#VALIDATE} — inbound. Money arrives on its own and is matched by the account it
- *       landed in, which is what {@code PesiIpnService} does.</li>
+ *       landed in, which is what {@code CoopIpnService} does.</li>
  * </ul>
  */
-public enum PesiChannel {
+public enum CoopChannel {
 
-    DARAJA_STK_PUSH(Category.STK_PUSH),
-    BUNI_STK_PUSH(Category.STK_PUSH),
-    COOP_BANK_STK_PUSH(Category.STK_PUSH),
+    /** A phone prompt. The customer approves on their handset and the money moves. */
+    COOP_STK_PUSH(Category.STK_PUSH),
 
-    BUNI_FT(Category.TRANSFER),
+    /** Money out, to an account at Co-op or over PesaLink. Staff only, and behind Maker/Checker. */
+    COOP_FUNDS_TRANSFER(Category.TRANSFER),
+    COOP_PESALINK(Category.TRANSFER),
 
-    COOP_BILLER_B2B(Category.VALIDATE),
-    DARAJA_C2B(Category.VALIDATE),
-    BUNI_IPN_TILL(Category.VALIDATE),
-    BUNI_IPN_ACCOUNT(Category.VALIDATE),
-    COOP_BANK_IPN_ACCOUNT(Category.VALIDATE),
-    EQUITY_IPN(Category.VALIDATE);
+    /** Money in, on its own: Co-op tells us it arrived and we match it to what it was for. */
+    COOP_BILLER(Category.VALIDATE),
+    COOP_IPN_ACCOUNT(Category.VALIDATE);
 
     private final Category category;
 
-    PesiChannel(Category category) {
+    CoopChannel(Category category) {
         this.category = category;
     }
 
@@ -50,14 +55,14 @@ public enum PesiChannel {
     /**
      * The category of a stored provider string.
      *
-     * <p>Falls back to a substring heuristic rather than refusing, on purpose: Pesi adds providers before we
+     * <p>Falls back to a substring heuristic rather than refusing, on purpose: Co-op adds products before we
      * do, and a new {@code COOP_*_STK_PUSH} that classified as "unknown" would silently stop being offered
      * rather than working.
      */
     public static Category categoryOf(String provider) {
         if (provider == null || provider.isBlank()) return Category.CASH;
         return from(provider)
-                .map(PesiChannel::category)
+                .map(CoopChannel::category)
                 .orElseGet(() -> {
                     String code = provider.toUpperCase(Locale.ROOT);
                     if (code.contains("STK_PUSH")) return Category.STK_PUSH;
@@ -69,7 +74,7 @@ public enum PesiChannel {
                 });
     }
 
-    public static Optional<PesiChannel> from(String provider) {
+    public static Optional<CoopChannel> from(String provider) {
         if (provider == null) return Optional.empty();
         return Arrays.stream(values())
                 .filter(c -> c.name().equalsIgnoreCase(provider.trim()))

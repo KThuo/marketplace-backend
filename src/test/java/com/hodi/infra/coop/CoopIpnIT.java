@@ -1,9 +1,9 @@
-package com.hodi.infra.pesi;
+package com.hodi.infra.coop;
 
 import com.hodi.common.AppConstant;
 import com.hodi.modules.properties.Property;
 import com.hodi.common.util.RrnGenerator;
-import com.hodi.infra.pesi.PesiIpnDtos.IpnPayload;
+import com.hodi.infra.coop.CoopIpnDtos.IpnPayload;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
 import com.hodi.modules.bookings.BookingDtos.CreateBookingRequest;
 import com.hodi.modules.bookings.BookingService;
@@ -38,7 +38,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Taking in a payment Pesi says arrived.
+ * Taking in a payment Co-op says arrived.
  *
  * <h2>Why this class commits</h2>
  *
@@ -49,18 +49,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *
  * <h2>What is worth testing here</h2>
  *
- * <p>Idempotency, because Pesi retries anything it does not get a clean answer to and the same money arriving
+ * <p>Idempotency, because Co-op retries anything it does not get a clean answer to and the same money arriving
  * twice must not be credited twice. The corroboration rule, because a four-character code has no redundancy
  * and one mistyped letter lands on another live unit about one time in two hundred. And the refusal to
  * auto-credit while unauthenticated, which is the only thing standing between a forged notification and
  * somebody's balance.
  */
 @SpringBootTest
-class PesiIpnIT {
+class CoopIpnIT {
 
-    @Autowired PesiIpnService service;
+    @Autowired CoopIpnService service;
     @Autowired BookingService bookings;
-    @Autowired PesiStatementRepository statements;
+    @Autowired CoopStatementRepository statements;
     @Autowired PaymentAccountRepository accounts;
     @Autowired PaymentTypeRepository types;
     @Autowired PaymentRepository payments;
@@ -84,8 +84,8 @@ class PesiIpnIT {
         purgeStaleFixtures();
         tenantId = jdbc.queryForObject(
                 "select id from tenants where status <> 5 order by id limit 1", Long.class);
-        User user = User.builder().id(1L).username("pesi-test").password("x")
-                .email("p@example.invalid").firstName("Pia").lastName("Pesi")
+        User user = User.builder().id(1L).username("coop-test").password("x")
+                .email("p@example.invalid").firstName("Pia").lastName("Co-op")
                 .status(AppConstant.STATUS_ACTIVE).enabled(true).build();
         UserProfile profile = UserProfile.builder().id(1L).userId(1L)
                 .profileType(AppConstant.ACTOR_SELLER).userTypeCode("SELLER_OWNER")
@@ -113,7 +113,7 @@ class PesiIpnIT {
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
 
         account = "TILL" + Long.toString(System.nanoTime(), 36).toUpperCase();
-        PaymentType channel = types.findByPesiProviderType("BUNI_IPN_TILL").orElseThrow();
+        PaymentType channel = types.findByProviderType("BUNI_IPN_TILL").orElseThrow();
         PaymentAccount row = PaymentAccount.builder()
                 .accountNo(account).accountName("Seller's till")
                 .tenantId(tenantId).createdBy("test").build();
@@ -134,7 +134,7 @@ class PesiIpnIT {
     private void purgeStaleFixtures() {
         jdbc.update("update payments set statement_id = null where development_id in "
                 + "(select id from developments where name = 'Paying Heights')");
-        jdbc.update("delete from pesi_statements where mapped_payment_id in (select id from payments "
+        jdbc.update("delete from coop_statements where mapped_payment_id in (select id from payments "
                 + "where development_id in (select id from developments where name = 'Paying Heights')) "
                 + "or account_identifier like 'TILL%'");
         jdbc.update("delete from payments where development_id in "
@@ -157,7 +157,7 @@ class PesiIpnIT {
             // The payment names the statement and the statement names the payment: unlink, then delete.
             jdbc.update("update payments set statement_id = null where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
-            jdbc.update("delete from pesi_statements where payment_account_id = ? "
+            jdbc.update("delete from coop_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
             jdbc.update("delete from payments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
@@ -184,7 +184,7 @@ class PesiIpnIT {
     @Test
     @DisplayName("the deposit amount corroborates the code, so the payment is placed")
     void amountCorroboratesTheCode() {
-        PesiStatement stored = service.accept(payload("Z4XP", "950000.00", "254700000000"), true);
+        CoopStatement stored = service.accept(payload("Z4XP", "950000.00", "254700000000"), true);
 
         assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
         assertNotNull(stored.getMappedPaymentId());
@@ -196,8 +196,8 @@ class PesiIpnIT {
     @Test
     @DisplayName("the buyer's own number corroborates it even when the amount is a part payment")
     void phoneCorroboratesTheCode() {
-        // Pesi sends 254…; the booking holds "+254 712 345 678". Same phone, written three ways.
-        PesiStatement stored = service.accept(payload("Z4XP", "125000.00", "254712345678"), true);
+        // Co-op sends 254…; the booking holds "+254 712 345 678". Same phone, written three ways.
+        CoopStatement stored = service.accept(payload("Z4XP", "125000.00", "254712345678"), true);
 
         assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
         assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(booking.id()))
@@ -207,7 +207,7 @@ class PesiIpnIT {
     @Test
     @DisplayName("a reference with the payer's own words around it still finds the code")
     void referenceIsCleanedBeforeMatching() {
-        PesiStatement stored = service.accept(payload("unit z4xp", "950000.00", "254700000000"), true);
+        CoopStatement stored = service.accept(payload("unit z4xp", "950000.00", "254700000000"), true);
         assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
     }
 
@@ -221,7 +221,7 @@ class PesiIpnIT {
          * letter produces another well-formed code — and at five thousand units the chance it is a live one is
          * about one in two hundred. Too high to move a balance on.
          */
-        PesiStatement stored = service.accept(payload("Z4XP", "37500.00", "254700000000"), true);
+        CoopStatement stored = service.accept(payload("Z4XP", "37500.00", "254700000000"), true);
 
         assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
         assertTrue(stored.getUnmappedReason().contains("C-3-07"), stored.getUnmappedReason());
@@ -234,7 +234,7 @@ class PesiIpnIT {
     @Test
     @DisplayName("a code nobody has goes to the queue, with the code it looked for")
     void unknownCodeGoesToTheQueue() {
-        PesiStatement stored = service.accept(payload("QQQQ", "950000.00", "254712345678"), true);
+        CoopStatement stored = service.accept(payload("QQQQ", "950000.00", "254712345678"), true);
 
         assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
         assertTrue(stored.getUnmappedReason().contains("QQQQ"), stored.getUnmappedReason());
@@ -243,10 +243,10 @@ class PesiIpnIT {
     @Test
     @DisplayName("no reference at all is stored rather than refused")
     void missingReferenceIsStored() {
-        PesiStatement stored = service.accept(payload(null, "950000.00", "254712345678"), true);
+        CoopStatement stored = service.accept(payload(null, "950000.00", "254712345678"), true);
 
         assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
-        assertNotNull(stored.getOurReference(), "and it still has our reference to echo back to Pesi");
+        assertNotNull(stored.getOurReference(), "and it still has our reference to echo back to Co-op");
         assertTrue(stored.getUnmappedReason().contains("no reference"), stored.getUnmappedReason());
     }
 
@@ -257,12 +257,12 @@ class PesiIpnIT {
                 "2026-08-27 10:30:00", "950000.00", "KES", "Z4XP", "Asha Mwangi", "254712345678",
                 "999999", "BUNI_IPN_TILL");
 
-        PesiStatement stored = service.accept(elsewhere, true);
+        CoopStatement stored = service.accept(elsewhere, true);
         assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
         assertTrue(stored.getUnmappedReason().contains("999999"), stored.getUnmappedReason());
         assertNull(stored.getTenantId(), "and nobody owns money that arrived in an account we do not know");
 
-        jdbc.update("delete from pesi_statements where ref_no = ?", stored.getRefNo());
+        jdbc.update("delete from coop_statements where ref_no = ?", stored.getRefNo());
     }
 
     // ── the safety property ───────────────────────────────────────────────────
@@ -274,7 +274,7 @@ class PesiIpnIT {
          * The only thing standing between a forged notification and somebody's balance. A four-character code
          * and a round amount are both guessable; this test is what stops a guess from crediting a buyer.
          */
-        PesiStatement stored = service.accept(payload("Z4XP", "950000.00", "254712345678"), false);
+        CoopStatement stored = service.accept(payload("Z4XP", "950000.00", "254712345678"), false);
 
         assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
         assertTrue(stored.getUnmappedReason().contains("not authenticated"), stored.getUnmappedReason());
@@ -288,6 +288,10 @@ class PesiIpnIT {
         assertFalse(service.isTrusted(null));
         assertFalse(service.isTrusted(""));
         assertFalse(service.isTrusted("probably-the-secret"));
+        // Even a well-formed Basic header: unconfigured means closed, not "match anything".
+        assertFalse(service.isTrusted("Basic "
+                + java.util.Base64.getEncoder().encodeToString(
+                        "coop:secret".getBytes(java.nio.charset.StandardCharsets.UTF_8))));
     }
 
     // ── idempotency ───────────────────────────────────────────────────────────
@@ -297,20 +301,20 @@ class PesiIpnIT {
     void deliveredTwiceIsCreditedOnce() {
         IpnPayload once = payload("Z4XP", "950000.00", "254712345678");
 
-        PesiStatement first = service.accept(once, true);
-        PesiStatement again = service.accept(once, true);
+        CoopStatement first = service.accept(once, true);
+        CoopStatement again = service.accept(once, true);
 
         assertEquals(first.getId(), again.getId());
         assertEquals(first.getOurReference(), again.getOurReference(),
-                "and the same reference goes back, so Pesi's own record still matches ours");
+                "and the same reference goes back, so Co-op's own record still matches ours");
         assertEquals(1, payments.findForBooking(HashIdUtil.decodeId(booking.id())).size(),
-                "Pesi retries anything it does not get a clean answer to within thirty seconds");
+                "Co-op retries anything it does not get a clean answer to within thirty seconds");
     }
 
     @Test
     @DisplayName("the unique index is what guarantees that, not the check")
     void indexRefusesADuplicateRefNo() {
-        PesiStatement first = service.accept(payload("Z4XP", "950000.00", "254712345678"), true);
+        CoopStatement first = service.accept(payload("Z4XP", "950000.00", "254712345678"), true);
 
         /*
          * Inserted underneath the service, which is the only way to reach the state the check cannot prevent:
@@ -319,7 +323,7 @@ class PesiIpnIT {
          */
         assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
                 () -> jdbc.update("""
-                        insert into pesi_statements (ref_no, our_reference, trans_type, amount, currency,
+                        insert into coop_statements (ref_no, our_reference, trans_type, amount, currency,
                             state, created_by)
                         values (?, ?, 'BUNI_IPN_TILL', 100, 'KES', 'UNMAPPED', 'test')
                         """, first.getRefNo(), RrnGenerator.generate("PS")));

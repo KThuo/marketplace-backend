@@ -72,7 +72,7 @@ class PaymentServiceIT {
         signIn(tenantId, "UNITS_MANAGE", "UNITS_SELL", "BOOKINGS_MANAGE", "PAYMENTS_VIEW",
                 "PAYMENTS_RECEIVE", "PAYMENTS_VOID");
         // The KCB till channel ships switched off until somebody has a till on it. Rolled back with the test.
-        jdbc.update("update payment_types set status = 1 where pesi_provider_type = 'BUNI_IPN_TILL'");
+        jdbc.update("update payment_types set status = 1 where provider_type = 'BUNI_IPN_TILL'");
 
         development = developments.save(Development.builder()
                 .reference(RrnGenerator.generate("DV")).tenantId(tenantId).sellingTenantId(tenantId)
@@ -131,7 +131,7 @@ class PaymentServiceIT {
 
     /** A live KCB till on this tenant, so a payment can name the channel it came through. */
     private PaymentAccount till(Long developmentId) {
-        PaymentType channel = types.findByPesiProviderType("BUNI_IPN_TILL").orElseThrow();
+        PaymentType channel = types.findByProviderType("BUNI_IPN_TILL").orElseThrow();
         PaymentAccount row = PaymentAccount.builder()
                 .accountNo("TILL" + Long.toString(System.nanoTime(), 36).toUpperCase()).accountName("Seller's till")
                 .tenantId(tenantId).developmentId(developmentId).createdBy("test").build();

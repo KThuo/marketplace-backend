@@ -337,3 +337,31 @@ can be done in the same migration or left with a comment — the client's call.
 4. Inbound Basic auth on the notification endpoint, refusing when unconfigured.
 5. Intents, status query and the sweep.
 6. Account validation, then funds transfer behind Maker/Checker.
+
+
+## 16. Done, 18 September: pesi is out of the codebase
+
+The rename in §14 was recommended and is now made, because the client's answer settled it: there is no
+intermediary and there is one bank.
+
+- `infra/pesi` → `infra/coop`; `PesiIpnController/Service/Statement/Dtos` → `Coop*`; `PesiChannel` →
+  `CoopChannel`.
+- `pesi_statements` → `coop_statements`; `payment_types.pesi_provider_type` → `provider_type`;
+  `payment_accounts.pesi_type` → `provider_code`, with the indexes renamed to match.
+- The endpoint moves from `/api/v1/public/pesi/notifications` to `/api/v1/public/coop/notifications`.
+- The channel catalogue is Co-op's five: STK push, funds transfer, PesaLink, biller, account IPN. Daraja,
+  Buni and Equity are **archived, not deleted** — a payment row may already point at one, and a channel
+  that vanishes takes the provenance of every payment recorded through it.
+- `pesi.ipn.secret` and `pesi.providers` are gone. In their place: `coop.ipn.username`,
+  `coop.ipn.password`, `coop.consumer.key`, `coop.consumer.secret`, `coop.environment` and
+  `payment.providers`, all under **Integration** in app settings, with the two secrets encrypted.
+- `X-Pesi-Signature` is gone. Inbound is HTTP Basic against the configured pair, and **closed while
+  unset** — an unconfigured deployment refuses every notification rather than recording money it cannot
+  attribute.
+
+### No hosts in the code
+`payment_types` gains `required_config_fields` and `config`. The descriptor names the fields a channel
+needs — sandbox host, production host, token path, request path, status path, callback URL — and the
+values live on the type. Nothing about where Co-op answers is compiled in: a bank that moves a path, opens
+an environment or versions an endpoint is an edit, not a release. The global settings above are the
+credentials and the environment switch only.

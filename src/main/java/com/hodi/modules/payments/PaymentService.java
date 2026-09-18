@@ -5,7 +5,7 @@ import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.infra.notify.NotifyClient;
-import com.hodi.infra.pesi.PesiStatement;
+import com.hodi.infra.coop.CoopStatement;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.bookings.BookingBalanceReader;
 import com.hodi.modules.bookings.BookingDtos.BalanceRow;
@@ -38,7 +38,7 @@ import java.time.LocalDate;
  *
  * <h2>One writer</h2>
  *
- * <p>This is the only place a payment row is created — the receive form, the booking drawer and the Pesi
+ * <p>This is the only place a payment row is created — the receive form, the booking drawer and the Co-op
  * notification all come through {@link #write}. So the cached names, the balance snapshots, the channel
  * stamp and the audit row happen once, whatever route the money took. The receipt used to be sent only
  * for gateway credits; the buyer who paid in person, the one most likely to want written proof, got none.
@@ -138,14 +138,14 @@ public class PaymentService {
     }
 
     /**
-     * Records a credit Pesi told us about, once the notification handler has decided it is safe to place.
+     * Records a credit Co-op told us about, once the notification handler has decided it is safe to place.
      *
      * <p>No permission checks: the gateway has no login, and the money moved at the bank before we heard
      * about it. No receipt SMS either — the handler has thirty seconds and no outbound calls in it, which is
      * the one deliberate exception to "every payment sends a receipt".
      */
     @Transactional
-    public Payment recordFromGateway(UnitBooking booking, PesiStatement statement, PaymentAccount account) {
+    public Payment recordFromGateway(UnitBooking booking, CoopStatement statement, PaymentAccount account) {
         Development development = booking.getDevelopmentId() == null ? null
                 : developments.findById(booking.getDevelopmentId())
                 .orElseThrow(() -> new HodiException("That development no longer exists.", HttpStatus.CONFLICT));

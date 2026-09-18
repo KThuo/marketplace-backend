@@ -66,15 +66,15 @@ public class SecurityConfig {
 
     private static final String[] PUBLIC_POST = {
             /*
-             * Where Pesi tells us money arrived.
+             * Where Co-op tells us money arrived.
              *
              * The only unauthenticated write path here, and it cannot be otherwise: a payment gateway has no
              * session and never will. What stands in for authentication is a shared secret in a header — and
              * while that is unset the endpoint still accepts and stores every notification but credits
-             * nothing automatically, because refusing them would make Pesi retry and eventually give up,
+             * nothing automatically, because refusing them would make Co-op retry and eventually give up,
              * losing real money.
              */
-            "/api/v1/public/pesi/notifications",
+            "/api/v1/public/coop/notifications",
             "/api/v1/auth/login",
             // The second half of a challenged login: the caller has no session yet, only a one-shot
             // challenge token, so this cannot require authentication.

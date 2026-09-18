@@ -71,7 +71,7 @@ class PaymentTypeServiceIT {
         jdbc.update("update tenants set contact_phone = coalesce(contact_phone, '+254700000001') where id = ?",
                 tenantId);
         // The KCB till channel ships switched off until somebody has a till on it. Rolled back with the test.
-        jdbc.update("update payment_types set status = 1 where pesi_provider_type = 'BUNI_IPN_TILL'");
+        jdbc.update("update payment_types set status = 1 where provider_type = 'BUNI_IPN_TILL'");
         signInAs(AppConstant.ACTOR_SELLER, "SELLER_OWNER", tenantId, "PAYMENT_TYPES_VIEW",
                 "PAYMENT_TYPES_MANAGE");
     }
@@ -126,8 +126,8 @@ class PaymentTypeServiceIT {
         }
     }
 
-    private String channel(String pesiType) {
-        return HashIdUtil.encodeId(types.findByPesiProviderType(pesiType).orElseThrow().getId());
+    private String channel(String providerCode) {
+        return HashIdUtil.encodeId(types.findByProviderType(providerCode).orElseThrow().getId());
     }
 
     private SaveAccountRequest till(String accountNo, String[] code) {
@@ -152,7 +152,7 @@ class PaymentTypeServiceIT {
         assertEquals(AppConstant.PAY_BANK_TRANSFER, saved.method(), "what a payment through it will record");
 
         PaymentAccount row = accounts.findById(HashIdUtil.decodeId(saved.id())).orElseThrow();
-        assertEquals("BUNI_IPN_TILL", row.getPesiType(), "the channel's identity is copied onto the row");
+        assertEquals("BUNI_IPN_TILL", row.getProviderCode(), "the channel's identity is copied onto the row");
         assertEquals(AppConstant.CHANNEL_VALIDATE, row.getCategory());
     }
 

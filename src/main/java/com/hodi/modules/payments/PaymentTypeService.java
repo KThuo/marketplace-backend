@@ -31,7 +31,7 @@ import java.util.Map;
  * The channels — what money <em>can</em> be taken by, before any organisation says where it lands.
  *
  * <p>Read-mostly on purpose. A channel is a fact about a gateway, so rows arrive by migration; this service
- * renames them, reorders them and turns them on and off. There is no create: a row with no Pesi provider is
+ * renames them, reorders them and turns them on and off. There is no create: a row with no provider is
  * a payment method that cannot collect anything, offered until somebody notices.
  *
  * <h2>Only the platform writes it</h2>
@@ -158,10 +158,10 @@ public class PaymentTypeService {
     }
 
     static ChannelResponse toResponse(PaymentType t, long inUse) {
-        PesiChannel.Category category = t.channelCategory();
+        CoopChannel.Category category = t.channelCategory();
         return new ChannelResponse(
                 HashIdUtil.encodeId(t.getId()), t.getCode(), t.getName(), t.getDescription(),
-                t.getProviderName(), t.getPesiProviderType(), t.getCategory(), category.renderAs(),
+                t.getProviderName(), t.getProviderType(), t.getCategory(), category.renderAs(),
                 t.getMethod(), PaymentMethods.label(t.getMethod()),
                 t.isElectronic(), t.isAccountBased(), t.isRequiresShortCode(),
                 t.getSortOrder(), t.getStatus(), t.getStatusFlag(), inUse);
@@ -174,13 +174,13 @@ public class PaymentTypeService {
     /**
      * Restricts the catalogue to the gateway providers this deployment actually sells through.
      *
-     * <p>The table was seeded with every bank Pesi fronts, which is right for a table describing a gateway
-     * and wrong for a screen: four banks' channels offered when one of them is the bank we take money
-     * through. The list is {@link ConfigKey#PESI_PROVIDERS}, so widening it later is an edit rather than a
+     * <p>The table was seeded with every bank the reference gateway fronts, which is right for a table
+     * describing a gateway and wrong for a screen: four banks' channels offered when one of them is the
+     * bank we take money through. The list is {@link ConfigKey#PAYMENT_PROVIDERS}, so widening it later is an edit rather than a
      * release.
      *
-     * <p>A channel with no Pesi provider passes unconditionally, and that is the reason this is a predicate
-     * rather than a plain equals. Cash and cheque are not Pesi's at all, and filtering on provider name
+     * <p>A channel with no provider passes unconditionally, and that is the reason this is a predicate
+     * rather than a plain equals. Cash and cheque belong to no gateway, and filtering on provider name
      * alone would take the two methods that always work off every screen.
      *
      * <p>Null when nothing is configured, so an empty setting adds no predicate rather than matching
@@ -190,7 +190,7 @@ public class PaymentTypeService {
         List<String> offered = offeredProviderNames(configs);
         if (offered.isEmpty()) return null;
         return (root, query, cb) -> cb.or(
-                cb.isNull(root.get("pesiProviderType")),
+                cb.isNull(root.get("providerType")),
                 root.get("providerName").in(offered));
     }
 
@@ -202,7 +202,7 @@ public class PaymentTypeService {
      * would be worse than not filtering at all.
      */
     static List<String> offeredProviderNames(ConfigurationService configs) {
-        String configured = configs.getString(ConfigKey.PESI_PROVIDERS);
+        String configured = configs.getString(ConfigKey.PAYMENT_PROVIDERS);
         if (configured == null || configured.isBlank()) return List.of();
         return Arrays.stream(configured.split(","))
                 .map(String::trim)

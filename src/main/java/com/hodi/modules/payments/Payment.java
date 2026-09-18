@@ -17,7 +17,7 @@ import java.time.OffsetDateTime;
  *
  * <p>{@code MANUAL} is the cheque, the RTGS transfer and the cash a bank reconciles, and it is not
  * scaffolding waiting for a gateway: a bank needs it in production permanently. {@code GATEWAY} rows are
- * written by an inbound Pesi notification, through the same service and the same method.
+ * written by an inbound Co-op notification, through the same service and the same method.
  *
  * <h2>Never edited, only voided</h2>
  *
