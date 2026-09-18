@@ -65,9 +65,9 @@ decision made per booking: *hold it*, *mark it*, or *leave it up*.
 ### A — The outbound client, and STK push
 1. `PesiClient` in `infra/pesi`: `X-API-Key` from configuration, quick and patient timeouts, `Outcome<T>`
    that never throws, `status == "0"` as the success test.
-2. `POST /payments/stk-push` — amount, phone, booking or listing, payment account. Returns the gateway's
-   own answer. Records a payment **only** on a confirmed success, through `PaymentService`, so a gateway
-   credit is stamped exactly as a hand-keyed one is.
+2. `POST /payments/stk-push` — amount, phone, booking or listing, payment account. Writes an **intent** and
+   returns the acknowledgement; the payment itself is written when the money lands, by the callback or by
+   the status query. See §8.3, which is the authority on this.
 3. The catalogue's STK_PUSH channels become offerable once an account exists for them.
 
 ### B — Billers and IPN, completed
@@ -100,9 +100,10 @@ what the platform cannot collect.
 
 - **The gateway's answer is the record, not our reading of it.** The raw response is stored on the payment
   exactly as the IPN payload is stored on the statement.
-- **Synchronous STK, not fire-and-forget.** Pesi holds the connection until the payer decides, so the caller
-  gets a real outcome. A payment is written on success only, and never inside an open transaction across
-  the call.
+- ~~**Synchronous STK, not fire-and-forget.**~~ **Superseded by §8.3 on 18 September**: STK push and funds
+  transfer are asynchronous, so the call is an acknowledgement rather than an outcome. A payment is still
+  written only when money has actually arrived — that part stands — but it is written by the callback or
+  by a status query, not by the return value of the request.
 - **Idempotency is by external reference.** A gateway may deliver the same credit twice; the unique index on
   the external reference is what makes the second one a no-op rather than a double posting.
 - **Cash and cheque need no configuration.** Everything else does. A channel with no account behind it is a
@@ -129,3 +130,100 @@ Each lands with its own tests and its own commit.
 - A booking marked HOLD takes its listing off the marketplace on first cleared payment; MARK leaves it up
   and flags it; NONE changes nothing.
 - `mvn package` green, `npm run build` green.
+
+---
+
+# Part II — the architecture, after reading pesi properly
+
+**Added 18 September 2026**, on the instruction that the Co-op connection should be built the way pesi
+builds it, the taking-in and display the way hodi does it, that STK and funds transfer are **asynchronous
+for now** and therefore need a status query and account validation, and that credentials belong to each
+payment type as encrypted per-type configuration driven by a JSON descriptor.
+
+## 7. What pesi actually does, and what we copy
+
+### 7.1 A super type carries a JSON descriptor of its own configuration
+`super_transaction_types.required_config_fields` is `jsonb`, and it is a *form descriptor*, scoped:
+
+```json
+{"super":[],"company":[],"business":[],"accountsLabel":"Biller",
+ "accounts":[{"key":"institutionCode","label":"Institution Code (assigned by Co-op)",
+              "type":"text","required":true},
+             {"key":"connectionPassword","label":"Co-op Connection Password",
+              "type":"password","required":true},
+             {"key":"validationUrl","label":"Validation URL",
+              "type":"text","required":true,"fullWidth":true}]}
+```
+
+Nothing in pesi's code knows what a Co-op connection ID *is*. The descriptor says which fields exist, what
+to call them, which are secret and which span the form's width; the screen renders from it and the adapter
+reads them by key. **Adding a provider is a row, not a deploy** — that is the property worth copying, and
+the reason a hardcoded credentials table would be the wrong answer here.
+
+### 7.2 Secrets are encrypted at rest, AES-256-GCM
+`EncryptionUtil` in pesi is `AES/GCM/NoPadding`, 12-byte IV, 128-bit tag. **This codebase already has the
+same thing** — `com.hodi.common.EncryptionUtil`, same transformation, already used by
+`ConfigurationService` for secret configuration values. So there is nothing to build: the `password` fields
+of the descriptor are encrypted through it on write and decrypted only where the adapter needs them.
+
+### 7.3 The category decides behaviour, never an id
+`PesiChannel` in this codebase already states the rule. The adapters hang off the same axis.
+
+## 8. The shape we are building
+
+### 8.1 Configuration, per payment type
+- `payment_types.required_config_fields jsonb` — the descriptor, in pesi's shape, seeded per channel by
+  migration.
+- `payment_accounts.config jsonb` — the values for one configured account of that type. Every field whose
+  descriptor says `"type":"password"` is stored encrypted; the rest in clear.
+- The account form renders itself from the descriptor. No screen hardcodes a Co-op field.
+- A read never returns a secret: the API answers `"••••"` for a set secret and null for an unset one, and a
+  save that sends back the mask leaves the stored value alone. Same rule `ConfigurationService` already
+  applies to secret configuration.
+
+### 8.2 Adapters, one per Co-op flow
+`CoopStkPushAdapter`, `CoopFundsTransferAdapter`, `CoopBillerAdapter`, behind one `PaymentGateway`
+interface, chosen by `PesiChannel.Category`. Each reads its credentials from the account's decrypted config
+by the descriptor's keys. All calls go to pesi over `X-API-Key`, never to Co-op directly — pesi is the
+integration surface and this platform is one of its clients.
+
+### 8.3 Asynchronous, which changes the shape of everything
+STK push and funds transfer **accept** and answer later. So:
+
+1. A **payment intent** row is written before the call: amount, booking or listing, payer, channel, our
+   own reference. It is the thing the answer lands on, whichever way it arrives.
+2. The gateway's acknowledgement moves the intent to `PENDING` with pesi's transaction id on it. **No
+   payment is written yet** — a payment means money arrived.
+3. Two ways it completes, and both must work because neither is reliable alone:
+   - **Callback**, which is the IPN path this codebase already has;
+   - **Status query** — `POST /payments/intents/{ref}/refresh`, asking pesi what became of it, for when the
+     callback never came. A scheduled sweep does the same for intents left pending, because a customer who
+     closes the tab still paid.
+4. Whichever arrives first writes the payment, keyed on the external reference, so the second is a no-op.
+
+### 8.4 Account validation before money goes out
+pesi exposes `POST /api/ext/v1/transactions/coopbank/funds-transfer/validate?accountNumber&bankCode`. The
+transfer form calls it and shows the resolved account holder's name **before** the operator commits.
+Paying the wrong account is not recoverable by us, and a name on the screen is the only check that catches
+a transposed digit.
+
+### 8.5 Display, the way hodi does it
+Statements in, matched or queued; the queue is a screen; a payment carries its statement id; the listing
+and the person are on the payment, not inferred. That is §3 C and B of Part I, unchanged.
+
+## 9. Sequence, revised
+
+1. ~~Only configured channels are offered~~ — **done**, `432881f`.
+2. ~~Cards, not dropdowns~~ — **done**, `1ca9d98`.
+3. **Config descriptors and encrypted per-type config** (§8.1) — everything else reads credentials from it.
+4. **`PesiClient` + adapters** (§8.2), with the two timeouts and `Outcome<T>` from hodi-b's client.
+5. **Intents, status query and the sweep** (§8.3).
+6. **Account validation** (§8.4).
+7. Payments tied to listing and person; the unmatched queue as a screen; the paid-listing rule.
+
+## 10. Open questions for the client
+
+- **Whose Co-op credentials?** One set for the platform, or one per selling organisation? The descriptor
+  supports both (`company` scope versus `accounts`), and the answer changes who fills the form in.
+- **Funds transfer — who may send money out?** It is the one flow that moves money away from the platform,
+  and it should probably need Maker/Checker rather than a single permission.
