@@ -710,6 +710,21 @@ public enum ConfigKey {
      * <p>Not overridable. A setting that says whether organisations may collect their own money is not
      * one an organisation may answer for itself.
      */
+    /**
+     * Whether a buyer may validate a bank slip themselves.
+     *
+     * <p>Slip validation finds an unused credit by the reference the payer quotes and applies it to their
+     * booking. Platform staff always may. Whether the buyer may — from their own account, against their
+     * own booking — is the institution's call: it saves a phone call for every transfer, and it also lets a
+     * payer probe references. OFF until somebody decides.
+     */
+    PAYMENTS_BUYER_SLIP_VALIDATION(
+            "payments.buyer.slip.validation", "BOOLEAN", "PAYMENTS", "false",
+            "Buyers may validate a bank slip",
+            "When true, a signed-in buyer paying for their own booking may enter the bank reference of a "
+                    + "transfer they made and have the matching credit applied. Platform staff can always "
+                    + "do this on a buyer's behalf.", false, false),
+
     PAYMENT_COLLECTION_SCOPE(
             "payments.collection.scope", "STRING", "PAYMENTS", "PLATFORM",
             "Who collects payments",

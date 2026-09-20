@@ -174,20 +174,25 @@ public class PaymentAccountService {
         // Narrowed to what this person can actually start against this listing. Done here rather than in
         // the browser: a form that hides a method the server would accept is a suggestion, not a rule.
         boolean byHand = mayRecordByHand(caller, booking.getPropertyId());
+        boolean slip = maySeeSlip(caller);
         return all.stream()
                 /*
                  * Two questions, not a list of channels.
                  *
-                 * <p>Can somebody start it here — an inbound account and a biller are begun by the payer
-                 * at their own bank and we find out afterwards, so offering them is offering to do
-                 * something this form cannot do. And does it credit — a transfer sends money out, and a
-                 * form for taking money must never carry a way of sending it.
+                 * <p>Can somebody start it here, and does it credit. A transfer sends money out, and a form
+                 * for taking money must never carry a way of sending it. A phone prompt is started here and
+                 * credits, so anybody who reaches this form may use it. Cash and a cheque credit, and are
+                 * narrowed by who is asking — see {@link #mayRecordByHand}.
                  *
-                 * <p>Cash and cheque pass both and are narrowed again by who is asking.
+                 * <p>An inbound account or a biller is begun by the payer at their own bank; what can be
+                 * started <em>here</em> is finding the money afterwards by the reference off the slip. So an
+                 * inbound channel is offered as slip validation, to platform staff always and to a buyer
+                 * when the institution has switched that on. The screen renders it as VALIDATE.
                  */
                 .filter(a -> {
                     CoopChannel.Category category = CoopChannel.Category.of(a.category());
                     if (category.isManual()) return byHand;
+                    if (category == CoopChannel.Category.VALIDATE) return slip;
                     return category == CoopChannel.Category.STK_PUSH;
                 })
                 .toList();
@@ -211,6 +216,15 @@ public class PaymentAccountService {
                             PaymentTypeDtos.developmentLabel(a, null));
                 })
                 .toList();
+    }
+
+    /**
+     * Whether this caller is offered slip validation: platform staff always, a buyer by the institution's
+     * setting, anybody else never. The same rule {@code SlipValidationService.maySlip} enforces on the call.
+     */
+    private boolean maySeeSlip(UserPrincipal caller) {
+        if (caller.isPlatformStaff()) return true;
+        return caller.isBuyer() && configs.getBoolean(ConfigKey.PAYMENTS_BUYER_SLIP_VALIDATION);
     }
 
     /**

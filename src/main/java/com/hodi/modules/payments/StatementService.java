@@ -146,7 +146,6 @@ public class StatementService {
         CoopStatement statement = statements.lockById(HashIdUtil.decodeId(hashId))
                 .filter(s -> scope.readsStatement(s, caller))
                 .orElseThrow(() -> new ResourceNotFoundException("Statement", hashId));
-        String before = snapshot(statement);
 
         if (statement.isMapped()) {
             throw new HodiException("This money has already been applied to booking "
@@ -165,12 +164,25 @@ public class StatementService {
         if (!access.mayRead(home, caller)) {
             throw new ResourceNotFoundException("Booking", request.bookingId());
         }
+
+        CoopStatement saved = apply(statement, booking, home, AuthContext.username());
+        return toResponse(saved, lookups(List.of(saved)));
+    }
+
+    /**
+     * The credit, applied: the one place an unplaced statement becomes a booking's payment by hand.
+     *
+     * <p>Shared by the queue's attach and by slip validation, so the two cannot disagree about what is
+     * allowed. The statement must already be locked by the caller.
+     */
+    CoopStatement apply(CoopStatement statement, UnitBooking booking, Property home, String by) {
+        String before = snapshot(statement);
         assertOpen(booking);
 
         Development development = access.developmentOf(home);
         PaymentAccount account = statement.getPaymentAccountId() == null ? null
                 : accounts.findById(statement.getPaymentAccountId()).orElse(null);
-        if (account != null) {
+        if (account != null && !collectsFor(account, home, development)) {
             /*
              * The money landed in a particular account, and that account collects for particular listings.
              * Applying a seller's credit to another seller's booking is not reconciliation, it is moving
@@ -178,28 +190,31 @@ public class StatementService {
              * choosing the wrong row. Money in an account nobody registered has no owner yet, and placing
              * it is exactly the decision this screen exists for.
              */
-            Long ownerTenant = development == null ? home.getTenantId() : development.getTenantId();
-            Long ownerInstitution = development == null ? home.getInstitutionId() : development.getInstitutionId();
-            if (!account.belongsTo(ownerTenant, ownerInstitution)
-                    || !account.reaches(development == null ? null : development.getId())) {
-                throw new HodiException("This money landed in " + accountLabel(account)
-                        + ", which does not collect for "
-                        + (development == null ? home.getTitle() : development.getName()) + ".",
-                        HttpStatus.CONFLICT);
-            }
+            throw new HodiException("This money landed in " + accountLabel(account)
+                    + ", which does not collect for "
+                    + (development == null ? home.getTitle() : development.getName()) + ".",
+                    HttpStatus.CONFLICT);
         }
 
         // The same writer an automatic match uses, so a payment placed by hand carries the same names,
         // snapshots, channel and statement id as one that placed itself.
         Payment payment = paymentService.recordFromGateway(booking, statement, account);
-        statement.placedOn(payment.getId(), booking.getId(), AuthContext.username());
+        statement.placedOn(payment.getId(), booking.getId(), by);
         CoopStatement saved = statements.save(statement);
 
         audit.record(AppConstant.AUDIT_STATEMENT_ATTACHED, "CoopStatement", saved.getId(), before,
                 snapshot(saved));
         log.info("Statement {} applied to booking {} as {} by {}", saved.getRefNo(), booking.getReference(),
-                payment.getReference(), AuthContext.username());
-        return toResponse(saved, lookups(List.of(saved)));
+                payment.getReference(), by);
+        return saved;
+    }
+
+    /** Whether money that landed in this account may be applied to a booking on this listing. */
+    boolean collectsFor(PaymentAccount account, Property home, Development development) {
+        Long ownerTenant = development == null ? home.getTenantId() : development.getTenantId();
+        Long ownerInstitution = development == null ? home.getInstitutionId() : development.getInstitutionId();
+        return account.belongsTo(ownerTenant, ownerInstitution)
+                && account.reaches(development == null ? null : development.getId());
     }
 
     /**
@@ -303,10 +318,10 @@ public class StatementService {
 
     // ── shaping ───────────────────────────────────────────────────────────────
 
-    private record Lookups(Map<Long, PaymentAccount> accounts, Map<Long, PaymentType> types,
+    record Lookups(Map<Long, PaymentAccount> accounts, Map<Long, PaymentType> types,
                            Map<Long, Payment> payments, Map<Long, UnitBooking> bookings) {}
 
-    private Lookups lookups(List<CoopStatement> rows) {
+    Lookups lookups(List<CoopStatement> rows) {
         if (rows.isEmpty()) return new Lookups(Map.of(), Map.of(), Map.of(), Map.of());
         Map<Long, PaymentAccount> accs = accounts.findAllById(ids(rows, CoopStatement::getPaymentAccountId))
                 .stream().collect(Collectors.toMap(PaymentAccount::getId, Function.identity()));
@@ -325,7 +340,7 @@ public class StatementService {
         return rows.stream().map(of).filter(Objects::nonNull).distinct().toList();
     }
 
-    private StatementResponse toResponse(CoopStatement s, Lookups lookups) {
+    StatementResponse toResponse(CoopStatement s, Lookups lookups) {
         PaymentAccount account = lookups.accounts().get(s.getPaymentAccountId());
         PaymentType type = account == null ? null : lookups.types().get(account.getPaymentTypeId());
         Payment payment = lookups.payments().get(s.getMappedPaymentId());
@@ -372,7 +387,7 @@ public class StatementService {
                 : payments.findById(paymentId).map(Payment::getReference).orElse("—");
     }
 
-    private static String accountLabel(PaymentAccount account) {
+    static String accountLabel(PaymentAccount account) {
         return account.getAccountName() == null ? "account " + account.getAccountNo()
                 : account.getAccountName() + " (" + account.getAccountNo() + ")";
     }

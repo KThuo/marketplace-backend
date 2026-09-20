@@ -26,6 +26,16 @@ public interface CoopStatementRepository extends JpaRepository<CoopStatement, Lo
     @Query("select s from CoopStatement s where s.id = :id and s.status <> 5")
     Optional<CoopStatement> lockById(@Param("id") Long id);
 
+    /**
+     * Every statement a bank reference could mean: the bank's own id, or what the payer typed.
+     *
+     * <p>Whatever its state. A slip lookup that searched only unused rows would find nothing for a slip
+     * already applied, and "nothing" is what makes a clerk key it by hand a second time.
+     */
+    @Query("select s from CoopStatement s where s.status <> 5 "
+            + "and (upper(s.refNo) = :reference or upper(s.reference) = :reference) order by s.id")
+    List<CoopStatement> findAnyByReference(@Param("reference") String reference);
+
     /** What is waiting to be placed: how many, how much, and how long the oldest has waited. */
     @Query("select count(s), coalesce(sum(s.amount), 0), min(s.paidAt) from CoopStatement s "
             + "where s.state = 'UNMAPPED' and s.status <> 5")

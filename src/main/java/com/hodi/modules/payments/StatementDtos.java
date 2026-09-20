@@ -40,6 +40,18 @@ public final class StatementDtos {
             @NotBlank(message = "Say why this is not money for a booking")
             @Size(max = 500) String reason) {}
 
+    /**
+     * A slip, confirmed and applied in one step. A reference and a booking; never an amount.
+     *
+     * <p>Its own request rather than the ordinary receive form's, so there is no path on which somebody
+     * sends a reference <em>and</em> a figure the bank did not confirm.
+     */
+    public record TakeSlipRequest(
+            @NotBlank(message = "Choose the booking this money is for") String bookingId,
+            @NotBlank(message = "Enter the reference from the bank")
+            @Size(min = 6, max = 64, message = "A bank reference is between six and sixty-four characters")
+            String reference) {}
+
     // ── responses ────────────────────────────────────────────────────────────
 
     /**
@@ -86,4 +98,35 @@ public final class StatementDtos {
 
     /** What is waiting to be placed. "How long the oldest has waited" says whether anyone is working the queue. */
     public record Waiting(long count, BigDecimal total, OffsetDateTime oldestPaidAt) {}
+
+    /**
+     * What a bank reference turned out to be.
+     *
+     * <p>Valid means an unused credit that collects for this booking was found, and the figures below are
+     * the bank's. Invalid carries a message and nothing else: the row it may be about is not this
+     * caller's to see.
+     */
+    public record SlipResult(
+            boolean valid,
+            String message,
+            String statementId,
+            String refNo,
+            BigDecimal amount,
+            String currency,
+            OffsetDateTime paidAt,
+            OffsetDateTime arrivedAt,
+            String payerName,
+            String payerPhone,
+            String quoted,
+            String paymentTypeId,
+            String paymentTypeName,
+            String category,
+            String accountNo,
+            String accountName) {
+
+        public static SlipResult no(String message) {
+            return new SlipResult(false, message, null, null, null, null, null, null, null, null, null,
+                    null, null, null, null, null);
+        }
+    }
 }
