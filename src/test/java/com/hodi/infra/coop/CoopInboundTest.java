@@ -98,4 +98,18 @@ class CoopInboundTest {
         assertDoesNotThrow(() -> CoopInbound.parse(Map.of()));
         assertNull(CoopInbound.parse(Map.of()).refNo());
     }
+
+    @Test
+    @DisplayName("a callback about a prompt is told apart from a credit landing in an account")
+    void aCallbackIsNotACredit() {
+        assertTrue(CoopInbound.isCallback(Map.of("MessageReference", "IN1", "MessageCode", "0",
+                "MessageDescription", "Processed")), "Co-op's own envelope");
+        assertTrue(CoopInbound.isCallback(Map.of("Body", Map.of("stkCallback", Map.of(
+                "CheckoutRequestID", "ws_CO_1", "ResultCode", 0, "ResultDesc", "ok")))), "M-Pesa's envelope");
+        assertFalse(CoopInbound.isCallback(Map.of("AcctNo", "0112", "Amount", "20.0", "EventType", "CREDIT",
+                "TransactionId", "CB1", "MessageCode", "0")),
+                "a credit that happens to carry a code is still a credit: it has an account and an amount");
+        assertFalse(CoopInbound.isCallback(Map.of()));
+        assertFalse(CoopInbound.isCallback(null));
+    }
 }

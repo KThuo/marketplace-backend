@@ -101,7 +101,6 @@ public class PaymentTypeController {
      * form loads and the person at the counter need not be the person who configures accounts.
      */
     @GetMapping("/offered/{bookingId}")
-    @PreAuthorize("hasAuthority('PAYMENTS_RECEIVE')")
     public ApiResponse<List<OfferedAccount>> offered(@PathVariable String bookingId) {
         return ApiResponse.success(accounts.offered(bookingId));
     }

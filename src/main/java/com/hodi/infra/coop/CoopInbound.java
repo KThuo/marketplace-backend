@@ -74,6 +74,24 @@ public final class CoopInbound {
     }
 
     /** Whether this notification is money arriving at all. */
+    /**
+     * Whether this is the answer to a prompt we started, rather than a credit landing in an account.
+     *
+     * <p>Two envelopes, because nobody has a specimen from Co-op: their own — {@code MessageReference}
+     * with a {@code MessageCode} — and M-Pesa's, which Co-op resells underneath and which arrives as
+     * {@code Body.stkCallback}. A credit notification carries neither; it carries an account and an
+     * amount. A callback treated as a credit would credit a cancelled prompt on its reference alone.
+     */
+    public static boolean isCallback(Map<String, Object> body) {
+        if (body == null) return false;
+        if (body.get("Body") instanceof Map<?, ?> wrapper && wrapper.get("stkCallback") instanceof Map<?, ?>) {
+            return true;
+        }
+        boolean hasCode = first(body, "MessageCode", "messageCode") != null;
+        boolean hasCredit = first(body, "AcctNo", "acctNo", "Amount", "amount") != null;
+        return hasCode && !hasCredit;
+    }
+
     public static boolean isCredit(Map<String, Object> body) {
         String event = first(body, "EventType", "eventType");
         return event == null || event.isBlank() || CREDIT.equalsIgnoreCase(event.trim());

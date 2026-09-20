@@ -75,7 +75,7 @@ public class CoopStkService {
         UnitBooking booking = bookings.findById(bookingId)
                 .orElseThrow(() -> new HodiException("That booking no longer exists.", HttpStatus.CONFLICT));
         PaymentType channel = liveChannel(CoopChannel.COOP_STK_PUSH.name());
-        PaymentAccount account = accountFor(channel);
+        PaymentAccount account = accountFor(channel, booking);
 
         String prompting = phone == null || phone.isBlank() ? booking.getBuyerPhone() : phone.trim();
         if (prompting == null || prompting.isBlank()) {
@@ -146,60 +146,104 @@ public class CoopStkService {
                 "Prompt sent. Waiting for the customer to approve it on their phone.");
     }
 
+    // ── the answer, when it comes to us ───────────────────────────────────────
+
     /**
-     * Prompts the phone and waits at the screen for the customer to decide.
+     * Co-op calling back about a prompt we started.
      *
-     * <p>This is the whole interaction. A prompt answered with "sent" makes somebody watch a list for a
-     * row that appears a minute later; a prompt that waits answers the question they actually asked —
-     * did this person pay. So the request is held while they walk to their handset and type a PIN, and
-     * what comes back is the payment rather than a receipt for having asked.
+     * <p>Two envelopes are accepted, because nobody has a specimen: Co-op's own ({@code MessageReference},
+     * {@code MessageCode}, {@code MessageDescription}) and M-Pesa's ({@code Body.stkCallback} with
+     * {@code CheckoutRequestID}, {@code ResultCode}, {@code ResultDesc} and a {@code CallbackMetadata}
+     * carrying the receipt). Correlated on our reference first, then on the bank's.
      *
-     * <p><b>Waiting is not polling the bank.</b> This re-reads our own row, which the callback writes.
-     * One status query is spent near the end, when the callback has clearly not come, because by then
-     * asking is cheaper than making a person wait for the sweep.
+     * <p>Untrusted callbacks settle nothing. A forged "success" quoting a guessable reference would
+     * otherwise credit a buyer; the intent stays in flight and the status enquiry decides.
      *
-     * <p>Running out of time is not a failure: the intent stays in flight, the caller is told so in
-     * words, and the sweep settles it exactly as it would have anyway.
+     * @return what the callback was about, for the log and the acknowledgement; null when it matched nothing
      */
-    public PaymentIntent pushAndWait(Long bookingId, BigDecimal amount, String phone, String narration,
-                                     String by) {
-        PaymentIntent intent = push(bookingId, amount, phone, narration, by);
-        if (!intent.inFlight()) return intent;
+    public PaymentIntent callback(Map<String, Object> body, boolean trusted) {
+        Map<String, Object> mpesa = stkCallback(body);
+        String ourReference = text(body.get("MessageReference"), body.get("messageReference"));
+        String checkout = mpesa == null ? null : text(mpesa.get("CheckoutRequestID"));
 
-        /*
-         * Only ever reached when the prompt is genuinely in flight.
-         *
-         * <p>A push that never left — a firewall rejection, a missing setting — has already settled the
-         * intent above and returns before this line. Waiting on one of those held the screen for the
-         * full wait on an answer we already had, which is the opposite of what the wait is for.
-         */
-        long deadline = System.currentTimeMillis()
-                + configs.getInt(ConfigKey.COOP_STK_WAIT_SECONDS) * 1000L;
-        boolean askedOnce = false;
+        PaymentIntent intent = null;
+        if (ourReference != null) {
+            intent = intents.findByReference(ourReference).or(() -> intents.findByBankReference(ourReference))
+                    .orElse(null);
+        }
+        if (intent == null && checkout != null) {
+            intent = intents.findByBankReference(checkout).or(() -> intents.findByReference(checkout))
+                    .orElse(null);
+        }
+        if (intent == null) {
+            log.info("Co-op STK callback matched no prompt (reference {}, checkout {})", ourReference, checkout);
+            return null;
+        }
+        if (!trusted) {
+            log.warn("Unauthenticated Co-op STK callback for {} ignored; the status enquiry will settle it",
+                    intent.getReference());
+            return intent;
+        }
 
-        while (System.currentTimeMillis() < deadline) {
-            try {
-                Thread.sleep(2000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+        String coopCode = text(body.get("MessageCode"), body.get("messageCode"));
+        String bankReference = checkout != null ? checkout : CoopAnswer.bankReference(body);
+        String raw = toJson(body);
+
+        if (coopCode != null) {
+            CoopAnswer.Outcome outcome = read(body);
+            String said = CoopAnswer.description(body);
+            return switch (outcome) {
+                case SUCCESS -> settlement.succeeded(intent.getId(), bankReference,
+                        CoopAnswer.receipt(body), said, raw, "callback");
+                case FAILED -> settlement.failed(intent.getId(), bankReference,
+                        "Co-op says it did not go through: " + said);
+                case PENDING -> settlement.inFlight(intent.getId(), bankReference,
+                        "Co-op says it is still in progress: " + said);
+            };
+        }
+        if (mpesa != null) {
+            String resultCode = text(mpesa.get("ResultCode"));
+            String said = text(mpesa.get("ResultDesc"));
+            if ("0".equals(resultCode)) {
+                return settlement.succeeded(intent.getId(), bankReference, metadataItem(mpesa, "MpesaReceiptNumber"),
+                        said == null ? "success" : said, raw, "callback");
             }
+            if (resultCode == null || resultCode.isBlank()) {
+                return settlement.inFlight(intent.getId(), bankReference,
+                        "A callback arrived with no result code; waiting for the status enquiry.");
+            }
+            return settlement.failed(intent.getId(), bankReference,
+                    "Co-op says it did not go through: " + (said == null ? "code " + resultCode : said));
+        }
+        return settlement.inFlight(intent.getId(), bankReference,
+                "A callback arrived that could not be read; waiting for the status enquiry.");
+    }
 
-            // A fresh read: the callback commits in its own transaction, so this sees it.
-            PaymentIntent latest = intents.findById(intent.getId()).orElse(intent);
-            if (!latest.inFlight()) return latest;
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> stkCallback(Map<String, Object> body) {
+        if (body == null || !(body.get("Body") instanceof Map<?, ?> wrapper)) return null;
+        return wrapper.get("stkCallback") instanceof Map<?, ?> callback ? (Map<String, Object>) callback : null;
+    }
 
-            // One query, once the callback is clearly late, rather than making the person wait for the
-            // sweep's next pass. The sweep's cap is untouched — this attempt is not counted.
-            long remaining = deadline - System.currentTimeMillis();
-            if (!askedOnce && remaining < 20_000) {
-                askedOnce = true;
-                query(latest.getId(), false, by);
-                PaymentIntent asked = intents.findById(intent.getId()).orElse(latest);
-                if (!asked.inFlight()) return asked;
+    /** {@code CallbackMetadata.Item[]} is a list of {@code {Name, Value}}; this reads one by name. */
+    private static String metadataItem(Map<String, Object> callback, String name) {
+        if (!(callback.get("CallbackMetadata") instanceof Map<?, ?> metadata)) return null;
+        if (!(metadata.get("Item") instanceof List<?> items)) return null;
+        for (Object item : items) {
+            if (item instanceof Map<?, ?> entry && name.equalsIgnoreCase(String.valueOf(entry.get("Name")))) {
+                return text(entry.get("Value"));
             }
         }
-        return intents.findById(intent.getId()).orElse(intent);
+        return null;
+    }
+
+    private static String text(Object... candidates) {
+        for (Object candidate : candidates) {
+            if (candidate == null) continue;
+            String value = String.valueOf(candidate).trim();
+            if (!value.isEmpty()) return value;
+        }
+        return null;
     }
 
     // ── asking what became of it ──────────────────────────────────────────────
@@ -335,15 +379,27 @@ public class CoopStkService {
                         "The Co-op phone prompt is not switched on yet.", HttpStatus.CONFLICT));
     }
 
-    /** The account this channel collects into. One per channel on this platform. */
-    private PaymentAccount accountFor(PaymentType channel) {
-        // Live only: a pending account is one nobody has approved, and prompting money into it would
-        // route real payments through a destination that has not had its second pair of eyes.
-        return accounts.findByPaymentTypeIdNotArchived(channel.getId()).stream()
+    /**
+     * The account this prompt collects into.
+     *
+     * <p>The booking's own organisation's account when it has one that reaches this development, else the
+     * platform's — the same "stands behind" rule the receive form uses — and always the oldest such row,
+     * so which account collects does not change between restarts. Live only: a pending account is one
+     * nobody has approved, and prompting money into it would route real payments through a destination
+     * that has not had its second pair of eyes.
+     */
+    private PaymentAccount accountFor(PaymentType channel, UnitBooking booking) {
+        List<PaymentAccount> live = accounts.findByPaymentTypeIdNotArchived(channel.getId()).stream()
                 .filter(a -> a.getStatus() != null
                         && (a.getStatus() == AppConstant.STATUS_ACTIVE
                             || a.getStatus() == AppConstant.STATUS_EDITED))
+                .filter(a -> a.reaches(booking.getDevelopmentId()))
+                .sorted(java.util.Comparator.comparing(PaymentAccount::getId))
+                .toList();
+        return live.stream()
+                .filter(a -> a.belongsTo(booking.getTenantId(), booking.getInstitutionId()))
                 .findFirst()
+                .or(() -> live.stream().filter(PaymentAccount::isPlatformOwned).findFirst())
                 .orElseThrow(() -> new HodiException(
                         "No approved account is set up for the Co-op phone prompt yet.",
                         HttpStatus.CONFLICT));

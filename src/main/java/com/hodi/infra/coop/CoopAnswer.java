@@ -90,7 +90,34 @@ public final class CoopAnswer {
             String value = text(response.get(key));
             if (!value.isEmpty()) return value;
         }
-        return null;
+        return receiptInMetadata(response.get("TransactionMetadata"));
+    }
+
+    /**
+     * The M-Pesa receipt out of the status enquiry's {@code TransactionMetadata.Items}.
+     *
+     * <p>Observed, not documented: the enquiry answers with name–value items, and the receipt is the
+     * second part of the one called {@code Narration}, written {@code "<description>~<receipt>~<date>"}.
+     * An item plainly named a receipt is taken first, in case the bank ever adds one.
+     */
+    @SuppressWarnings("unchecked")
+    static String receiptInMetadata(Object metadata) {
+        if (!(metadata instanceof Map<?, ?> map)) return null;
+        Object items = map.get("Items");
+        if (!(items instanceof java.util.List<?> list)) return null;
+        String fromNarration = null;
+        for (Object item : list) {
+            if (!(item instanceof Map<?, ?> entry)) continue;
+            String name = text(entry.get("Name"));
+            String value = text(entry.get("Value"));
+            if (value.isEmpty()) continue;
+            if (name.toLowerCase(Locale.ROOT).contains("receipt")) return value;
+            if ("Narration".equalsIgnoreCase(name)) {
+                String[] parts = value.split("~", -1);
+                if (parts.length >= 2 && !parts[1].isBlank()) fromNarration = parts[1].trim();
+            }
+        }
+        return fromNarration;
     }
 
     /** A configured comma-separated list, as a set. Blank means an empty set, which matches nothing. */

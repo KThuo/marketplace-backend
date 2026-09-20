@@ -97,4 +97,26 @@ class CoopAnswerTest {
         assertEquals("Insufficient funds",
                 CoopAnswer.description(Map.of("MessageCode", "7", "MessageDescription", "Insufficient funds")));
     }
+
+    @Test
+    @DisplayName("the receipt is read out of the enquiry's narration item, second field, or a receipt-named item")
+    void receiptIsReadOutOfTheEnquirysMetadata() {
+        Map<String, Object> narrated = Map.of(
+                "MessageCode", "0",
+                "TransactionMetadata", Map.of("Items", java.util.List.of(
+                        Map.of("Name", "Amount", "Value", "950000"),
+                        Map.of("Name", "Narration", "Value", "Payment for BK1~TIP6V5IRAG~2026-09-20"))));
+        assertEquals("TIP6V5IRAG", CoopAnswer.receipt(narrated),
+                "observed shape: <description>~<receipt>~<date>");
+
+        Map<String, Object> named = Map.of(
+                "TransactionMetadata", Map.of("Items", java.util.List.of(
+                        Map.of("Name", "MpesaReceiptNumber", "Value", "TIP6V5IRAH"),
+                        Map.of("Name", "Narration", "Value", "x~WRONG~y"))));
+        assertEquals("TIP6V5IRAH", CoopAnswer.receipt(named), "an item plainly named a receipt wins");
+
+        assertNull(CoopAnswer.receipt(Map.of("MessageCode", "0")), "and nothing is invented");
+        assertNull(CoopAnswer.receipt(Map.of("TransactionMetadata", Map.of("Items", java.util.List.of(
+                Map.of("Name", "Narration", "Value", "no tildes here"))))));
+    }
 }

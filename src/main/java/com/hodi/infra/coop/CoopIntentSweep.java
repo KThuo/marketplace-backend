@@ -35,12 +35,34 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CoopIntentSweep {
 
+    /** One number for the one sweep. Two instances asking Co-op about the same prompt is twice the load and a race. */
+    private static final long LOCK_KEY = 7_260_920_001L;
+
     private final PaymentIntentRepository intents;
     private final CoopStkService stk;
     private final ConfigurationService configs;
+    private final org.springframework.transaction.support.TransactionTemplate newTransaction;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
     @Scheduled(fixedRate = 30_000)
     public void chaseUnanswered() {
+        /*
+         * One instance at a time. A transaction-scoped advisory lock, so it is released however the pass
+         * ends and needs no table of its own; an instance that finds it held skips this pass rather than
+         * waiting, because the other instance is doing exactly the same work.
+         */
+        newTransaction.executeWithoutResult(status -> {
+            Boolean acquired = jdbc.queryForObject("select pg_try_advisory_xact_lock(?)", Boolean.class, LOCK_KEY);
+            if (!Boolean.TRUE.equals(acquired)) {
+                log.debug("Another instance is chasing unanswered payments; skipping this pass");
+                return;
+            }
+            chase();
+        });
+    }
+
+    /** The pass itself. Package-private so a test can run it without the scheduler or the lock. */
+    void chase() {
         /*
          * Everything in flight that was asked at all. The index narrows to PROCESSING; each intent's own
          * deadline decides in Java, because the timeout is a property of the payment — copied onto it when

@@ -188,6 +188,40 @@ public class BookingService {
         return toResponse(requireReadable(bookingHashId));
     }
 
+    // ── the buyer's own ───────────────────────────────────────────────────────
+
+    /** The signed-in buyer's bookings, newest first, with what each owes. */
+    @Transactional(readOnly = true)
+    public List<BookingResponse> mine() {
+        UserPrincipal caller = AuthContext.require();
+        return repository.findForBuyer(caller.getUserId()).stream().map(this::toResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public BookingResponse mine(String bookingHashId) {
+        return toResponse(requireMine(bookingHashId));
+    }
+
+    @Transactional(readOnly = true)
+    public List<InstalmentResponse> mySchedule(String bookingHashId) {
+        return scheduleOf(requireMine(bookingHashId));
+    }
+
+    /**
+     * The booking, if it is the caller's own.
+     *
+     * <p>By identity, not by name: a booking carries the buyer's user id when they signed up, and that is
+     * the only thing that makes "my bookings" mean anything. A booking taken over the counter for somebody
+     * with no account is nobody's to see here until the sales office links it.
+     */
+    public UnitBooking requireMine(String bookingHashId) {
+        UserPrincipal caller = AuthContext.require();
+        return repository.findById(HashIdUtil.decodeId(bookingHashId))
+                .filter(b -> b.getStatus() != AppConstant.STATUS_DELETED)
+                .filter(b -> b.getBuyerUserId() != null && b.getBuyerUserId().equals(caller.getUserId()))
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingHashId));
+    }
+
     @Transactional(readOnly = true)
     public List<InstalmentResponse> schedule(String developmentHashId, String bookingHashId) {
         Development development = requireVisible(developmentHashId);

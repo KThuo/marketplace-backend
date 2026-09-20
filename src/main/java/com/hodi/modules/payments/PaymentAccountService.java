@@ -159,13 +159,18 @@ public class PaymentAccountService {
          * <p>Without a development there is nothing to narrow by, so the owner's organisation-wide
          * accounts are the answer — which is what an account with no development means anyway.
          */
+        // A buyer reaches their own booking by identity, and nobody else's by any route.
+        if (caller.isBuyer() && !java.util.Objects.equals(booking.getBuyerUserId(), caller.getUserId())) {
+            throw new ResourceNotFoundException("Booking", bookingHash);
+        }
+
         List<OfferedAccount> all;
         if (booking.getDevelopmentId() == null) {
             all = offeredForOwner(new Owner(booking.getTenantId(), booking.getInstitutionId()));
         } else {
             Development development = developments.findById(booking.getDevelopmentId())
                     .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingHash));
-            if (!visibility.mayRead(development, caller)) {
+            if (!caller.isBuyer() && !visibility.mayRead(development, caller)) {
                 throw new ResourceNotFoundException("Booking", bookingHash);
             }
             all = offeredFor(development);

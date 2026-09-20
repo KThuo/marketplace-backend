@@ -14,6 +14,11 @@ public interface UnitBookingRepository
 
     Optional<UnitBooking> findByReference(String reference);
 
+    /** A buyer's own bookings, by identity: the ones they can pay and read receipts for. */
+    @Query("select b from UnitBooking b where b.buyerUserId = :userId and b.status <> 5 "
+            + "order by b.bookedOn desc, b.id desc")
+    List<UnitBooking> findForBuyer(@Param("userId") Long userId);
+
     /**
      * The booking currently holding a unit, if any.
      *

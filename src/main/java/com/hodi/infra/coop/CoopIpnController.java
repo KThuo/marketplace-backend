@@ -48,6 +48,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class CoopIpnController {
 
     private final CoopIpnService service;
+    private final CoopStkService prompts;
 
     /**
      * @param authorization Co-op's HTTP Basic credentials. Verified against the configured pair; while
@@ -79,6 +80,21 @@ public class CoopIpnController {
             log.warn("Refused a Co-op notification from {} — not in the allowed addresses", caller);
             return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
                     .body(IpnAck.retry("Not an address we accept notifications from"));
+        }
+
+        /*
+         * A callback about a prompt we started is not a credit landing in an account: it carries a result
+         * code and no amount, and a cancelled prompt treated as a credit would be credited on its reference
+         * alone. It goes to the prompt it answers instead. Always acknowledged, matched or not.
+         */
+        if (CoopInbound.isCallback(body)) {
+            try {
+                var intent = prompts.callback(body, service.isTrusted(authorization));
+                return ResponseEntity.ok(IpnAck.accepted(intent == null ? null : intent.getReference()));
+            } catch (Exception e) {
+                log.error("Could not settle a Co-op STK callback: {}", e.getMessage(), e);
+                return ResponseEntity.ok(IpnAck.retry("Could not record the callback; please retry"));
+            }
         }
 
         IpnPayload payload = CoopInbound.parse(body);
