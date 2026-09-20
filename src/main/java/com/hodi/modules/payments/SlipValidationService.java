@@ -69,7 +69,13 @@ public class SlipValidationService {
     private final StatementService reconciliation;
     private final ConfigurationService configs;
 
-    /** What the reference the payer quoted turns out to be, for this booking. */
+    /**
+     * What a bank reference turns out to be, for this booking.
+     *
+     * <p>The bank's reference and nothing else. What the payer typed into the narration used to count as
+     * well, and a slip "validated" against the payer's own words is not validated against anything: the
+     * words are whatever they chose, the reference is what the bank issued for the money.
+     */
     @Transactional(readOnly = true)
     public SlipResult validate(String reference, String bookingHash) {
         UserPrincipal caller = AuthContext.require();

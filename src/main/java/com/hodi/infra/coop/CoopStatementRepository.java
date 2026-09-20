@@ -32,8 +32,7 @@ public interface CoopStatementRepository extends JpaRepository<CoopStatement, Lo
      * <p>Whatever its state. A slip lookup that searched only unused rows would find nothing for a slip
      * already applied, and "nothing" is what makes a clerk key it by hand a second time.
      */
-    @Query("select s from CoopStatement s where s.status <> 5 "
-            + "and (upper(s.refNo) = :reference or upper(s.reference) = :reference) order by s.id")
+    @Query("select s from CoopStatement s where s.status <> 5 and upper(s.refNo) = :reference order by s.id")
     List<CoopStatement> findAnyByReference(@Param("reference") String reference);
 
     /** What is waiting to be placed: how many, how much, and how long the oldest has waited. */

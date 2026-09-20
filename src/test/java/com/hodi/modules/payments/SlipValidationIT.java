@@ -193,7 +193,7 @@ class SlipValidationIT {
     }
 
     @Test
-    @DisplayName("an unused credit is found by the bank's reference or by the payer's words, with the bank's figures")
+    @DisplayName("an unused credit is found by the bank's reference, never by the payer's words, with the bank's figures")
     void anUnusedCreditIsFoundAndDescribed() {
         CoopStatement credit = unused(till, "REF-S2K2-JULY", "125000");
 
@@ -207,8 +207,8 @@ class SlipValidationIT {
         assertTrue(byBankRef.message().contains("KCB Till"), byBankRef.message());
 
         SlipResult byQuoted = slips.validate("ref-s2k2-july", booking.id());
-        assertTrue(byQuoted.valid(), "what the payer typed is a reference too");
-        assertEquals(byBankRef.statementId(), byQuoted.statementId());
+        assertFalse(byQuoted.valid(), "what the payer typed is their words, not the bank's reference");
+        assertNull(byQuoted.statementId());
     }
 
     // ── the take ──────────────────────────────────────────────────────────────
