@@ -4,8 +4,6 @@ import com.hodi.common.ApiResponse;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
 import com.hodi.modules.bookings.BookingDtos.InstalmentResponse;
 import com.hodi.modules.payments.PaymentDtos.PaymentResponse;
-import com.hodi.modules.payments.PaymentIntentService;
-import com.hodi.modules.payments.PaymentIntentService.IntentResponse;
 import com.hodi.modules.payments.PaymentQueryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,7 +30,6 @@ public class MyBookingsController {
 
     private final BookingService bookings;
     private final PaymentQueryService payments;
-    private final PaymentIntentService intents;
 
     @GetMapping
     public ApiResponse<List<BookingResponse>> mine() {
@@ -54,11 +51,5 @@ public class MyBookingsController {
     public ApiResponse<List<PaymentResponse>> payments(@PathVariable String hashId) {
         UnitBooking booking = bookings.requireMine(hashId);
         return ApiResponse.success(payments.forBooking(booking.getId()));
-    }
-
-    /** What they have asked to pay and where each ask stands, so a prompt that outlived the screen is not lost. */
-    @GetMapping("/{hashId}/intents")
-    public ApiResponse<List<IntentResponse>> intents(@PathVariable String hashId) {
-        return ApiResponse.success(intents.forBooking(hashId));
     }
 }

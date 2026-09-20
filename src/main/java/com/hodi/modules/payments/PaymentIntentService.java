@@ -136,10 +136,19 @@ public class PaymentIntentService {
         return toResponse(intent, caller);
     }
 
-    /** Every ask against a booking, newest first. */
+    /**
+     * Every ask against a booking, newest first. The sales office's list, not the buyer's.
+     *
+     * <p>A buyer follows the one prompt they just sent through {@link #find}; a history of every attempt,
+     * with what went wrong each time, is a working record for whoever chases payments and reads as a
+     * list of failures to whoever owes the money.
+     */
     @Transactional(readOnly = true)
     public List<IntentResponse> forBooking(String bookingHash) {
         UserPrincipal caller = AuthContext.require();
+        if (caller.isBuyer()) {
+            throw new HodiException("That list is kept by the sales office.", HttpStatus.FORBIDDEN);
+        }
         UnitBooking booking = readable(bookingHash, caller);
         return intents.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
                 .map(intent -> toResponse(intent, caller)).toList();
@@ -188,9 +197,11 @@ public class PaymentIntentService {
             case PaymentIntent.SUCCEEDED -> full.processingReason();
             default -> BUYER_WAITING;
         };
+        // No trace id either: it is the sales office's handle into our log, and a customer quoting it
+        // to the bank or to us gains nothing they would not get from the payment reference.
         return new IntentResponse(full.id(), full.reference(), full.bookingId(), full.state(), full.settled(),
                 full.amount(), full.currency(), full.phoneNo(), full.bankReference(), full.receipt(),
-                full.paymentId(), said, full.traceId(), full.statusQueryAttempts(), full.processedAt(),
+                full.paymentId(), said, null, full.statusQueryAttempts(), full.processedAt(),
                 full.createdAt());
     }
 

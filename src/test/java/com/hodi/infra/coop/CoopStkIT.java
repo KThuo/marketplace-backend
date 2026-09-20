@@ -366,9 +366,10 @@ class CoopStkIT {
         IntentResponse asTheBuyer = prompts.find(HashIdUtil.encodeId(raw));
         assertEquals(PaymentIntentService.BUYER_FAILED, asTheBuyer.processingReason());
         assertFalse(asTheBuyer.processingReason().toLowerCase().contains("firewall"));
-        assertEquals(intent.traceId(), asTheBuyer.traceId(), "the same handle, so support finds the same lines");
-        assertEquals(PaymentIntentService.BUYER_FAILED,
-                prompts.forBooking(HashIdUtil.encodeId(bookingRaw)).get(0).processingReason());
+        assertNull(asTheBuyer.traceId(), "the handle is the sales office's, not the customer's");
+        String theirs = HashIdUtil.encodeId(bookingRaw);
+        HodiException notTheirs = assertThrows(HodiException.class, () -> prompts.forBooking(theirs));
+        assertEquals(HttpStatus.FORBIDDEN, notTheirs.getStatus(), "the history of attempts is staff's");
     }
 
     // ── the answer ────────────────────────────────────────────────────────────
@@ -483,7 +484,7 @@ class CoopStkIT {
         assertEquals(PaymentIntent.PROCESSING, intent.state());
         assertEquals("+254712000111", intent.phoneNo(), "their own phone, whatever the request said");
         assertEquals(intent.id(), prompts.find(intent.id()).id(), "and they may poll it");
-        assertEquals(1, prompts.forBooking(mine).size());
+        assertThrows(HodiException.class, () -> prompts.forBooking(mine), "but not list every attempt");
 
         signInAsBuyer(buyerUser + 100_000);
         String notMine = HashIdUtil.encodeId(bookingRaw);

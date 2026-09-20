@@ -1,6 +1,7 @@
 package com.hodi.modules.bookings;
 
 import com.hodi.common.AppConstant;
+import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
@@ -142,14 +143,14 @@ class MyBookingsIT {
         String hash = HashIdUtil.encodeId(bookingRaw);
         assertEquals(1, queries.forBooking(bookings.requireMine(hash).getId()).size(), "the receipt");
         assertEquals(2, bookings.mySchedule(hash).size());
-        assertTrue(intents.forBooking(hash).isEmpty(), "nothing asked for yet");
+        // The history of attempts is the sales office's: a buyer follows the one prompt they sent, no more.
+        assertThrows(HodiException.class, () -> intents.forBooking(hash));
 
         signInAsBuyer(stranger);
         assertTrue(bookings.mine().stream().noneMatch(b -> b.reference().equals(booking.reference())),
                 "the same name on the booking does not make it theirs");
         String asStranger = HashIdUtil.encodeId(bookingRaw);
         assertThrows(ResourceNotFoundException.class, () -> bookings.mine(asStranger));
-        assertThrows(ResourceNotFoundException.class, () -> intents.forBooking(asStranger));
     }
 
     @Test
