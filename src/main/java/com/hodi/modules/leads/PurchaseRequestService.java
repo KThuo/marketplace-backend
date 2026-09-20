@@ -80,6 +80,16 @@ public class PurchaseRequestService {
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
         Property property = properties.findLiveByReference(EnquiryService.trim(request.propertyReference()))
                 .orElseThrow(() -> new ResourceNotFoundException("Listing", request.propertyReference()));
+        if (property.isUnitTypeListing()) {
+            /*
+             * An offer is for a home, not for a kind of home. A typology card stands for many units, and an
+             * offer accepted against it could not become a booking: nobody could say which flat was sold.
+             * The marketplace asks the buyer to pick one before this is reached; the guard is for anything
+             * that does not.
+             */
+            throw new HodiException("Make the offer on a specific home — open one of this listing's units "
+                    + "and offer there.", HttpStatus.CONFLICT);
+        }
 
         repository.findLiveFor(userId, property.getId()).ifPresent(existing -> {
             throw new HodiException(

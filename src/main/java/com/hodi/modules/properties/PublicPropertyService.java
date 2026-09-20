@@ -53,6 +53,7 @@ public class PublicPropertyService {
     private final com.hodi.modules.developments.PublicDevelopmentService publicDevelopments;
     private final com.hodi.modules.developments.UnitFeatureRepository features;
     private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
+    private final com.hodi.modules.developments.AmenityService amenityScopes;
     private final com.hodi.modules.media.MediaAssetService mediaAssets;
 
     @Transactional(readOnly = true)
@@ -382,9 +383,10 @@ public class PublicPropertyService {
     /**
      * What the place comes with — the listing's own, and its typology's when it is a unit.
      *
-     * <p>Both levels, because a buyer does not distinguish them: a flat's balcony is recorded on the flat
-     * and the block's borehole on the kind of home, and a list showing one and not the other describes half
-     * a home. Deduplicated by code, because a feature recorded in both places is still one amenity.
+     * <p>Every level, because a buyer does not distinguish them: a flat's balcony is recorded on the flat,
+     * the kind's fittings on the kind of home, and the estate's pool and gate on the development, and a list
+     * showing one and not the others describes part of a home. Deduplicated by code, because a feature
+     * recorded in two places is still one amenity.
      *
      * <p>Ordered by the catalogue's own sort order, which puts water and power first — in this market they
      * are asked about before the bedrooms.
@@ -396,6 +398,12 @@ public class PublicPropertyService {
         features.findForUnit(p.getId()).forEach(f -> codes.add(f.getFeatureCode()));
         for (Long typeId : unitTypeIds) {
             features.findForUnitType(typeId).forEach(f -> codes.add(f.getFeatureCode()));
+        }
+        // And the estate's: the pool, the gate, the borehole are every home's in it. A flat's page that
+        // listed its pantry and not the block's borehole described half a home.
+        if (p.getDevelopmentId() != null) {
+            codes.addAll(amenityScopes.codesFor(
+                    com.hodi.modules.developments.AmenityService.Scope.DEVELOPMENT, p.getDevelopmentId()));
         }
         if (codes.isEmpty()) return java.util.List.of();
 
