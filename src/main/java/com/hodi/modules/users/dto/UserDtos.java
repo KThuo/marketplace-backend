@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 public final class UserDtos {
 
@@ -63,7 +64,26 @@ public final class UserDtos {
              */
             boolean awaitingApproval,
             OffsetDateTime createdAt,
-            String createdBy) {}
+            String createdBy,
+            /**
+             * Every profile of this person the caller may see, the row's own first.
+             *
+             * <p>The row is a person; {@code id} is their primary profile's, so every per-profile endpoint
+             * keeps working. Somebody who is both a buyer and a seller's owner is one row with two entries
+             * here, not two rows with the same name.
+             */
+            List<ProfileSummary> profiles) {}
+
+    /** One role a person holds: what kind, in which group, at which organisation. */
+    public record ProfileSummary(
+            String id,
+            String actorClass,
+            String userTypeCode,
+            String userTypeName,
+            String userGroupId,
+            String userGroupName,
+            String organisationLabel,
+            boolean defaultProfile) {}
 
     /**
      * @param userGroupId <strong>the only access field.</strong> A group belongs to exactly one user type, so

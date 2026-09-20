@@ -29,6 +29,11 @@ public interface UserProfileRepository
             + "order by p.defaultProfile desc, p.id asc")
     List<UserProfile> findLiveForUser(@Param("userId") Long userId);
 
+    /** Every live profile of a page of people, in one statement. */
+    @Query("select p from UserProfile p where p.userId in :userIds and p.status <> 5 "
+            + "order by p.userId asc, p.defaultProfile desc, p.id asc")
+    List<UserProfile> findLiveForUsers(@Param("userIds") java.util.Collection<Long> userIds);
+
     @Query("select p from UserProfile p where p.userId = :userId and p.defaultProfile = true "
             + "and p.status <> 5")
     Optional<UserProfile> findDefaultForUser(@Param("userId") Long userId);

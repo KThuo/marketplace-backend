@@ -21,6 +21,9 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.hodi.modules.users.dto.UserDtos.UserResponse;
+import com.hodi.modules.users.dto.UserDtos.UserListRequest;
+import com.hodi.modules.users.dto.UserDtos.ProfileSummary;
 import java.util.List;
 import java.util.Set;
 
@@ -320,5 +323,26 @@ class UserApprovalIT {
         assertThrows(HodiException.class, () -> service.deactivate(hash, "changed my mind"));
         assertEquals(AppConstant.STATUS_NEW, reload("ada.vanish").getStatus());
         assertNotNull(waitingFor("ada.vanish"));
+    }
+
+    // ── one row per person ────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("the list shows a person once, with every profile they hold on the row")
+    void thePersonIsListedOnce() {
+        signInAsChecker();
+        UserListRequest request = new UserListRequest();
+        request.setSize(200);
+        List<UserResponse> rows = service.list(request).getContent();
+
+        assertEquals(rows.size(), rows.stream().map(UserResponse::userId).distinct().count(),
+                "somebody who is both a buyer and staff is one row, not two with the same name");
+        for (UserResponse row : rows) {
+            assertFalse(row.profiles().isEmpty(), row.username() + " has no profile on the row");
+            assertEquals(row.id(), row.profiles().get(0).id(), "the row's own profile comes first");
+        }
+        // The dev database's super administrator holds a platform and a buyer profile: one row, two entries.
+        rows.stream().filter(r -> r.profiles().size() > 1).findFirst().ifPresent(both -> assertEquals(
+                both.profiles().size(), both.profiles().stream().map(ProfileSummary::id).distinct().count()));
     }
 }

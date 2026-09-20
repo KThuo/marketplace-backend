@@ -22,6 +22,7 @@ import com.hodi.modules.users.dto.UserDtos.CreateUserRequest;
 import com.hodi.modules.users.dto.UserDtos.TemporaryPasswordResponse;
 import com.hodi.modules.users.dto.UserDtos.UpdateUserRequest;
 import com.hodi.modules.users.dto.UserDtos.UserListRequest;
+import com.hodi.modules.users.dto.UserDtos.ProfileSummary;
 import com.hodi.modules.users.dto.UserDtos.UserResponse;
 import com.hodi.modules.usertypes.UserType;
 import com.hodi.modules.usertypes.UserTypeRepository;
@@ -29,7 +30,8 @@ import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.password.PasswordService;
 import com.hodi.security.principal.AuthContext;
 import com.hodi.security.principal.UserPrincipal;
-import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import jakarta.persistence.criteria.Predicate;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +45,7 @@ import java.security.SecureRandom;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Staff administration: platform staff, seller staff and the bank's staff.
@@ -52,14 +55,16 @@ import java.util.List;
  * support can find somebody, but there is no path here that mints one, because a staff-created buyer with a
  * temporary password is an account nobody has proved they own.
  *
- * <h2>The list is a list of profiles</h2>
+ * <h2>The list is a list of people</h2>
  *
- * <p>Since a person can hold more than one profile (BRD FR073), "the users of this organisation" is a
- * question about profiles: it is the profile that carries the user type, the group and the organisation.
- * Somebody who is both a buyer and a seller's owner appears twice, which is correct — they are two actors
- * with one credential, and an administrator of one organisation should see the one that concerns them.
+ * <p>A person can hold more than one profile (BRD FR073), and the list shows them once, with every profile
+ * the caller may see on the row. It used to page over profiles — a buyer who is also a seller's owner was
+ * two rows with one name, email and username — which read as a duplicated account to everybody who looked
+ * at it. The filters that are about a profile (kind of user, organisation, group) and the caller's own
+ * visibility are answered by "does this person hold such a profile"; a seller's administrator sees the
+ * people in their organisation and, on each, only the profile that concerns them.
  *
- * <p>The actions on a row nevertheless act on the <strong>account</strong>: deactivating, resetting a
+ * <p>The actions on a row act on the <strong>account</strong>: deactivating, resetting a
  * password and signing somebody out are all things you do to a credential, and a person locked out of one
  * profile but not another would be a state nobody asked for. Removing somebody from an organisation without
  * touching their credential is a different operation, and belongs with the phase that gives organisations
@@ -107,28 +112,49 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public PagedResponse<UserResponse> list(UserListRequest request) {
-        Specification<UserProfile> spec = SearchSpecs.allOf(
+        UserPrincipal caller = AuthContext.require();
+        // What a matching profile looks like: the profile filters, and the caller's own view.
+        Specification<UserProfile> profile = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
-                search(request.getSearch()),
-                SearchSpecs.statusIn(request.effectiveStatuses()),
                 SearchSpecs.eq("profileType", blankToNull(request.getActorClass())),
                 SearchSpecs.eq("userTypeCode", blankToNull(request.getUserTypeCode())),
                 SearchSpecs.eq("tenantId", HashIdUtil.decodeId(request.getTenantId())),
                 SearchSpecs.eq("institutionId", HashIdUtil.decodeId(request.getInstitutionId())),
                 SearchSpecs.eq("userGroupId", HashIdUtil.decodeId(request.getUserGroupId())),
-                lockedFilter(request.getLocked()),
-                visibleTo(AuthContext.require()));
+                visibleTo(caller));
+        // A person is listed when they hold such a profile; the account's own facts filter directly.
+        Specification<User> spec = SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                SearchSpecs.statusIn(request.effectiveStatuses()),
+                holdsAProfile(profile),
+                search(request.getSearch(), caller),
+                lockedFilter(request.getLocked()));
 
-        var page = profiles.findAll(spec, request.toPageable(
-                Sort.by(Sort.Direction.ASC, "userTypeName", "id")));
+        var page = repository.findAll(spec, request.toPageable(
+                Sort.by(Sort.Direction.ASC, "firstName", "lastName", "id")));
 
-        // One query for the people on this page rather than one per row: the list is paged, so this is at
-        // most a page's worth of ids, and the alternative is the N+1 the label caches exist to avoid.
-        List<Long> userIds = page.getContent().stream().map(UserProfile::getUserId).distinct().toList();
-        var people = repository.findByIdIn(userIds).stream()
-                .collect(java.util.stream.Collectors.toMap(User::getId, u -> u));
+        // One query for every profile on this page rather than one per row: at most a page's worth of
+        // people, and the alternative is the N+1 the label caches exist to avoid.
+        List<Long> userIds = page.getContent().stream().map(User::getId).toList();
+        Map<Long, List<UserProfile>> held = userIds.isEmpty() ? Map.of()
+                : profiles.findLiveForUsers(userIds).stream()
+                        .filter(p -> maySee(caller, p))
+                        .collect(java.util.stream.Collectors.groupingBy(UserProfile::getUserId));
 
-        return PagedResponse.from(page, profile -> toResponse(people.get(profile.getUserId()), profile));
+        return PagedResponse.from(page, user -> toResponse(user, held.getOrDefault(user.getId(), List.of())));
+    }
+
+    /** "Holds a profile like this": the profile filters and the caller's view, as an EXISTS on the person. */
+    private Specification<User> holdsAProfile(Specification<UserProfile> which) {
+        return (root, query, cb) -> {
+            Subquery<Long> sub = query.subquery(Long.class);
+            Root<UserProfile> p = sub.from(UserProfile.class);
+            sub.select(p.get("userId"));
+            Predicate matches = which == null ? null : which.toPredicate(p, query, cb);
+            Predicate theirs = cb.equal(p.get("userId"), root.get("id"));
+            sub.where(matches == null ? theirs : cb.and(theirs, matches));
+            return cb.exists(sub);
+        };
     }
 
     /**
@@ -139,23 +165,33 @@ public class UserService {
      * across words, ORed across the two columns — so "wanjiru acacia" finds Wanjiru at Acacia Ridge, which
      * neither column could answer alone.
      */
-    private Specification<UserProfile> search(String term) {
+    private Specification<User> search(String term, UserPrincipal caller) {
         if (term == null || term.isBlank()) return null;
         List<String> tokens = new ArrayList<>();
         for (String token : term.trim().toLowerCase().split("\\s+")) {
             if (!token.isEmpty()) tokens.add(token);
         }
         if (tokens.isEmpty()) return null;
+        Specification<UserProfile> visible = visibleTo(caller);
 
         return (root, query, cb) -> {
-            Join<UserProfile, User> user = root.join("user", jakarta.persistence.criteria.JoinType.INNER);
             List<Predicate> all = new ArrayList<>(tokens.size());
             for (String token : tokens) {
                 String like = "%" + token + "%";
+                // A profile of theirs the caller may see, whose column matches this word.
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<UserProfile> p = sub.from(UserProfile.class);
+                sub.select(p.get("userId"));
+                List<Predicate> on = new ArrayList<>(List.of(
+                        cb.equal(p.get("userId"), root.get("id")),
+                        cb.notEqual(p.get("status"), AppConstant.STATUS_DELETED),
+                        cb.like(p.get("searchText"), like)));
+                Predicate mine = visible == null ? null : visible.toPredicate(p, query, cb);
+                if (mine != null) on.add(mine);
+                sub.where(on.toArray(new Predicate[0]));
                 // The columns are lower-cased by the database, so the term is lowered rather than the
                 // column — wrapping a column in lower() would make its trigram index unusable.
-                all.add(cb.or(cb.like(root.get("searchText"), like),
-                        cb.like(user.get("searchText"), like)));
+                all.add(cb.or(cb.like(root.get("searchText"), like), cb.exists(sub)));
             }
             return cb.and(all.toArray(new Predicate[0]));
         };
@@ -193,13 +229,18 @@ public class UserService {
         return (root, query, cb) -> cb.disjunction();
     }
 
-    /** Locked is a property of the credential, so this one filters through the join. */
-    private Specification<UserProfile> lockedFilter(Boolean locked) {
+    /** Locked is a property of the credential. */
+    private Specification<User> lockedFilter(Boolean locked) {
         if (locked == null) return null;
-        return (root, query, cb) -> {
-            Join<UserProfile, User> user = root.join("user", jakarta.persistence.criteria.JoinType.INNER);
-            return locked ? cb.isTrue(user.get("locked")) : cb.isFalse(user.get("locked"));
-        };
+        return (root, query, cb) -> locked ? cb.isTrue(root.get("locked")) : cb.isFalse(root.get("locked"));
+    }
+
+    /** The same rule as {@link #visibleTo}, for a profile already in hand. */
+    private static boolean maySee(UserPrincipal caller, UserProfile profile) {
+        if (caller.isPlatformStaff()) return true;
+        if (caller.getTenantId() != null) return caller.getTenantId().equals(profile.getTenantId());
+        if (caller.getInstitutionId() != null) return caller.getInstitutionId().equals(profile.getInstitutionId());
+        return false;
     }
 
     @Transactional(readOnly = true)
@@ -892,7 +933,32 @@ public class UserService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
+    /** The person as this caller sees them: their default visible profile on the row, the rest listed. */
+    private UserResponse toResponse(User user, List<UserProfile> visible) {
+        // Listed because they hold a profile the caller may see; an empty list here means it was archived
+        // between the two statements, and any live profile of theirs will do for the row.
+        List<UserProfile> shown = visible.isEmpty()
+                ? profiles.findLiveForUser(user.getId()).stream().limit(1).toList() : visible;
+        UserProfile primary = shown.stream().filter(UserProfile::isDefaultProfile).findFirst()
+                .orElseGet(() -> shown.stream().findFirst()
+                        .orElseThrow(() -> new IllegalStateException("User " + user.getId() + " has no profile")));
+        return toResponse(user, primary, shown);
+    }
+
     private UserResponse toResponse(User user, UserProfile profile) {
+        UserPrincipal caller = AuthContext.require();
+        List<UserProfile> visible = profiles.findLiveForUser(user.getId()).stream()
+                .filter(p -> maySee(caller, p)).toList();
+        return toResponse(user, profile, visible.isEmpty() ? List.of(profile) : visible);
+    }
+
+    private UserResponse toResponse(User user, UserProfile profile, List<UserProfile> visible) {
+        // The row's own profile first, then the rest in the order they were added.
+        List<ProfileSummary> summaries = new ArrayList<>();
+        summaries.add(summarise(profile));
+        for (UserProfile other : visible) {
+            if (!other.getId().equals(profile.getId())) summaries.add(summarise(other));
+        }
         return new UserResponse(
                 HashIdUtil.encodeId(profile.getId()),
                 HashIdUtil.encodeId(user.getId()),
@@ -929,7 +995,14 @@ public class UserService {
                 user.getDeactivationReason(),
                 awaitingApproval(user),
                 user.getCreatedAt(),
-                user.getCreatedBy());
+                user.getCreatedBy(),
+                summaries);
+    }
+
+    private static ProfileSummary summarise(UserProfile p) {
+        return new ProfileSummary(HashIdUtil.encodeId(p.getId()), p.getProfileType(), p.getUserTypeCode(),
+                p.getUserTypeName(), HashIdUtil.encodeId(p.getUserGroupId()), p.getUserGroupName(),
+                p.organisationLabel(), p.isDefaultProfile());
     }
 
     private static String snapshot(User user, UserProfile profile) {
