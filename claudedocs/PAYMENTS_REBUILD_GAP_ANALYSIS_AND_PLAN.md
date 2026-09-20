@@ -30,6 +30,18 @@ Clarifications from the client, 20 September:
 - **Slip validation pulls only unused statements**, and the answer carries the payment type the money
   arrived through, so the operator sees "KES 50,000 via Co-op Biller, quoted C1" before attaching.
 - **Matching is on the listing reference or the 4-character code**, for both IPN and biller.
+- **Who is offered what**, decided on the server from the principal, never from a client-sent flag:
+
+  | Method | Buyer (the customer) | Platform staff |
+  |---|---|---|
+  | Co-op STK prompt | **Yes.** The money leaves their own phone on their own PIN; nothing is asserted on their behalf. | Yes, prompting the buyer's phone. |
+  | Slip validation (find an unused statement by bank ref, attach it) | **By configuration.** A platform setting, `payments.buyer.slip.validation`, OFF by default. | **Always**, where an inbound channel (IPN account or biller) has a live account. |
+  | Cash, cheque | **Never**, even where a cash account is configured. Cash is somebody asserting money arrived, and the buyer is the somebody. | Yes, and never against a listing their own organisation owns (the existing `mayRecordByHand` rule). |
+  | Transfers, enquiries | Never. Money out and questions about money are not ways to pay. | Never on a pay form. |
+
+  Today `offered()` in `PaymentAccountService` already applies the cash rule for staff and lets STK through
+  for anyone who can reach the endpoint; what it lacks is a buyer principal at all (Step 5) and the slip
+  method with its setting (Step 3). new-hodi's `TENANT_SLIP_VALIDATION` estate setting is the precedent.
 
 Rough distance: **the inbound and configuration foundations (about 40% of the module) are solid and
 worth keeping. The reconciliation half (R5–R7) and the buyer half (R3) are the other 60% and are
@@ -249,7 +261,10 @@ IPN or sweep landing between the lookup and the click cannot credit twice (the `
 protects the intent side; the statement side needs `SELECT … FOR UPDATE`).
 
 Offered only where an inbound channel (IPN account or biller) has a live account, exactly as the client
-described.
+described. `offered()` gains a `SLIP` entry (rendered as `VALIDATE`) under that condition: always for
+platform staff; for a buyer only when `payments.buyer.slip.validation` is ON. A new `ConfigKey`, group
+PAYMENTS, default OFF, editable in app settings. The validate and attach endpoints check the same rule
+server-side, so a buyer cannot reach them by URL when the setting is off.
 
 ### Step 4 — Biller (backend, R4)
 
@@ -290,7 +305,9 @@ in the unused queue with a reason.
 
 1. **A buyer principal path.** `POST /api/v1/payments/intents/stk` accepts either `PAYMENTS_RECEIVE`
    (staff, any open booking in scope) **or** a signed-in buyer whose `buyerUserId` matches the booking.
-   Phone defaults to the buyer's own, amount defaults to what is due, capped at the balance.
+   Phone defaults to the buyer's own, amount defaults to what is due, capped at the balance. `offered()`
+   for a buyer returns STK, plus slip validation when the setting allows it, and never cash or cheque
+   however many cash accounts the seller has configured.
 2. **Return the acknowledgement, not the outcome.** The endpoint writes the intent, posts to Co-op with the
    patient timeout for the request itself, and returns the intent (`PROCESSING`) immediately. Remove the
    150 s `pushAndWait` loop. The browser polls `GET /payments/intents/{id}` every 3 s for up to the
@@ -346,7 +363,8 @@ New **`/app/statements`** page (permission `STATEMENTS_VIEW`), nav under Money:
 Booking detail: Requests tab gated on a permission the seller can hold (`PAYMENTS_VIEW`), polled while any
 intent is in flight, states worded Sending / Waiting for the payer / Paid / Not paid / Still unknown.
 
-Buyer `/account`: "My bookings" with balance, schedule, a **Pay** button (STK form only), and receipts.
+Buyer `/account`: "My bookings" with balance, schedule, a **Pay** button whose methods come from
+`offered()` (STK, and slip validation when the setting is on; never cash or cheque), and receipts.
 
 Small fixes that ride along: approvals `SUBJECTS` gains `PAYMENT_ACCOUNT`; `ChannelFieldSet` renders
 `select`; methods tab paginates; `PaymentDetailView` gets a print action and a real not-found vs
