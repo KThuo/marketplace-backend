@@ -573,6 +573,7 @@ public final class AppConstant {
     public static final String AUDIT_STATEMENT_ATTACHED  = "STATEMENT_ATTACHED";
     public static final String AUDIT_STATEMENT_SET_ASIDE = "STATEMENT_SET_ASIDE";
     public static final String AUDIT_STATEMENT_RESTORED  = "STATEMENT_RESTORED";
+    public static final String AUDIT_STATEMENT_UPLOADED  = "STATEMENT_UPLOADED";
     /** A cost line or a facility drawdown written or voided on a development. */
     public static final String AUDIT_COST_RECORDED    = "COST_RECORDED";
     public static final String AUDIT_COST_VOIDED      = "COST_VOIDED";

@@ -21,9 +21,12 @@ import java.util.Optional;
  * drift, and the same reference would mean different things depending on how the money arrived. So the rule
  * lives here once.
  *
- * <h2>The two things a payer may quote</h2>
+ * <h2>The three things a payer may quote</h2>
  *
  * <ol>
+ *   <li><b>The booking's reference</b> — what the sales office puts on the letter and the bank statement a
+ *       clerk uploads. Unique, and it names the booking directly, so a match places the money on its own.
+ *       A booking that is no longer live is named in the reason rather than credited.</li>
  *   <li><b>The listing's reference</b> — twelve characters as generated, unique across every listing ever.
  *       Long enough that a mistyped letter produces nothing rather than somebody else's listing, so a match
  *       places the money on its own.</li>
@@ -49,7 +52,7 @@ public class PayeeResolver {
     private final UnitBookingRepository bookings;
 
     /** How the reference was understood. */
-    public enum Via { LISTING_REFERENCE, PAY_CODE }
+    public enum Via { BOOKING_REFERENCE, LISTING_REFERENCE, PAY_CODE }
 
     /**
      * The answer, with the booking when there is one and the reason in words when there is not.
@@ -80,6 +83,18 @@ public class PayeeResolver {
         String cleaned = clean(quoted);
         if (cleaned.isEmpty()) {
             return Resolution.none("The payer quoted no reference, so there is nothing to match on.");
+        }
+
+        Optional<UnitBooking> byBooking = bookingNamedIn(quoted, cleaned);
+        if (byBooking.isPresent()) {
+            UnitBooking booking = byBooking.get();
+            Property home = units.findById(booking.getPropertyId()).orElse(null);
+            if (AppConstant.BOOKING_RESERVED.equals(booking.getState())
+                    || AppConstant.BOOKING_AGREED.equals(booking.getState())) {
+                return new Resolution(booking, home, Via.BOOKING_REFERENCE, null);
+            }
+            return new Resolution(null, home, Via.BOOKING_REFERENCE, "Booking " + booking.getReference()
+                    + " is " + booking.getState().toLowerCase(Locale.ROOT) + ", so there is nothing to credit.");
         }
 
         Optional<Property> byReference = listingNamedIn(quoted, cleaned);
@@ -116,6 +131,23 @@ public class PayeeResolver {
             if (named.isPresent()) return named;
         }
         return Optional.empty();
+    }
+
+    /** The booking whose reference appears in what the payer typed. Same search as for a listing. */
+    private Optional<UnitBooking> bookingNamedIn(String quoted, String cleaned) {
+        Optional<UnitBooking> whole = booking(cleaned);
+        if (whole.isPresent()) return whole;
+        for (String word : quoted.toUpperCase(Locale.ROOT).split("[^A-Z0-9]+")) {
+            if (word.length() < 8 || word.equals(cleaned)) continue;
+            Optional<UnitBooking> named = booking(word);
+            if (named.isPresent()) return named;
+        }
+        return Optional.empty();
+    }
+
+    private Optional<UnitBooking> booking(String reference) {
+        return bookings.findByReference(reference)
+                .filter(b -> b.getStatus() == null || b.getStatus() != AppConstant.STATUS_DELETED);
     }
 
     private Optional<Property> listing(String reference) {

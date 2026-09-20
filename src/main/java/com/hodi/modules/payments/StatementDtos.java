@@ -8,6 +8,7 @@ import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 
 /** What the statements screen sends and reads: the bank's side of the ledger, and a person's decisions about it. */
 public final class StatementDtos {
@@ -98,6 +99,33 @@ public final class StatementDtos {
 
     /** What is waiting to be placed. "How long the oldest has waited" says whether anyone is working the queue. */
     public record Waiting(long count, BigDecimal total, OffsetDateTime oldestPaidAt) {}
+
+    // ── uploads ──────────────────────────────────────────────────────────────
+
+    /** One column of the statement CSV: what to call it, whether it must be there, and an example. */
+    public record UploadColumn(String key, boolean required, String example, String notes) {}
+
+    /** What the upload wants, so the form describes the file before anything is downloaded. */
+    public record UploadSpec(List<UploadColumn> columns, int maxRows, String notes) {}
+
+    /**
+     * One line of the file, and what became of it: PLACED on a booking, QUEUED for a person, SKIPPED as
+     * already known, or FAILED with what was wrong on that line.
+     */
+    public record UploadLine(int line, String refNo, String outcome, String message, String statementId,
+                             String bookingReference) {
+
+        static UploadLine skipped(int line, String refNo, String message) {
+            return new UploadLine(line, refNo, "SKIPPED", message, null, null);
+        }
+
+        static UploadLine failed(int line, String refNo, String message) {
+            return new UploadLine(line, refNo, "FAILED", message, null, null);
+        }
+    }
+
+    public record UploadOutcome(int rows, int placed, int queued, int skipped, int failed,
+                                List<UploadLine> lines) {}
 
     /**
      * What a bank reference turned out to be.

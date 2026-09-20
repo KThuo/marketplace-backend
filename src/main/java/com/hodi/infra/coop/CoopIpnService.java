@@ -187,6 +187,17 @@ public class CoopIpnService {
                     + " is not one of ours, or has not been registered here yet.");
             return;
         }
+        placeAutomatically(statement, account);
+    }
+
+    /**
+     * Places a stored statement on a booking when that can be done without a person.
+     *
+     * <p>The matching rule, once, for every way a bank statement row reaches us — a notification, a biller's
+     * advice, a clerk's CSV upload. The caller has already stored the row and decided it is trustworthy;
+     * this decides whose money it is, or writes down why it cannot. Joins the caller's transaction.
+     */
+    public void placeAutomatically(CoopStatement statement, PaymentAccount account) {
         /*
          * An intent first, when the reference is one of ours.
          *
