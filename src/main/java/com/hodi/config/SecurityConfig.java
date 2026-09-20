@@ -75,6 +75,13 @@ public class SecurityConfig {
              * losing real money.
              */
             "/api/v1/public/coop/notifications",
+            /*
+             * The biller's two addresses: "is this reference real, and what is owed" and "the customer
+             * paid it". Same caller, same reasoning; each is authenticated inside by the connection ID and
+             * password on the biller's own account, and closed while those are unset.
+             */
+            "/api/v1/public/coop/biller/validation",
+            "/api/v1/public/coop/biller/advice",
             "/api/v1/auth/login",
             // The second half of a challenged login: the caller has no session yet, only a one-shot
             // challenge token, so this cannot require authentication.
