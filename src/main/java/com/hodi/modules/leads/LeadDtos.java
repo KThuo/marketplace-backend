@@ -3,6 +3,9 @@ package com.hodi.modules.leads;
 import com.hodi.common.dto.PagedDataRequest;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
@@ -170,7 +173,24 @@ public final class LeadDtos {
             OffsetDateTime decidedAt,
             OffsetDateTime createdAt,
             /** Everything said about this offer, oldest first. See {@link VisitResponse#messages}. */
-            List<MessageResponse> messages) {}
+            List<MessageResponse> messages,
+            /** The booking an accepted offer was converted into, or null while it is still only accepted. */
+            String bookingId,
+            String bookingReference) {}
+
+    /**
+     * Turning an accepted offer into a booking. Everything here is optional: the offer already names the
+     * buyer, the home and the figure, and these are the terms the sales office adds on top.
+     */
+    public record BookFromOfferRequest(
+            /** The price agreed. The offer's amount when left blank. */
+            @DecimalMin("0") BigDecimal priceAgreed,
+            /** What is due to hold the home. What the buyer said they had ready, when left blank. */
+            @DecimalMin("0") BigDecimal depositDue,
+            @Size(max = 24) String paymentPlan,
+            @Min(1) @Max(365) Integer holdDays,
+            String notes,
+            @Valid List<com.hodi.modules.bookings.BookingDtos.InstalmentLine> instalments) {}
 
     public record SubmitOfferRequest(
             @NotBlank(message = "Which listing is this about?") String propertyReference,

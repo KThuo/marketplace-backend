@@ -110,6 +110,20 @@ public class LeadController {
         return ApiResponse.success("Recorded", offers.decide(reference, request));
     }
 
+    /**
+     * An accepted offer becomes a booking. The bookings permission, not the offers one: this reserves a
+     * home and opens an account for money, which is what that permission is for.
+     */
+    @PostMapping("/api/v1/offers/{reference}/book")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("BOOK OFFER")
+    public ApiResponse<OfferResponse> bookOffer(@PathVariable String reference,
+                                                @Valid @RequestBody(required = false) BookFromOfferRequest request) {
+        OfferResponse booked = offers.book(reference, request);
+        return ApiResponse.success("Booked as " + booked.bookingReference()
+                + ". Payments are received on the booking.", booked);
+    }
+
     // ── the shell's badges ────────────────────────────────────────────────────
 
     /**

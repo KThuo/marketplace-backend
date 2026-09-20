@@ -7,6 +7,12 @@ import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.security.hashid.HashIdUtil;
+import com.hodi.modules.bookings.BookingDtos.CreateBookingRequest;
+import com.hodi.modules.bookings.BookingDtos.BookingResponse;
+import com.hodi.modules.bookings.UnitBookingRepository;
+import com.hodi.modules.bookings.UnitBooking;
+import com.hodi.modules.bookings.BookingService;
 import com.hodi.modules.leads.LeadDtos.*;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
@@ -62,6 +68,8 @@ public class PurchaseRequestService {
     private final AuditService audit;
     private final LeadNotifier notifier;
     private final LeadThreadService thread;
+    private final BookingService bookings;
+    private final UnitBookingRepository bookingRows;
 
     // ── the buyer's side ──────────────────────────────────────────────────────
 
@@ -230,6 +238,67 @@ public class PurchaseRequestService {
         return toResponse(offer);
     }
 
+    /**
+     * Turns an accepted offer into a booking.
+     *
+     * <p>This is what "accepted" was missing: the reservation of the home and the account the money lands
+     * in. The booking is made through the bookings module's own front door, so every rule about who may book
+     * what, and whether the home is still free, is the one rule; this method only supplies what the offer
+     * already knows — the buyer, the home, the figure — and writes the result back onto the offer, once.
+     *
+     * <p>The buyer's account is linked to the booking. That is the point of converting rather than
+     * retyping: the booking appears under their own bookings, and they can pay it from there.
+     */
+    @Transactional
+    public OfferResponse book(String reference, BookFromOfferRequest request) {
+        PurchaseRequest offer = loadForSeller(reference);
+        if (!AppConstant.PURCHASE_ACCEPTED.equals(offer.getState())) {
+            throw new HodiException("Only an accepted offer can become a booking.", HttpStatus.CONFLICT);
+        }
+        if (offer.getBookingId() != null) {
+            String existing = bookingRows.findById(offer.getBookingId()).map(UnitBooking::getReference).orElse("a booking");
+            throw new HodiException("This offer already became " + existing + ".", HttpStatus.CONFLICT);
+        }
+        Property home = properties.findById(offer.getPropertyId())
+                .orElseThrow(() -> new ResourceNotFoundException("Listing", offer.getPropertyReference()));
+        if (offer.getBuyerPhone() == null || offer.getBuyerPhone().isBlank()) {
+            throw new HodiException("The offer carries no phone number for the buyer, and a booking needs one — "
+                    + "payments are matched against it. Book the home from its own page instead.", HttpStatus.CONFLICT);
+        }
+
+        BookFromOfferRequest terms = request == null ? new BookFromOfferRequest(null, null, null, null, null, null) : request;
+        CreateBookingRequest asBooking = new CreateBookingRequest(null,
+                offer.getBuyerName() == null || offer.getBuyerName().isBlank() ? "Buyer" : offer.getBuyerName(),
+                offer.getBuyerPhone(), offer.getBuyerEmail(), null,
+                terms.priceAgreed() != null ? terms.priceAgreed() : offer.getOfferAmount(),
+                terms.depositDue() != null ? terms.depositDue() : offer.getDepositAvailable(),
+                terms.paymentPlan(), terms.holdDays(),
+                EnquiryService.blankTo(terms.notes(), "From offer " + offer.getReference()
+                        + (offer.getBuyerMessage() == null ? "" : " — \"" + offer.getBuyerMessage() + "\"")),
+                terms.instalments());
+        BookingResponse booked = bookings.createForProperty(HashIdUtil.encodeId(home.getId()), asBooking);
+
+        UnitBooking booking = bookingRows.findById(HashIdUtil.decodeId(booked.id())).orElseThrow();
+        booking.setBuyerUserId(offer.getUserId());
+        booking.setUpdatedBy(AuthContext.username());
+        bookingRows.save(booking);
+
+        offer.setBookingId(booking.getId());
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+
+        String line = offer.getTenantName() + " has booked " + offer.getPropertyTitle() + " for you as "
+                + booking.getReference() + ". You can now pay towards it from your bookings.";
+        thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), line, offer.getState());
+        audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
+                offer.getReference() + " booked as " + booking.getReference());
+        notifier.toBuyer(offer.getUserId(), "Your offer on " + offer.getPropertyTitle() + " is now a booking",
+                line, "/account/bookings");
+        log.info("Offer {} converted to booking {} by {}", offer.getReference(), booking.getReference(),
+                AuthContext.username());
+        return toResponse(offer);
+    }
+
     @Transactional(readOnly = true)
     public long liveForCaller() {
         Long tenantId = TenantScope.ownTenantId();
@@ -269,12 +338,16 @@ public class PurchaseRequestService {
     }
 
     private OfferResponse toResponse(PurchaseRequest p, List<MessageResponse> messages) {
+        // Only an accepted-and-converted offer has one, so the lookup runs for those rows alone.
+        String bookingReference = p.getBookingId() == null ? null
+                : bookingRows.findById(p.getBookingId()).map(UnitBooking::getReference).orElse(null);
         return new OfferResponse(
                 p.getReference(), p.getPropertyReference(), p.getPropertyTitle(), p.getTenantName(),
                 p.getAskingPrice(), p.getBuyerName(), p.getBuyerEmail(), p.getBuyerPhone(),
                 p.getOfferAmount(), p.getCurrency(), p.getFinancing(), p.getAffordabilityReference(),
                 p.getProductReference(), p.getDepositAvailable(), p.getBuyerMessage(), p.getState(),
-                p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt(), messages);
+                p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt(), messages,
+                HashIdUtil.encodeId(p.getBookingId()), bookingReference);
     }
 
     private String nextReference() {

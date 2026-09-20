@@ -57,6 +57,8 @@ public class PurchaseRequest {
     @Column(name = "decided_by_user_id") private Long decidedByUserId;
     @Column(name = "decided_at") private OffsetDateTime decidedAt;
     @Column(name = "decision_note", columnDefinition = "TEXT") private String decisionNote;
+    /** The booking this offer became, once accepted and converted. The reservation and the money live there. */
+    @Column(name = "booking_id") private Long bookingId;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
