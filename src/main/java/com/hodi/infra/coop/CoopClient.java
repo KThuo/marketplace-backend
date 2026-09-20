@@ -231,8 +231,8 @@ public class CoopClient {
                  * was never asked anything.
                  */
                 return Outcome.unsent(blocked
-                        ? "The firewall in front of Co-op rejected the request before it reached them. "
-                                + "Nothing was prompted. The support ID is in the server log — Co-op's "
+                        ? "The firewall in front of Co-op rejected the request before it reached them, so "
+                                + "nothing reached the bank. The support ID is in the server log — Co-op's "
                                 + "team need it to say why."
                         : "Co-op answered with a web page rather than a payment response ("
                                 + answer.getStatusCode() + "). The endpoint on this method may be wrong "

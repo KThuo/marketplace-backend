@@ -99,6 +99,7 @@ public class CoopStkService {
                 .narration(narration == null || narration.isBlank()
                         ? "Payment for " + booking.getReference() : narration.trim())
                 .state(PaymentIntent.PENDING)
+                .traceId(traceIdOfThisRequest())
                 .callbackTimeoutSeconds(configs.getInt(ConfigKey.COOP_CALLBACK_TIMEOUT_SECONDS))
                 .tenantId(account.getTenantId())
                 .institutionId(account.getInstitutionId())
@@ -403,5 +404,14 @@ public class CoopStkService {
                 .orElseThrow(() -> new HodiException(
                         "No approved account is set up for the Co-op phone prompt yet.",
                         HttpStatus.CONFLICT));
+    }
+
+    /**
+     * The id the request log wrote for this HTTP request, so the intent and every log line about it share
+     * one handle. A prompt made outside a request — there are none today — gets a fresh one.
+     */
+    private static String traceIdOfThisRequest() {
+        String id = org.slf4j.MDC.get(AppConstant.MDC_ACTION_ID);
+        return id == null || id.isBlank() ? com.hodi.logging.TraceIdGenerator.next() : id;
     }
 }

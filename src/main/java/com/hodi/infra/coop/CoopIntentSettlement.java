@@ -122,7 +122,8 @@ public class CoopIntentSettlement {
         if (bankReference != null) intent.setBankReference(bankReference);
         intent.setProcessingReason(reason);
         intent.setUpdatedBy(AppConstant.USERNAME_SYSTEM);
-        log.info("Payment intent {} failed: {}", intent.getReference(), reason);
+        // The full reason, under the id the customer is shown. This line is what an investigation finds.
+        log.warn("Payment intent {} failed [{}]: {}", intent.getReference(), intent.getTraceId(), reason);
         return intents.save(intent);
     }
 

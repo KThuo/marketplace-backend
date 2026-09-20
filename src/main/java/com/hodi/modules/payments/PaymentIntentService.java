@@ -71,9 +71,22 @@ public class PaymentIntentService {
             String receipt,
             String paymentId,
             String processingReason,
+            /** The handle an investigation starts from. Shown to the customer beside a plain sentence. */
+            String traceId,
             Integer statusQueryAttempts,
             OffsetDateTime processedAt,
             OffsetDateTime createdAt) {}
+
+    /*
+     * What the customer is told, in place of the reason staff read.
+     *
+     * The staff sentence names the firewall, the endpoint, the bank's codes — none of it is the customer's
+     * to act on, and all of it says more about our plumbing than anybody outside should hear. They are
+     * told it did not go through and to try again, with the trace id, so a support call has one handle
+     * that lands on every log line written about the request.
+     */
+    public static final String BUYER_FAILED = "The payment request did not go through. Please try again in a moment.";
+    public static final String BUYER_WAITING = "Waiting for the bank to confirm.";
 
     /** Asks Co-op to prompt the phone, and returns as soon as they have accepted the request. */
     public IntentResponse prompt(PromptRequest request) {
@@ -106,7 +119,7 @@ public class PaymentIntentService {
 
         PaymentIntent intent = stk.push(booking.getId(), amount, phone, request.narration(),
                 AuthContext.username());
-        return toResponse(intent);
+        return toResponse(intent, caller);
     }
 
     /** One intent, for the poll. The buyer sees their own; staff see what they can read. */
@@ -120,7 +133,7 @@ public class PaymentIntentService {
         } else {
             readable(HashIdUtil.encodeId(intent.getBookingId()), caller);
         }
-        return toResponse(intent);
+        return toResponse(intent, caller);
     }
 
     /** Every ask against a booking, newest first. */
@@ -129,7 +142,7 @@ public class PaymentIntentService {
         UserPrincipal caller = AuthContext.require();
         UnitBooking booking = readable(bookingHash, caller);
         return intents.findByBookingIdOrderByCreatedAtDesc(booking.getId()).stream()
-                .map(PaymentIntentService::toResponse).toList();
+                .map(intent -> toResponse(intent, caller)).toList();
     }
 
     // ── who may ───────────────────────────────────────────────────────────────
@@ -166,6 +179,21 @@ public class PaymentIntentService {
         return caller.getAuthorities().stream().anyMatch(a -> permission.equals(a.getAuthority()));
     }
 
+    /** The intent as this caller may read it: staff get the reason in full, a buyer a plain sentence. */
+    public static IntentResponse toResponse(PaymentIntent intent, UserPrincipal caller) {
+        IntentResponse full = toResponse(intent);
+        if (caller == null || !caller.isBuyer()) return full;
+        String said = switch (intent.getState()) {
+            case PaymentIntent.FAILED -> BUYER_FAILED;
+            case PaymentIntent.SUCCEEDED -> full.processingReason();
+            default -> BUYER_WAITING;
+        };
+        return new IntentResponse(full.id(), full.reference(), full.bookingId(), full.state(), full.settled(),
+                full.amount(), full.currency(), full.phoneNo(), full.bankReference(), full.receipt(),
+                full.paymentId(), said, full.traceId(), full.statusQueryAttempts(), full.processedAt(),
+                full.createdAt());
+    }
+
     public static IntentResponse toResponse(PaymentIntent intent) {
         boolean settled = PaymentIntent.SUCCEEDED.equals(intent.getState())
                 || PaymentIntent.FAILED.equals(intent.getState());
@@ -182,6 +210,7 @@ public class PaymentIntentService {
                 intent.getReceipt(),
                 HashIdUtil.encodeId(intent.getPaymentId()),
                 intent.getProcessingReason(),
+                intent.getTraceId(),
                 intent.getStatusQueryAttempts(),
                 intent.getProcessedAt(),
                 intent.getCreatedAt());

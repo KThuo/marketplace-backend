@@ -83,6 +83,15 @@ public class PaymentIntent {
     /** The sentence a person reads. An intent nobody can explain is worse than one that failed. */
     @Column(name = "processing_reason", columnDefinition = "TEXT") private String processingReason;
 
+    /**
+     * The request log's trace id for the request that made this prompt.
+     *
+     * <p>The customer is told a failure happened and to try again, and is shown this. Everything else —
+     * the firewall's support ID, the bank's page, the exception — is in the log under the same id, which
+     * is where an investigation starts and where the detail belongs.
+     */
+    @Column(name = "trace_id", length = 32) private String traceId;
+
     @Column(name = "statement_id") private Long statementId;
     @Column(name = "payment_id") private Long paymentId;
 

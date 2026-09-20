@@ -355,7 +355,19 @@ class CoopStkIT {
 
         assertEquals(PaymentIntent.FAILED, intent.state(), "no customer was prompted, so nothing is waited for");
         assertTrue(intent.settled());
-        assertNotNull(intent.processingReason());
+        assertTrue(intent.processingReason().contains("firewall"), "staff read what actually happened");
+        assertNotNull(intent.traceId(), "and the row carries the handle the log lines were written under");
+        assertTrue(intent.traceId().startsWith("HDI"), intent.traceId());
+
+        // The customer is told it did not go through, and given the handle — never the plumbing.
+        Long raw = HashIdUtil.decodeId(intent.id());
+        signInAsBuyer(buyerUser);
+        IntentResponse asTheBuyer = prompts.find(HashIdUtil.encodeId(raw));
+        assertEquals(PaymentIntentService.BUYER_FAILED, asTheBuyer.processingReason());
+        assertFalse(asTheBuyer.processingReason().toLowerCase().contains("firewall"));
+        assertEquals(intent.traceId(), asTheBuyer.traceId(), "the same handle, so support finds the same lines");
+        assertEquals(PaymentIntentService.BUYER_FAILED,
+                prompts.forBooking(HashIdUtil.encodeId(bookingRaw)).get(0).processingReason());
     }
 
     // ── the answer ────────────────────────────────────────────────────────────
