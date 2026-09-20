@@ -46,8 +46,10 @@ public enum CoopChannel {
     /** Who holds an account, asked before money is sent to it. Part of the transfer flow, not inbound. */
     COOP_ACCOUNT_VALIDATION(Category.ENQUIRY),
 
-    /** Money out, to an account at Co-op or over PesaLink. Staff only, and behind Maker/Checker. */
-    COOP_FUNDS_TRANSFER(Category.TRANSFER),
+    /**
+     * Money out, over PesaLink — to an account at Co-op or any other bank. Staff only, behind
+     * Maker/Checker, and never on a form for taking money. The one channel here that debits.
+     */
     COOP_PESALINK(Category.TRANSFER),
 
     /** Money in, on its own: Co-op tells us it arrived and we match it to what it was for. */

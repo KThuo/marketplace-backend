@@ -82,6 +82,8 @@ public class SecurityConfig {
              */
             "/api/v1/public/coop/biller/validation",
             "/api/v1/public/coop/biller/advice",
+            // What became of a transfer we sent. HTTP Basic inside, like the notification.
+            "/api/v1/public/coop/transfers/callback",
             "/api/v1/auth/login",
             // The second half of a challenged login: the caller has no session yet, only a one-shot
             // challenge token, so this cannot require authentication.

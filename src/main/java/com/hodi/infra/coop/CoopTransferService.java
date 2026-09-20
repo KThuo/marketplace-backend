@@ -81,8 +81,10 @@ public class CoopTransferService {
                     "Co-op could not confirm that account: " + CoopAnswer.description(response));
         }
 
-        String name = text(response, "AccountName", "accountName", "CustomerName", "customerName",
-                "AccountHolderName");
+        // "RecipientName" is what Co-op's own example answers with; the others are kept for a bank that
+        // renames a field between sandbox and production, which banks do.
+        String name = text(response, "RecipientName", "recipientName", "AccountName", "accountName",
+                "CustomerName", "customerName", "AccountHolderName");
         if (name == null) {
             /*
              * The bank said yes and named nobody.

@@ -29,4 +29,10 @@ public final class CoopRoutes {
 
     /** The debit happened. Same reasoning as above. */
     public static final String BILLER_ADVICE = "/api/v1/public/coop/biller/advice";
+
+    /**
+     * What became of a transfer we sent. Given to Co-op as the {@code CallBackUrl} on every PesaLink
+     * request; the status enquiry is the fallback when it never comes.
+     */
+    public static final String FT_CALLBACK = "/api/v1/public/coop/transfers/callback";
 }

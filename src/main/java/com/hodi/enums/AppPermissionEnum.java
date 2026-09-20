@@ -265,6 +265,20 @@ public enum AppPermissionEnum {
     STATEMENTS_RECONCILE("Apply an unmatched bank credit to a booking, or set it aside",
             AppModuleEnum.PAYMENTS, true),
 
+    // ── DISBURSEMENTS: the bank sends money out ───────────────────────────────
+    /**
+     * Money leaving the bank's own account. Not a payment — nothing here credits a booking — and the one
+     * flow on the platform with no undo, which is why it is three permissions and all three the platform's.
+     */
+    DISBURSEMENTS_VIEW("See disbursements and what became of them", AppModuleEnum.PAYMENTS, true),
+    /** Proposing a transfer: naming the payee, validating the account, stating the purpose. */
+    DISBURSEMENTS_MAKE("Propose a disbursement", AppModuleEnum.PAYMENTS, true),
+    /**
+     * Releasing it. Separate from proposing, and the separation is the control: the maker names the account,
+     * the checker reads the name Co-op resolved it to, and only then does money move.
+     */
+    DISBURSEMENTS_APPROVE("Approve a disbursement before it is sent", AppModuleEnum.PAYMENTS, true),
+
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
     MORTGAGE_PRODUCTS_CREATE("Create a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),

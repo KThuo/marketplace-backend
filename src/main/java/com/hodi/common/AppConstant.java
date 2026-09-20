@@ -161,6 +161,9 @@ public final class AppConstant {
 
     // ── Payment accounts (where an organisation's money lands) ───────────────
     public static final String APPROVAL_ENTITY_PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT";
+    /** Money out. The checker sees the amount, the destination and the name the bank resolved it to. */
+    public static final String APPROVAL_ENTITY_DISBURSEMENT = "DISBURSEMENT";
+    public static final String APPROVAL_ACTION_SEND = "SEND";
 
     // ── Developments (a project with many units) ─────────────────────────────
     /**
@@ -574,6 +577,11 @@ public final class AppConstant {
     public static final String AUDIT_STATEMENT_SET_ASIDE = "STATEMENT_SET_ASIDE";
     public static final String AUDIT_STATEMENT_RESTORED  = "STATEMENT_RESTORED";
     public static final String AUDIT_STATEMENT_UPLOADED  = "STATEMENT_UPLOADED";
+    /** Money proposed, released or refused, and what the bank said. The other most disputed events. */
+    public static final String AUDIT_DISBURSEMENT_PROPOSED = "DISBURSEMENT_PROPOSED";
+    public static final String AUDIT_DISBURSEMENT_DECIDED  = "DISBURSEMENT_DECIDED";
+    public static final String AUDIT_DISBURSEMENT_SENT     = "DISBURSEMENT_SENT";
+    public static final String AUDIT_DISBURSEMENT_SETTLED  = "DISBURSEMENT_SETTLED";
     /** A cost line or a facility drawdown written or voided on a development. */
     public static final String AUDIT_COST_RECORDED    = "COST_RECORDED";
     public static final String AUDIT_COST_VOIDED      = "COST_VOIDED";
