@@ -47,6 +47,19 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CoopStkService {
 
+    /*
+     * What is written on the intent when the fault is ours or the wire's, not the bank's.
+     *
+     * The client's own account of it — a firewall's rejection page, a proxy's 404, an unreachable host —
+     * goes to the log under the intent's trace id and nowhere else. It named our plumbing to whoever was
+     * looking at the screen, and nobody there could act on it; the trace id is what they quote instead.
+     */
+    static final String NOT_SENT = "The request could not be sent to the bank, so nothing was prompted. "
+            + "Try again in a moment.";
+    static final String UNCONFIRMED = "Sent, but the bank's acknowledgement could not be read. Left in flight; "
+            + "the status enquiry will settle it.";
+    static final String UNANSWERED = "Asked the bank and could not get an answer. It will be asked again.";
+
     /** Co-op's timestamp format, to the millisecond with an offset. */
     private static final DateTimeFormatter COOP_TIME =
             DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSXXX");
@@ -119,7 +132,8 @@ public class CoopStkService {
              * it in flight said "waiting for the customer" about a prompt that was never sent, and then
              * spent the status-query budget asking Co-op about a payment they had never heard of.
              */
-            return settlement.failed(intent.getId(), null, answer.failure());
+            log.warn("Prompt {} was never sent [{}]: {}", intent.getReference(), intent.getTraceId(), answer.failure());
+            return settlement.failed(intent.getId(), null, NOT_SENT);
         }
         if (!answer.succeeded()) {
             /*
@@ -128,9 +142,9 @@ public class CoopStkService {
              * Nothing is failed here: the prompt may be on the customer's handset right now. This is in
              * flight and unknown, and the status query is what settles it.
              */
-            return settlement.inFlight(intent.getId(), null,
-                    "Could not confirm the prompt reached Co-op (" + answer.failure()
-                            + "). Left in flight; the status query will settle it.");
+            log.warn("Prompt {} sent, acknowledgement unread [{}]: {}", intent.getReference(), intent.getTraceId(),
+                    answer.failure());
+            return settlement.inFlight(intent.getId(), null, UNCONFIRMED);
         }
 
         Map<String, Object> body = answer.value();
@@ -290,12 +304,14 @@ public class CoopStkService {
         if (answer.neverSent()) {
             // The query itself is not configured. Nothing was asked, so nothing was learned, and the
             // attempt does not count — a cap should be spent on the bank's silence, not on ours.
+            log.warn("Enquiry for {} was never sent [{}]: {}", intent.getReference(), intent.getTraceId(),
+                    answer.failure());
             return settlement.stillWaiting(intent.getId(), intent.getStatusQueryAttempts(),
-                    answer.failure()).getState();
+                    "The bank could not be asked about this one. It will be asked again.").getState();
         }
         if (!answer.succeeded()) {
-            return settlement.stillWaiting(intent.getId(), attempts,
-                    "Asked Co-op and could not get an answer (" + answer.failure() + ").").getState();
+            log.warn("Enquiry for {} unanswered [{}]: {}", intent.getReference(), intent.getTraceId(), answer.failure());
+            return settlement.stillWaiting(intent.getId(), attempts, UNANSWERED).getState();
         }
 
         Map<String, Object> response = answer.value();

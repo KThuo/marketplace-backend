@@ -355,7 +355,8 @@ class CoopStkIT {
 
         assertEquals(PaymentIntent.FAILED, intent.state(), "no customer was prompted, so nothing is waited for");
         assertTrue(intent.settled());
-        assertTrue(intent.processingReason().contains("firewall"), "staff read what actually happened");
+        assertEquals(CoopStkService.NOT_SENT, intent.processingReason(),
+                "the firewall's page is in the log under the trace id, not on the screen — for anybody");
         assertNotNull(intent.traceId(), "and the row carries the handle the log lines were written under");
         assertTrue(intent.traceId().startsWith("HDI"), intent.traceId());
 
