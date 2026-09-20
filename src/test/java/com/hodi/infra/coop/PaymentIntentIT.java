@@ -138,13 +138,15 @@ class PaymentIntentIT {
         // Intents point at payments and statements, so they go first or the deletes below are refused.
         jdbc.update("delete from payment_intents where property_id in (select id from properties "
                 + "where development_id in (select id from developments where name = 'Intent Heights'))");
-        jdbc.update("update payments set statement_id = null where development_id in "
-                + "(select id from developments where name = 'Intent Heights')");
-        jdbc.update("delete from coop_statements where mapped_payment_id in (select id from payments "
-                + "where development_id in (select id from developments where name = 'Intent Heights')) "
-                + "or account_identifier like 'INT%'");
+        // A received gateway payment must keep its statement (ck_payment_statement), so the link is
+        // broken from the statement's side: release it, then the payment can go, then the statement.
+        jdbc.update("update coop_statements set state = 'UNMAPPED', mapped_payment_id = null, "
+                + "mapped_booking_id = null, mapped_at = null where mapped_payment_id in "
+                + "(select id from payments where development_id in "
+                + "(select id from developments where name = 'Intent Heights'))");
         jdbc.update("delete from payments where development_id in "
                 + "(select id from developments where name = 'Intent Heights')");
+        jdbc.update("delete from coop_statements where account_identifier like 'INT%'");
         jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = 'Intent Heights'))");
         jdbc.update("delete from unit_bookings where development_id in "
@@ -163,12 +165,14 @@ class PaymentIntentIT {
             // The payment names the statement and the statement names the payment: unlink, then delete.
             jdbc.update("delete from payment_intents where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
-            jdbc.update("update payments set statement_id = null where booking_id in "
+            jdbc.update("update coop_statements set state = 'UNMAPPED', mapped_payment_id = null, "
+                    + "mapped_booking_id = null, mapped_at = null where mapped_payment_id in "
+                    + "(select id from payments where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?))", development.getId());
+            jdbc.update("delete from payments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from coop_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
-            jdbc.update("delete from payments where booking_id in "
-                    + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from booking_instalments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
@@ -232,6 +236,21 @@ class PaymentIntentIT {
         assertEquals(PaymentIntent.SUCCEEDED, settled.getState());
         assertEquals("RCPT-1", settled.getReceipt());
         assertNotNull(settled.getPaymentId());
+
+        /*
+         * The enquiry's answer is written down as a statement, and the payment is written from it. Without
+         * this, a prompt settled by the enquiry was the one path that still produced an electronic payment
+         * with nothing behind it — which the database now refuses outright.
+         */
+        assertNotNull(settled.getStatementId(), "the enquiry's confirmation is a statement row");
+        CoopStatement evidence = statements.findById(settled.getStatementId()).orElseThrow();
+        assertEquals(AppConstant.STATEMENT_MAPPED, evidence.getState());
+        assertEquals(CoopIntentSettlement.STK_QUERY, evidence.getTransType());
+        assertEquals("RCPT-1", evidence.getRefNo(), "keyed on the receipt, which a later notification would quote");
+        assertEquals(settled.getPaymentId(), evidence.getMappedPaymentId());
+        assertEquals(0, evidence.getAmount().compareTo(new BigDecimal("950000")));
+        assertEquals(evidence.getId(), payments.findById(settled.getPaymentId()).orElseThrow().getStatementId(),
+                "and the payment names the statement it was written from");
     }
 
     @Test
@@ -250,8 +269,12 @@ class PaymentIntentIT {
         assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(),
                 "and the notification is accounted for rather than left in the unmatched queue");
         PaymentIntent settled = intents.findById(intent.getId()).orElseThrow();
-        assertEquals(stored.getId(), settled.getStatementId(),
-                "the intent records which notification answered it");
+        assertEquals(settled.getPaymentId(), stored.getMappedPaymentId(),
+                "the notification is placed on the same payment the enquiry credited");
+        assertNotEquals(stored.getId(), settled.getStatementId(),
+                "the intent keeps pointing at the statement that credited it — the enquiry's");
+        assertEquals(2, statements.findByMappedPaymentId(settled.getPaymentId()).size(),
+                "two bank messages, one payment; a void would release both");
     }
 
     @Test

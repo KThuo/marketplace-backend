@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface CoopStatementRepository extends JpaRepository<CoopStatement, Long> {
@@ -27,4 +28,14 @@ public interface CoopStatementRepository extends JpaRepository<CoopStatement, Lo
 
     @Query("select count(s) from CoopStatement s where s.state = 'UNMAPPED' and s.status <> 5")
     long countUnmapped();
+
+    /**
+     * Every statement credited as this payment.
+     *
+     * <p>Usually one. Two when the same money was reported twice — a status enquiry and a notification, say
+     * — and the second was linked rather than credited. A void releases all of them, or the second one sits
+     * MAPPED to a payment that no longer counts.
+     */
+    @Query("select s from CoopStatement s where s.mappedPaymentId = :paymentId and s.status <> 5")
+    List<CoopStatement> findByMappedPaymentId(@Param("paymentId") Long paymentId);
 }

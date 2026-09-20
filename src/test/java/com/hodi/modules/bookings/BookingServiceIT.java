@@ -221,7 +221,7 @@ class BookingServiceIT {
                 new InstalmentLine("Final", LocalDate.now().plusDays(90), new BigDecimal("4275000")))));
 
         paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("950000"),
-                LocalDate.now().minusDays(28), AppConstant.PAY_BANK_TRANSFER, null,
+                LocalDate.now().minusDays(28), AppConstant.PAY_CHEQUE, null,
                 "A7K2", "FT2609281234", "Asha Mwangi", "+254712000111", null));
 
         BookingResponse after = service.find(devId(), saved.id());
@@ -265,7 +265,7 @@ class BookingServiceIT {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("All of it", LocalDate.now(), new BigDecimal("9500000")))));
         paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("9500000"), null,
-                AppConstant.PAY_BANK_TRANSFER, null, "A7K2", null, null, null, null));
+                AppConstant.PAY_CHEQUE, null, "A7K2", null, null, null, null));
 
         BookingResponse done = service.complete(devId(), saved.id());
         assertEquals(AppConstant.BOOKING_COMPLETED, done.state());

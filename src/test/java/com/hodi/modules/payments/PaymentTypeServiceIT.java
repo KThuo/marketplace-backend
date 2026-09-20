@@ -356,37 +356,22 @@ class PaymentTypeServiceIT {
     }
 
     @Test
-    @DisplayName("an organisation with no account of its own collects into the platform's")
-    void thePlatformsAccountStandsBehindAnOrganisationWithNone() {
-        // The account exists, is approved, and belongs to the platform — which is the ordinary shape on
-        // a deployment where the platform collects everything.
-        PaymentType prompt = coop("COOP_STK_PUSH");
-        accounts.save(PaymentAccount.builder()
-                .paymentTypeId(prompt.getId())
-                .category(prompt.getCategory())
-                .accountNo("PLAT" + RrnGenerator.generate("A").substring(0, 8))
-                .status(AppConstant.STATUS_ACTIVE).statusFlag(AppConstant.FLAG_ACTIVE).build());
-
-        var offered = service.methodsOnOffer().stream()
-                .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
-
-        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_MOBILE_MONEY),
-                "otherwise a seller is told no method is set up while an approved account sits unused");
-    }
-
-    @org.junit.jupiter.api.Test
-    @org.junit.jupiter.api.DisplayName("a configured channel adds its method, and only its method")
-    void aConfiguredChannelIsOffered() {
+    @DisplayName("a configured channel does not become something a clerk may type in")
+    void aConfiguredChannelIsNotAHandKeyMethod() {
+        /*
+         * This used to assert the opposite: configure a mobile-money channel and "mobile money" appears on
+         * the receive form. That was the hole — a phone payment keyed from memory, with no prompt and no
+         * notification behind it. The channel still decides what a payer is offered (that is offered(), per
+         * booking); it decides nothing about what may be written down by hand.
+         */
         PaymentType channel = types.findAllLive().stream()
                 .filter(t -> t.channelCategory().isReceivable())
                 .filter(t -> AppConstant.PAY_MOBILE_MONEY.equals(t.getMethod()))
                 .findFirst().orElse(null);
         org.junit.jupiter.api.Assumptions.assumeTrue(channel != null,
                 "no mobile-money channel in the catalogue to configure");
-
         accounts.save(PaymentAccount.builder()
                 .paymentTypeId(channel.getId()).tenantId(tenantId)
-                // The check constraint insists a non-counter account names itself.
                 .category(channel.getCategory())
                 .accountNo("TEST-OFFERED-1").accountName("Test offered account")
                 .status(AppConstant.STATUS_ACTIVE).statusFlag(AppConstant.FLAG_ACTIVE).build());
@@ -394,10 +379,9 @@ class PaymentTypeServiceIT {
         var offered = service.methodsOnOffer().stream()
                 .map(com.hodi.modules.payments.PaymentDtos.MethodOption::value).toList();
 
-        org.junit.jupiter.api.Assertions.assertTrue(offered.contains(AppConstant.PAY_MOBILE_MONEY),
-                "configuring the channel is what puts its method on the form");
-        org.junit.jupiter.api.Assertions.assertFalse(offered.contains(AppConstant.PAY_CARD),
-                "and it puts nothing else there");
+        org.junit.jupiter.api.Assertions.assertEquals(
+                java.util.List.of(AppConstant.PAY_CASH, AppConstant.PAY_CHEQUE), offered,
+                "cash and a cheque are the only things somebody asserts; everything else the bank tells us");
     }
 
     // ── who is allowed to collect at all ─────────────────────────────────────

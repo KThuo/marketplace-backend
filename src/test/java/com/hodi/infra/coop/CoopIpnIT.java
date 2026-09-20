@@ -132,13 +132,15 @@ class CoopIpnIT {
      * <p>The statement and the payment point at each other, so the link is broken before either is deleted.
      */
     private void purgeStaleFixtures() {
-        jdbc.update("update payments set statement_id = null where development_id in "
-                + "(select id from developments where name = 'Paying Heights')");
-        jdbc.update("delete from coop_statements where mapped_payment_id in (select id from payments "
-                + "where development_id in (select id from developments where name = 'Paying Heights')) "
-                + "or account_identifier like 'TILL%'");
+        // A received gateway payment must keep its statement (ck_payment_statement), so the link is
+        // broken from the statement's side: release it, then the payment can go, then the statement.
+        jdbc.update("update coop_statements set state = 'UNMAPPED', mapped_payment_id = null, "
+                + "mapped_booking_id = null, mapped_at = null where mapped_payment_id in "
+                + "(select id from payments where development_id in "
+                + "(select id from developments where name = 'Paying Heights'))");
         jdbc.update("delete from payments where development_id in "
                 + "(select id from developments where name = 'Paying Heights')");
+        jdbc.update("delete from coop_statements where account_identifier like 'TILL%'");
         jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = 'Paying Heights'))");
         jdbc.update("delete from unit_bookings where development_id in "
@@ -155,12 +157,14 @@ class CoopIpnIT {
     void cleanUp() {
         try {
             // The payment names the statement and the statement names the payment: unlink, then delete.
-            jdbc.update("update payments set statement_id = null where booking_id in "
+            jdbc.update("update coop_statements set state = 'UNMAPPED', mapped_payment_id = null, "
+                    + "mapped_booking_id = null, mapped_at = null where mapped_payment_id in "
+                    + "(select id from payments where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?))", development.getId());
+            jdbc.update("delete from payments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from coop_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
-            jdbc.update("delete from payments where booking_id in "
-                    + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from booking_instalments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
@@ -209,6 +213,22 @@ class CoopIpnIT {
     void referenceIsCleanedBeforeMatching() {
         CoopStatement stored = service.accept(payload("unit z4xp", "950000.00", "254700000000"), true);
         assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
+    }
+
+    @Test
+    @DisplayName("the listing's own reference places the money on its own, whatever the amount or phone")
+    void aListingReferencePlacesWithoutCorroboration() {
+        /*
+         * Sixteen characters from a 32-letter alphabet. One mistyped letter is not somebody else's listing,
+         * it is nothing — so, unlike the four-character code, a match needs nothing else to agree with it.
+         */
+        CoopStatement stored = service.accept(payload("ref " + unit.getReference().toLowerCase(),
+                "37500.00", "254700000000"), true);
+
+        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
+        assertEquals(HashIdUtil.decodeId(booking.id()), stored.getMappedBookingId());
+        assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(booking.id()))
+                .compareTo(new BigDecimal("37500")));
     }
 
     // ── sent to the queue ─────────────────────────────────────────────────────

@@ -262,41 +262,16 @@ public class PaymentAccountService {
     }
 
     /**
-     * The methods this caller's organisation can actually take money by.
+     * The ways money can be written down by hand: cash and a cheque, and nothing else.
      *
-     * <p>The receive form used to be handed {@code PaymentMethods.ALL} — six of them, the same six for
-     * everybody — so an organisation with no card channel was offered Card, and a payment could be recorded
-     * through a route the platform cannot collect on. What is offered has to be what is configured.
-     *
-     * <p>Cash and cheque are the exception and are always offered: money over a counter needs no gateway,
-     * no account and nothing switched on, and an organisation that could not record it would simply stop
-     * writing it down. Everything else has to be earned by an account that exists and is live.
-     *
-     * <p>Platform staff see every configured method on the platform rather than none: they hold no
-     * organisation, and an empty list would make the form unusable for the people who operate it.
+     * <p>This used to add the method of every configured channel, so a form could offer "mobile money" as
+     * something to key. It cannot be keyed: a phone payment or a transfer arrives as a notification from the
+     * bank and is placed from that notification, and a hand-keyed one is a payment with nothing behind it.
+     * The channels an organisation has configured still decide what a payer is <em>offered</em> — that is
+     * {@link #offered}, per booking — but they do not become things a clerk may type in.
      */
-    @Transactional(readOnly = true)
     public List<PaymentDtos.MethodOption> methodsOnOffer() {
-        UserPrincipal caller = AuthContext.require();
-        Map<Long, PaymentType> catalogue = types.findAllLive().stream()
-                .collect(Collectors.toMap(PaymentType::getId, Function.identity()));
-
-        java.util.LinkedHashSet<String> offered = new java.util.LinkedHashSet<>();
-        // Over a counter: no channel to configure, so never withheld.
-        offered.add(AppConstant.PAY_CASH);
-        offered.add(AppConstant.PAY_CHEQUE);
-
-        liveFor(ownerFor(caller, null, null)).stream()
-                .map(a -> catalogue.get(a.getPaymentTypeId()))
-                .filter(java.util.Objects::nonNull)
-                .filter(PaymentType::selectable)
-                .filter(t -> t.channelCategory().isReceivable())
-                .sorted(Comparator.comparingInt(PaymentType::getSortOrder))
-                .map(PaymentType::getMethod)
-                .filter(m -> m != null && PaymentMethods.isKnown(m))
-                .forEach(offered::add);
-
-        return offered.stream()
+        return PaymentMethods.MANUAL.stream()
                 .map(m -> new PaymentDtos.MethodOption(m, PaymentMethods.label(m)))
                 .toList();
     }

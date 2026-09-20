@@ -59,6 +59,8 @@ public class CoopStkService {
     private final ConfigurationService configs;
     private final CoopIntentSettlement settlement;
     private final com.hodi.common.EncryptionUtil crypto;
+    /** For keeping the enquiry's whole answer on the statement written from it, as a notification's payload is. */
+    private final tools.jackson.databind.ObjectMapper mapper;
 
     // ── asking ────────────────────────────────────────────────────────────────
 
@@ -257,7 +259,8 @@ public class CoopStkService {
 
         return switch (outcome) {
             case SUCCESS -> settlement.succeeded(intent.getId(),
-                    CoopAnswer.bankReference(response), CoopAnswer.receipt(response), said, by).getState();
+                    CoopAnswer.bankReference(response), CoopAnswer.receipt(response), said,
+                    toJson(response), by).getState();
             case FAILED -> settlement.failed(intent.getId(), CoopAnswer.bankReference(response),
                     /*
                      * "Message Reference does not exist" is the answer when the push never reached them,
@@ -271,6 +274,16 @@ public class CoopStkService {
             case PENDING -> settlement.stillWaiting(intent.getId(), attempts,
                     "Co-op says it is still in progress: " + said).getState();
         };
+    }
+
+    private String toJson(Map<String, Object> response) {
+        try {
+            return mapper.writeValueAsString(response);
+        } catch (RuntimeException e) {
+            // Worth keeping, not worth failing a confirmed payment for.
+            log.warn("Could not serialise Co-op's answer for the statement: {}", e.getMessage());
+            return null;
+        }
     }
 
     /** Whether Co-op is telling us they have never seen this reference. */

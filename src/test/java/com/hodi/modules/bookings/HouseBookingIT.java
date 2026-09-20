@@ -115,7 +115,7 @@ class HouseBookingIT {
         // Completing with money outstanding is refused; paying it clears the way.
         assertThrows(HodiException.class, () -> bookings.complete(booked.id()));
         payments.receive(new ReceiveRequest(booked.id(), new BigDecimal("30000000"), LocalDate.now(),
-                AppConstant.PAY_BANK_TRANSFER, null, null, "TRF-1", null, null, null));
+                AppConstant.PAY_CHEQUE, null, null, "TRF-1", null, null, null));
         BookingResponse done = bookings.complete(booked.id());
         assertEquals(AppConstant.BOOKING_COMPLETED, done.state());
         assertEquals(0, new BigDecimal("30000000").compareTo(done.paid()));

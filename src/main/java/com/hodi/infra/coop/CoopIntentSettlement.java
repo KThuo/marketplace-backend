@@ -1,6 +1,7 @@
 package com.hodi.infra.coop;
 
 import com.hodi.common.AppConstant;
+import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.payments.*;
@@ -36,15 +37,27 @@ import java.time.OffsetDateTime;
  *   <li>{@link #failed} never overrides a success. If the bank said it worked and then said it did not,
  *       the money is what it is, and a person decides — the machine does not quietly reverse a credit.</li>
  * </ul>
+ *
+ * <h2>A confirmed payment has a statement, whichever way it was confirmed</h2>
+ *
+ * <p>A notification arrives as a statement row already. The status enquiry does not, so {@link #succeeded}
+ * writes one from the enquiry's answer before the payment is written from it — the same shape, the same
+ * evidence, the enquiry's raw answer kept the way a notification's payload is. A payment with no statement
+ * behind it is what the rule in {@code PaymentService} refuses, and an enquiry-settled prompt was the one path
+ * still producing them.
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class CoopIntentSettlement {
 
+    /** The {@code trans_type} of a statement written from the status enquiry rather than a notification. */
+    public static final String STK_QUERY = "STK_QUERY";
+
     private final PaymentIntentRepository intents;
     private final PaymentAccountRepository accounts;
     private final UnitBookingRepository bookings;
+    private final CoopStatementRepository statements;
     private final PaymentService payments;
 
     /**
@@ -123,6 +136,17 @@ public class CoopIntentSettlement {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentIntent succeeded(Long intentId, String bankReference, String receipt, String said,
                                    String by) {
+        return succeeded(intentId, bankReference, receipt, said, null, by);
+    }
+
+    /**
+     * As above, keeping the bank's whole answer on the statement that is written for it.
+     *
+     * @param rawAnswer the enquiry's response as JSON, or null when the caller has none to keep
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public PaymentIntent succeeded(Long intentId, String bankReference, String receipt, String said,
+                                   String rawAnswer, String by) {
         PaymentIntent intent = intents.findById(intentId).orElseThrow();
 
         if (PaymentIntent.SUCCEEDED.equals(intent.getState()) && intent.getPaymentId() != null) {
@@ -146,25 +170,75 @@ public class CoopIntentSettlement {
                 intent.setProcessingReason("Confirmed by Co-op: " + said
                         + " — but the booking it was for no longer exists, so nothing was credited.");
             } else {
-                Payment payment = payments.recordFromIntent(booking, intent, account);
+                CoopStatement statement = statementFor(intent, booking, account, receipt, said, rawAnswer);
+                Payment payment = payments.recordFromIntent(booking, intent, account, statement);
+                statement.placedOn(payment.getId(), booking.getId(), AppConstant.USERNAME_SYSTEM);
+                statements.save(statement);
                 intent.setPaymentId(payment.getId());
-                log.info("Payment intent {} credited booking {} as {}", intent.getReference(),
-                        booking.getReference(), payment.getReference());
+                intent.setStatementId(statement.getId());
+                log.info("Payment intent {} credited booking {} as {} from statement {}",
+                        intent.getReference(), booking.getReference(), payment.getReference(),
+                        statement.getRefNo());
             }
         }
         return intents.save(intent);
     }
 
     /**
+     * The statement row for a payment the status enquiry confirmed.
+     *
+     * <p>Keyed on the receipt the bank quoted, because that is what a later notification for the same money
+     * would also quote; failing that, on our own reference, prefixed so it cannot collide with a bank's. If a
+     * statement with that key already exists and is still unplaced — a notification that arrived first but
+     * could not be matched — it is the one credited, rather than a second row for the same money.
+     */
+    private CoopStatement statementFor(PaymentIntent intent, UnitBooking booking, PaymentAccount account,
+                                       String receipt, String said, String rawAnswer) {
+        String refNo = receipt == null || receipt.isBlank() ? "INTENT-" + intent.getReference() : receipt.trim();
+        CoopStatement existing = statements.findByRefNo(refNo).orElse(null);
+        if (existing != null && existing.isUnmapped()) return existing;
+        if (existing != null) {
+            // The receipt is already somebody else's placed statement. Ours goes under our own key.
+            refNo = "INTENT-" + intent.getReference();
+            CoopStatement ours = statements.findByRefNo(refNo).orElse(null);
+            if (ours != null && ours.isUnmapped()) return ours;
+        }
+        return statements.saveAndFlush(CoopStatement.builder()
+                .refNo(refNo)
+                .traceId(intent.getReference())
+                .ourReference(RrnGenerator.generate("PS"))
+                .transType(STK_QUERY)
+                .paymentAccountId(account == null ? null : account.getId())
+                .accountIdentifier(account == null ? null : account.getAccountNo())
+                .reference(intent.getReference())
+                .amount(intent.getAmount())
+                .currency(intent.getCurrency() == null ? "KES" : intent.getCurrency())
+                .phoneNo(intent.getPhoneNo())
+                .customerName(booking.getBuyerName())
+                .paidAt(OffsetDateTime.now())
+                .rawPayload(rawAnswer)
+                .tenantId(intent.getTenantId())
+                .institutionId(intent.getInstitutionId())
+                .state(AppConstant.STATEMENT_UNMAPPED)
+                .unmappedReason("Confirmed by Co-op's status enquiry: " + said)
+                .createdBy(AppConstant.USERNAME_SYSTEM)
+                .updatedBy(AppConstant.USERNAME_SYSTEM)
+                .build());
+    }
+
+    /**
      * Links a notification to the intent it answers, without crediting twice.
      *
      * <p>Called when a statement arrives quoting an intent's reference. If the status query already
-     * settled and credited it, this records which notification corresponded to it and stops. Both paths
+     * settled and credited it, this records that the notification corresponded to it and stops. Both paths
      * report the same money, and only one of them may move a balance.
+     *
+     * <p>The intent keeps pointing at the statement that credited it. A second statement for the same money
+     * is placed on the same payment and found from there ({@code mapped_payment_id}), so a void releases both.
      */
     @Transactional
     public PaymentIntent attachStatement(PaymentIntent intent, Long statementId, Long paymentId) {
-        intent.setStatementId(statementId);
+        if (intent.getStatementId() == null) intent.setStatementId(statementId);
         if (intent.getPaymentId() == null && paymentId != null) intent.setPaymentId(paymentId);
         if (!PaymentIntent.SUCCEEDED.equals(intent.getState())) {
             intent.setState(PaymentIntent.SUCCEEDED);

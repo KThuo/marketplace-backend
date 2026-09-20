@@ -7,12 +7,11 @@ import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.enums.ConfigKey;
-import com.hodi.modules.properties.Property;
-import com.hodi.modules.developments.DevelopmentUnitRepository;
 import com.hodi.modules.payments.Payment;
 import com.hodi.modules.payments.PaymentAccount;
 import com.hodi.modules.payments.PaymentIntent;
 import com.hodi.modules.payments.PaymentAccountRepository;
+import com.hodi.modules.payments.PayeeResolver;
 import com.hodi.modules.payments.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,15 +42,18 @@ import java.util.Optional;
  * second delivery, and each delivery is another chance to double-post. So an unplaceable payment is a stored
  * statement and a successful acknowledgement, not a refusal.
  *
- * <h2>Why a bare reference match is never enough</h2>
+ * <h2>What the payer may quote, and when a match is enough</h2>
  *
- * <p>A unit's code is four characters from a 32-letter alphabet. A single mistyped letter produces another
- * well-formed code, and the chance it happens to be a live one is roughly units ÷ 1,048,576 — about one in two
- * hundred at five thousand units. Small, not nothing, and it is money.
+ * <p>Three things, tried in this order by {@link PayeeResolver} and by the intent lookup before it: our own
+ * reference for a prompt we started, the listing's sixteen-character reference, and the unit's four-character
+ * pay code. The first two name one booking with no room for a near miss, so a match places the money.
  *
- * <p>So a reference match alone goes to the queue. To place a payment automatically, something else must agree:
- * the amount equals something outstanding on that unit, or the paying phone number is the buyer's. Anything
- * less is a person's decision, which is what the unmapped queue is for.
+ * <p>The code does not. Four characters from a 32-letter alphabet carry no redundancy: a single mistyped
+ * letter produces another well-formed code, and the chance it happens to be a live one is roughly units ÷
+ * 1,048,576 — about one in two hundred at five thousand units. Small, not nothing, and it is money. So a code
+ * match alone goes to the queue; to place it automatically, something else must agree — the amount equals
+ * something outstanding on that unit, or the paying phone number is the buyer's. Anything less is a person's
+ * decision, which is what the unmapped queue is for.
  *
  * <h2>What this method must not do</h2>
  *
@@ -67,7 +69,8 @@ public class CoopIpnService {
     private final CoopStatementRepository statements;
     private final PaymentAccountRepository accounts;
     private final UnitBookingRepository bookings;
-    private final DevelopmentUnitRepository units;
+    /** Whose money it is, from what the payer quoted. Shared with the biller and the queue, so they agree. */
+    private final PayeeResolver resolver;
     /** The one writer of a payment row, so a gateway credit is stamped exactly as a hand-keyed one is. */
     private final PaymentService payments;
     private final com.hodi.modules.payments.PaymentIntentRepository intents;
@@ -193,35 +196,23 @@ public class CoopIpnService {
          */
         if (creditedAnIntent(statement)) return;
 
-        if (statement.getReference() == null || statement.getReference().isBlank()) {
-            unplaced(statement, "The payer quoted no reference, so there is nothing to match on.");
+        PayeeResolver.Resolution match = resolver.resolve(statement.getReference());
+        if (!match.found()) {
+            unplaced(statement, match.reason());
             return;
         }
 
-        Optional<Property> unit = units.findByPayReference(payCode(statement.getReference()));
-        if (unit.isEmpty()) {
-            unplaced(statement, "No unit has the code \"" + payCode(statement.getReference())
-                    + "\". The payer may have mistyped it.");
-            return;
-        }
-
-        Optional<UnitBooking> booking = bookings.findLiveForUnit(unit.get().getId());
-        if (booking.isEmpty()) {
-            unplaced(statement, "Unit " + unit.get().getUnitLabel()
-                    + " has no live booking, so there is nothing to credit.");
-            return;
-        }
-
-        UnitBooking target = booking.get();
-        if (!corroborated(statement, target)) {
+        UnitBooking target = match.booking();
+        if (match.needsCorroboration() && !corroborated(statement, target)) {
             /*
-             * The reference matched and nothing else did.
+             * The code matched and nothing else did.
              *
              * Four characters carry no redundancy, so one mistyped letter produces another well-formed code —
              * and at five thousand units the chance it is a live one is about one in two hundred. Too high to
-             * credit somebody's balance on that alone.
+             * credit somebody's balance on that alone. A listing reference is not one letter from another
+             * live one, which is why it does not come through here.
              */
-            unplaced(statement, "The code matches unit " + unit.get().getUnitLabel()
+            unplaced(statement, "The code matches " + PayeeResolver.label(match.home())
                     + ", but neither the amount nor the phone number does. Check before crediting "
                     + target.getReference() + ".");
             return;
@@ -231,12 +222,7 @@ public class CoopIpnService {
         // hand-keyed payment does — and so there is exactly one place a payment row is written.
         Payment payment = payments.recordFromGateway(target, statement, account);
 
-        statement.setState(AppConstant.STATEMENT_MAPPED);
-        statement.setMappedPaymentId(payment.getId());
-        statement.setMappedBookingId(target.getId());
-        statement.setMappedAt(OffsetDateTime.now());
-        statement.setMappedBy(AppConstant.USERNAME_SYSTEM);
-        statement.setUnmappedReason(null);
+        statement.placedOn(payment.getId(), target.getId(), AppConstant.USERNAME_SYSTEM);
         statements.save(statement);
 
         log.info("Co-op notification {} placed on booking {} as {}", statement.getRefNo(),
@@ -270,14 +256,10 @@ public class CoopIpnService {
         if (intent == null) return false;
 
         if (intent.getPaymentId() != null) {
-            // Already credited — by the status query, or by an earlier delivery of this same money.
+            // Already credited — by the status query, or by an earlier delivery of this same money. Placed on
+            // the same payment, so a void of that payment releases this too.
             settlement.attachStatement(intent, statement.getId(), intent.getPaymentId());
-            statement.setState(AppConstant.STATEMENT_MAPPED);
-            statement.setMappedPaymentId(intent.getPaymentId());
-            statement.setMappedBookingId(intent.getBookingId());
-            statement.setMappedAt(OffsetDateTime.now());
-            statement.setMappedBy(AppConstant.USERNAME_SYSTEM);
-            statement.setUnmappedReason(null);
+            statement.placedOn(intent.getPaymentId(), intent.getBookingId(), AppConstant.USERNAME_SYSTEM);
             statements.save(statement);
             log.info("Co-op notification {} answers payment {}, which was already credited as {}",
                     statement.getRefNo(), intent.getReference(), intent.getPaymentId());
@@ -297,12 +279,7 @@ public class CoopIpnService {
         Payment payment = payments.recordFromGateway(booking, statement, account);
 
         settlement.attachStatement(intent, statement.getId(), payment.getId());
-        statement.setState(AppConstant.STATEMENT_MAPPED);
-        statement.setMappedPaymentId(payment.getId());
-        statement.setMappedBookingId(booking.getId());
-        statement.setMappedAt(OffsetDateTime.now());
-        statement.setMappedBy(AppConstant.USERNAME_SYSTEM);
-        statement.setUnmappedReason(null);
+        statement.placedOn(payment.getId(), booking.getId(), AppConstant.USERNAME_SYSTEM);
         statements.save(statement);
 
         log.info("Co-op notification {} placed on payment {} for booking {} as {}", statement.getRefNo(),
@@ -350,18 +327,6 @@ public class CoopIpnService {
         return digits.length() < 9 ? null : digits.substring(digits.length() - 9);
     }
 
-    /**
-     * The four-character code out of whatever the payer typed.
-     *
-     * <p>People add spaces, prefixes and their own name. The code is uppercase and four characters, so the
-     * last four alphanumerics are taken — which is also the pattern the guide suggests, and it survives
-     * "UNIT A7K2" and "a7k2" alike.
-     */
-    private String payCode(String reference) {
-        String cleaned = reference.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
-        return cleaned.length() <= 4 ? cleaned : cleaned.substring(cleaned.length() - 4);
-    }
-
     private void unplaced(CoopStatement statement, String reason) {
         statement.setState(AppConstant.STATEMENT_UNMAPPED);
         statement.setUnmappedReason(reason);
@@ -369,7 +334,6 @@ public class CoopIpnService {
         log.info("Co-op notification {} stored unmapped: {}", statement.getRefNo(), reason);
     }
 
-    /** Whether the caller proved it is Co-op. Blank secret means no, and no means nothing is auto-placed. */
     /**
      * Whether the caller proved it is Co-op.
      *

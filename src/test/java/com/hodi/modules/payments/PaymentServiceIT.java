@@ -4,6 +4,10 @@ import com.hodi.common.AppConstant;
 import com.hodi.modules.properties.Property;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
+import com.hodi.infra.coop.CoopStatement;
+import com.hodi.infra.coop.CoopStatementRepository;
+import com.hodi.modules.bookings.UnitBooking;
+import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.bookings.BookingDtos.BookingResponse;
 import com.hodi.modules.bookings.BookingDtos.CreateBookingRequest;
 import com.hodi.modules.bookings.BookingDtos.InstalmentLine;
@@ -41,9 +45,11 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>What is worth a test rather than a reading: the two balance snapshots, because a receipt has to show the
  * subtraction it performed and both ends are read from the view at the moment they were true; the void, because
- * the row must stay and the balance must go back; the channel stamp, because a receipt that says "mobile money"
- * where the payer said "KCB Till" is the bug the payment type exists to fix; and the refusals — a dead booking,
- * an account that does not collect for this development, a caller who may not touch the units.
+ * the row must stay, the balance must go back and the statement behind it must be freed; the channel stamp,
+ * because a receipt that says "cash" where the account says "Petty cash — site office" is the bug the payment
+ * type exists to fix; and the refusals — a dead booking, an account that does not collect for this development,
+ * a caller who may not touch the units, and above all any attempt to key by hand a payment the bank should have
+ * told us about.
  */
 @SpringBootTest
 @Transactional
@@ -53,6 +59,8 @@ class PaymentServiceIT {
     @Autowired PaymentQueryService queries;
     @Autowired BookingService bookings;
     @Autowired PaymentRepository payments;
+    @Autowired UnitBookingRepository bookingRows;
+    @Autowired CoopStatementRepository statements;
     @Autowired PaymentAccountRepository accounts;
     @Autowired PaymentTypeRepository types;
     @Autowired DevelopmentRepository developments;
@@ -129,7 +137,16 @@ class PaymentServiceIT {
                 null, null, null, null, null);
     }
 
-    /** A live KCB till on this tenant, so a payment can name the channel it came through. */
+    /** A cash account on this tenant: a manual channel, so a hand-keyed payment can name it. */
+    private PaymentAccount cashDesk(Long developmentId) {
+        PaymentType channel = types.findByCode(AppConstant.PAY_CASH).orElseThrow();
+        PaymentAccount row = PaymentAccount.builder()
+                .tenantId(tenantId).developmentId(developmentId).createdBy("test").build();
+        row.stampChannel(channel);
+        return accounts.save(row);
+    }
+
+    /** A live KCB till on this tenant: an inbound channel, whose money arrives as a notification. */
     private PaymentAccount till(Long developmentId) {
         PaymentType channel = types.findByProviderType("BUNI_IPN_TILL").orElseThrow();
         PaymentAccount row = PaymentAccount.builder()
@@ -160,18 +177,60 @@ class PaymentServiceIT {
     }
 
     @Test
-    @DisplayName("naming the account fixes the method and stamps the channel's name on the receipt")
+    @DisplayName("naming a manual account fixes the method and stamps the channel's name on the receipt")
     void channelStampsTheReceipt() {
-        PaymentAccount till = till(null);
+        PaymentAccount desk = cashDesk(null);
 
         PaymentResponse paid = service.receive(new ReceiveRequest(booking.id(), new BigDecimal("950000"),
-                null, AppConstant.PAY_CASH, HashIdUtil.encodeId(till.getId()),
-                "R2K4", "FT1234", null, null, null));
+                null, AppConstant.PAY_CHEQUE, HashIdUtil.encodeId(desk.getId()),
+                "R2K4", null, null, null, null));
 
-        assertEquals(AppConstant.PAY_BANK_TRANSFER, paid.method(),
-                "the channel decides the method — cash was asked for and refused by the till");
-        assertEquals("KCB Till", paid.arrivedAs());
-        assertEquals(HashIdUtil.encodeId(till.getPaymentTypeId()), paid.paymentTypeId());
+        assertEquals(AppConstant.PAY_CASH, paid.method(),
+                "the channel decides the method — a cheque was asked for and the cash desk said cash");
+        assertEquals(HashIdUtil.encodeId(desk.getPaymentTypeId()), paid.paymentTypeId());
+        assertEquals(types.findByCode(AppConstant.PAY_CASH).orElseThrow().getName(), paid.arrivedAs());
+    }
+
+    @Test
+    @DisplayName("money that arrives through the bank cannot be keyed by hand, with or without its account")
+    void bankMoneyCannotBeKeyedByHand() {
+        /*
+         * The hole this closes: a payment recorded as "Co-op phone prompt" or "bank transfer" with no prompt,
+         * no notification and no statement — only an operator's word and a free-text reference. It moved a
+         * buyer's balance and nothing could check it afterwards. Such money exists only as a statement row,
+         * and it is placed from there.
+         */
+        PaymentAccount till = till(null);
+        HodiException viaAccount = assertThrows(HodiException.class, () -> service.receive(new ReceiveRequest(
+                booking.id(), new BigDecimal("950000"), null, null, HashIdUtil.encodeId(till.getId()),
+                "R2K4", "FT1234", null, null, null)));
+        assertTrue(viaAccount.getMessage().contains("notification from the bank"), viaAccount.getMessage());
+        assertTrue(viaAccount.getMessage().contains("bank reference"),
+                "and it says where the payment actually is");
+
+        HodiException viaMethod = assertThrows(HodiException.class, () -> service.receive(new ReceiveRequest(
+                booking.id(), new BigDecimal("950000"), null, AppConstant.PAY_BANK_TRANSFER, null,
+                null, "FT1234", null, null, null)));
+        assertTrue(viaMethod.getMessage().contains("notification from the bank"), viaMethod.getMessage());
+
+        HodiException blank = assertThrows(HodiException.class, () -> service.receive(new ReceiveRequest(
+                booking.id(), new BigDecimal("950000"), null, null, null, null, null, null, null, null)));
+        assertTrue(blank.getMessage().contains("cash or a cheque"),
+                "nothing defaults to a bank transfer any more: " + blank.getMessage());
+
+        assertEquals(0, payments.findForBooking(HashIdUtil.decodeId(booking.id())).size());
+    }
+
+    @Test
+    @DisplayName("the database itself refuses an electronic payment with no statement behind it")
+    void theDatabaseRefusesAnElectronicPaymentWithoutAStatement() {
+        // Underneath the service, which is the only way to reach a path the service does not have.
+        assertThrows(org.springframework.dao.DataIntegrityViolationException.class, () -> jdbc.update("""
+                insert into payments (reference, booking_id, development_id, property_id, paid_on, amount,
+                    currency, source, method, status, created_by)
+                values (?, ?, ?, ?, current_date, 1000, 'KES', 'MANUAL', 'BANK_TRANSFER', 1, 'test')
+                """, RrnGenerator.generate("PY"), HashIdUtil.decodeId(booking.id()), development.getId(),
+                unit.getId()));
     }
 
     @Test
@@ -239,6 +298,34 @@ class PaymentServiceIT {
     }
 
     @Test
+    @DisplayName("voiding a payment placed from a statement puts the statement back in the queue, saying why")
+    void voidReleasesTheStatement() {
+        PaymentAccount till = till(null);
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(booking.id())).orElseThrow();
+        CoopStatement statement = statements.saveAndFlush(CoopStatement.builder()
+                .refNo("VOID-" + RrnGenerator.generate("RF")).ourReference(RrnGenerator.generate("PS"))
+                .transType("BUNI_IPN_TILL").paymentAccountId(till.getId()).accountIdentifier(till.getAccountNo())
+                .reference("R2K4").amount(new BigDecimal("950000")).phoneNo("254712000111")
+                .customerName("Asha Mwangi").tenantId(tenantId).createdBy("test").build());
+        Payment placed = service.recordFromGateway(row, statement, till);
+        statement.placedOn(placed.getId(), row.getId(), "test");
+        statements.saveAndFlush(statement);
+        assertEquals(statement.getId(), placed.getStatementId(), "a gateway payment names its statement");
+
+        service.voidPayment(HashIdUtil.encodeId(placed.getId()), new VoidRequest("Wrong unit."));
+
+        CoopStatement released = statements.findById(statement.getId()).orElseThrow();
+        assertEquals(AppConstant.STATEMENT_UNMAPPED, released.getState(),
+                "the bank still says the money arrived; only our decision about whose it was is withdrawn");
+        assertNull(released.getMappedPaymentId());
+        assertNull(released.getMappedBookingId());
+        assertTrue(released.getUnmappedReason().contains("voided"), released.getUnmappedReason());
+        assertTrue(released.getUnmappedReason().contains("Wrong unit."), "and it carries the reason given");
+        assertEquals(statement.getId(), payments.findById(placed.getId()).orElseThrow().getStatementId(),
+                "the voided receipt still says which statement it was written from");
+    }
+
+    @Test
     @DisplayName("a payment cannot be voided twice")
     void doubleVoidRefused() {
         PaymentResponse paid = service.receive(cash("100000"));
@@ -267,10 +354,11 @@ class PaymentServiceIT {
     @Test
     @DisplayName("the list filters by status and by channel, and the receipt is found by its number")
     void listAndReceipt() {
-        PaymentAccount till = till(null);
+        PaymentAccount desk = cashDesk(null);
         PaymentResponse viaTill = service.receive(new ReceiveRequest(booking.id(), new BigDecimal("500000"),
-                null, null, HashIdUtil.encodeId(till.getId()), null, null, null, null, null));
-        PaymentResponse cash = service.receive(cash("1000"));
+                null, null, HashIdUtil.encodeId(desk.getId()), null, null, null, null, null));
+        PaymentResponse cash = service.receive(new ReceiveRequest(booking.id(), new BigDecimal("1000"), null,
+                AppConstant.PAY_CHEQUE, null, null, "CHQ 0042", null, null, null));
         service.voidPayment(cash.id(), new VoidRequest("Keyed twice."));
 
         PaymentListRequest received = new PaymentListRequest();
@@ -284,12 +372,13 @@ class PaymentServiceIT {
         assertEquals(1, queries.list(voided).getTotalElements());
 
         PaymentListRequest byChannel = new PaymentListRequest();
-        byChannel.setPaymentTypeId(HashIdUtil.encodeId(till.getPaymentTypeId()));
+        byChannel.setPaymentTypeId(HashIdUtil.encodeId(desk.getPaymentTypeId()));
         byChannel.setBookingId(booking.id());
         assertEquals(1, queries.list(byChannel).getTotalElements());
 
         assertEquals(viaTill.id(), queries.byReference(viaTill.reference()).payment().id());
-        assertEquals("KCB Till", queries.detail(viaTill.id()).payment().arrivedAs());
+        assertEquals(types.findByCode(AppConstant.PAY_CASH).orElseThrow().getName(),
+                queries.detail(viaTill.id()).payment().arrivedAs());
         assertNotNull(queries.detail(viaTill.id()).booking(), "the receipt carries the booking as it stands");
     }
 }

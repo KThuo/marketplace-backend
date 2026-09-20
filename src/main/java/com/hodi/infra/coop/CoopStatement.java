@@ -84,4 +84,31 @@ public class CoopStatement {
 
     public boolean isMapped() { return AppConstant.STATEMENT_MAPPED.equals(state); }
     public boolean isUnmapped() { return AppConstant.STATEMENT_UNMAPPED.equals(state); }
+
+    /** The money has been credited to a booking as this payment. The one way a statement becomes MAPPED. */
+    public void placedOn(Long paymentId, Long bookingId, String by) {
+        this.state = AppConstant.STATEMENT_MAPPED;
+        this.mappedPaymentId = paymentId;
+        this.mappedBookingId = bookingId;
+        this.mappedAt = OffsetDateTime.now();
+        this.mappedBy = by;
+        this.unmappedReason = null;
+        this.updatedBy = by;
+    }
+
+    /**
+     * The payment it was applied to is gone, so the money is unplaced again.
+     *
+     * <p>Back to the queue, never deleted: the bank still says it happened. The reference stays too, so the
+     * same money cannot arrive a second time while a person is deciding what to do with the first.
+     */
+    public void release(String reason, String by) {
+        this.state = AppConstant.STATEMENT_UNMAPPED;
+        this.mappedPaymentId = null;
+        this.mappedBookingId = null;
+        this.mappedAt = null;
+        this.mappedBy = null;
+        this.unmappedReason = reason;
+        this.updatedBy = by;
+    }
 }

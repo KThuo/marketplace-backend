@@ -410,6 +410,12 @@ Purpose, as the client put it: a bank admin disburses funds to a developer, or f
 
 ---
 
+## 3a. Progress
+
+| Step | State | Notes |
+|---|---|---|
+| 1 | **Done, 20 September** | `receive` takes cash and cheque only; a query-settled intent writes an `STK_QUERY` statement and credits through it; a void releases every statement on the payment; `ck_payment_statement` (NOT VALID, voided rows exempt so legacy payments can still be voided); `PayeeResolver` matches the listing reference, then the pay code, corroboration on the code only. The receive form's default of "bank transfer" is now refused with a message pointing at slip validation, until Step 6 replaces the form. |
+
 ## 4. Order, and what each step unblocks
 
 | Step | Depends on | Unblocks | Size |

@@ -6,6 +6,7 @@ import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.infra.coop.CoopStatement;
+import com.hodi.infra.coop.CoopStatementRepository;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.bookings.BookingBalanceReader;
 import com.hodi.modules.bookings.BookingDtos.BalanceRow;
@@ -32,6 +33,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.text.DecimalFormat;
 import java.time.LocalDate;
+import java.util.Locale;
 
 /**
  * Receiving money against a booking, and voiding it.
@@ -48,6 +50,14 @@ import java.time.LocalDate;
  * <p>Never computed here. {@code balance_before} and {@code balance_after} are read from
  * {@code v_booking_balances} either side of the insert, so the receipt shows the same arithmetic the
  * booking screen does. Two implementations of a balance is two balances.
+ *
+ * <h2>Cash and cheque are the only things a person may write down</h2>
+ *
+ * <p>Everything else — a phone prompt, a transfer, a paybill — arrives as a notification from the bank, and
+ * the notification is the evidence. So {@link #receive} takes cash and cheques only, and every other payment
+ * is written from the statement it arrived on and carries that statement's id. {@link #write} refuses the
+ * combination the database also refuses ({@code ck_payment_statement}), so a payment with nothing behind it
+ * cannot be produced from any path, including one added later.
  *
  * <h2>Voided, never edited</h2>
  *
@@ -71,16 +81,19 @@ public class PaymentService {
     private final PaymentAccountRepository accounts;
     private final PaymentTypeRepository types;
     private final PaymentQueryService queries;
+    private final CoopStatementRepository statements;
     private final AuditService audit;
     private final NotifyClient notify;
 
     // ── receiving ─────────────────────────────────────────────────────────────
 
     /**
-     * Records money received by hand.
+     * Records cash or a cheque received by hand.
      *
-     * <p>The manual path, and it is not a placeholder: a bank reconciling a cheque or an RTGS transfer needs
-     * this in production permanently, and it means the figures do not wait on anybody's API key.
+     * <p>Only those two. A transfer or a phone payment is money the bank tells us about, and it is placed
+     * from that notification — by the matcher, or by a person finding it by its bank reference — never
+     * keyed from memory. Keying it would produce a payment with no evidence behind it, which is what this
+     * refusal exists to prevent.
      */
     @Transactional
     public PaymentResponse receive(ReceiveRequest request) {
@@ -122,9 +135,12 @@ public class PaymentService {
                 throw new HodiException(type.getName() + " sends money out; it is not a way to receive it.",
                         HttpStatus.BAD_REQUEST);
             }
+            if (!type.isManual()) {
+                throw new HodiException(arrivesAsANotification(type.getName()), HttpStatus.BAD_REQUEST);
+            }
             method = type.getMethod();
         } else {
-            method = method(request.method());
+            method = manualMethod(request.method());
         }
 
         Payment saved = write(booking, development, request.amount(), paidOn, AppConstant.PAY_MANUAL,
@@ -164,28 +180,35 @@ public class PaymentService {
     }
 
     /**
-     * Records the money for an intent Co-op has confirmed.
+     * Records the money for an intent Co-op has confirmed, from the statement written for that confirmation.
      *
      * <p>Used when the status query settles a payment the callback never reported. The alternative —
      * crediting only on a callback — loses the money whose callback was lost, which is the whole reason
      * the status query exists.
      *
+     * <p>The statement is the enquiry's answer written down as a bank statement row, so this payment has
+     * the same evidence behind it as one placed from a notification. A notification arriving later for
+     * the same money is linked to this payment rather than creating a second one.
+     *
      * <p>Deduplication is the caller's: {@code CoopIntentSettlement} writes this once per intent and
-     * never again, and a statement arriving later for the same reference is linked to this payment rather
-     * than creating a second one.
+     * never again.
      */
     @Transactional
-    public Payment recordFromIntent(UnitBooking booking, PaymentIntent intent, PaymentAccount account) {
+    public Payment recordFromIntent(UnitBooking booking, PaymentIntent intent, PaymentAccount account,
+                                    CoopStatement statement) {
         Development development = booking.getDevelopmentId() == null ? null
                 : developments.findById(booking.getDevelopmentId())
                 .orElseThrow(() -> new HodiException("That development no longer exists.", HttpStatus.CONFLICT));
         PaymentType type = types.findById(intent.getPaymentTypeId()).orElse(null);
         String method = type == null ? AppConstant.PAY_MOBILE_MONEY : type.getMethod();
+        LocalDate paidOn = statement.getPaidAt() == null ? LocalDate.now()
+                : statement.getPaidAt().toLocalDate();
 
-        Payment saved = write(booking, development, intent.getAmount(), LocalDate.now(),
+        Payment saved = write(booking, development, intent.getAmount(), paidOn,
                 AppConstant.PAY_GATEWAY, method, type, intent.getReference(),
                 intent.getReceipt() == null ? intent.getBankReference() : intent.getReceipt(),
-                booking.getBuyerName(), intent.getPhoneNo(), null, null, AppConstant.USERNAME_SYSTEM);
+                booking.getBuyerName(), intent.getPhoneNo(), null, statement.getId(),
+                AppConstant.USERNAME_SYSTEM);
         audit.record(AppConstant.AUDIT_PAYMENT_RECEIVED, "Payment", saved.getId(), null, snapshot(saved));
         return saved;
     }
@@ -197,6 +220,10 @@ public class PaymentService {
      *
      * <p>Never an edit and never a delete. A balance a buyer has already been told changes only by an entry
      * that says why it changed, and the row stays so the receipt can still be read.
+     *
+     * <p>A statement credited as this payment goes back to the unused queue, carrying the reason. The bank
+     * still says the money arrived; what has been withdrawn is only our decision about whose it was, and
+     * somebody has to make that decision again.
      */
     @Transactional
     public PaymentResponse voidPayment(String hashId, VoidRequest request) {
@@ -218,6 +245,15 @@ public class PaymentService {
         // Flushed, so the balance view — read through JDBC by whoever renders the response — sees the void.
         Payment saved = payments.saveAndFlush(payment);
         audit.record(AppConstant.AUDIT_PAYMENT_VOIDED, "Payment", saved.getId(), before, snapshot(saved));
+
+        for (CoopStatement statement : statements.findByMappedPaymentId(saved.getId())) {
+            statement.release("The payment it was applied to, " + saved.getReference() + ", was voided: "
+                    + request.reason().trim(), AuthContext.username());
+            statements.save(statement);
+            log.info("Statement {} released back to the queue by the void of {}", statement.getRefNo(),
+                    saved.getReference());
+        }
+
         log.info("Payment {} voided by {}: {}", saved.getReference(), AuthContext.username(),
                 request.reason().trim());
         return queries.toResponse(saved);
@@ -229,6 +265,12 @@ public class PaymentService {
                           String source, String method, PaymentType type, String quotedReference,
                           String externalReference, String payerName, String payerPhone, String notes,
                           Long statementId, String actor) {
+        if (!PaymentMethods.isManual(method) && statementId == null) {
+            // The database refuses this too (ck_payment_statement). Refusing here says why, in words, and
+            // before a balance has been read for a row that will never exist.
+            throw new IllegalStateException("A " + PaymentMethods.label(method).toLowerCase(Locale.ROOT)
+                    + " payment must be written from the bank statement it arrived on.");
+        }
         Property home = units.findById(booking.getPropertyId()).orElse(null);
         // Before anything is applied. The receipt shows the subtraction, so both ends are read when true.
         BigDecimal before = balance(booking.getId());
@@ -328,13 +370,22 @@ public class PaymentService {
         return home;
     }
 
-    private static String method(String requested) {
-        if (requested == null || requested.isBlank()) return AppConstant.PAY_BANK_TRANSFER;
-        String value = requested.trim().toUpperCase();
-        if (!PaymentMethods.isKnown(value)) {
-            throw new HodiException("That is not a way money arrives here.", HttpStatus.BAD_REQUEST);
+    /** Cash or cheque, said plainly; anything else is told where the payment actually is. */
+    private static String manualMethod(String requested) {
+        if (requested == null || requested.isBlank()) {
+            throw new HodiException("Say whether this was cash or a cheque.", HttpStatus.BAD_REQUEST);
         }
-        return value;
+        String value = requested.trim().toUpperCase(Locale.ROOT);
+        if (PaymentMethods.isManual(value)) return value;
+        if (PaymentMethods.isKnown(value)) {
+            throw new HodiException(arrivesAsANotification(PaymentMethods.label(value)), HttpStatus.BAD_REQUEST);
+        }
+        throw new HodiException("That is not a way money arrives here.", HttpStatus.BAD_REQUEST);
+    }
+
+    private static String arrivesAsANotification(String what) {
+        return what + " payments arrive as a notification from the bank, so this one cannot be keyed by "
+                + "hand. Find it by its bank reference and attach it to the booking instead.";
     }
 
     private static String snapshot(Payment p) {
