@@ -1,5 +1,11 @@
 # Asking Co-op for money, and finding out whether it arrived
 
+> **Superseded, 20 September 2026.** Written when payments went through the pesi gateway. The names,
+> the shape and the sequence below no longer describe the code. The current plan and progress is
+> [PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md](PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md). Kept for the
+> reasoning that still holds.
+
+
 **18 September 2026.** STK push, funds transfer, and the status query that runs when the callback
 never comes.
 

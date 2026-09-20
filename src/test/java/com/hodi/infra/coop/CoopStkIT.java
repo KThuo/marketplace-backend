@@ -168,7 +168,7 @@ class CoopStkIT {
 
         // Co-op is the server above, for the length of this test.
         remember("coop.base.url", "coop.token.path", "coop.consumer.key", "coop.consumer.secret",
-                "coop.stk.wait.seconds", "coop.callback.timeout.seconds");
+                "coop.callback.timeout.seconds");
         set("coop.base.url", bankUrl(), false);
         set("coop.token.path", "/token", false);
         set("coop.consumer.key", "consumer-key", false);

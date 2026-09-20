@@ -1,5 +1,11 @@
 # Payments, completed: Co-op through Pesi, tied to a listing and to the person who paid
 
+> **Superseded, 20 September 2026.** Written when payments went through the pesi gateway. The names,
+> the shape and the sequence below no longer describe the code. The current plan and progress is
+> [PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md](PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md). Kept for the
+> reasoning that still holds.
+
+
 **The ask (17 September 2026):** complete the Co-op integration. Billers, IPN and STK push are what the
 client needs first. Tie payments to listings and to the customers who make them. Stop offering payment
 types nobody has configured. And when a listing has been paid for — even partly — say so, or take it off

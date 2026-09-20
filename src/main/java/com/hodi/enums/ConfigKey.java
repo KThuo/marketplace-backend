@@ -657,6 +657,19 @@ public enum ConfigKey {
             "Addresses Co-op notifies us from",
             "Comma-separated IP addresses allowed to post payment notifications. Empty accepts any "
                     + "address, leaving HTTP Basic as the control.", false, false),
+    /**
+     * Whether the caller's address is read from {@code X-Forwarded-For}.
+     *
+     * <p>Behind a load balancer the socket address is the balancer's and the real caller is in the header;
+     * exposed directly, anybody can put any address in that header and walk through the allow-list. So
+     * the header is trusted only when somebody says the deployment is behind a proxy. OFF by default.
+     */
+    COOP_IPN_TRUST_FORWARDED_FOR(
+            "coop.ipn.trust.forwarded.for", "BOOLEAN", "INTEGRATION", "false",
+            "Behind a proxy: read the caller from X-Forwarded-For",
+            "When true, the allow-list is checked against the first address in X-Forwarded-For rather "
+                    + "than the socket's. Only turn this on behind a load balancer you control; otherwise "
+                    + "a caller can name any address it likes.", false, false),
 
     COOP_CONSUMER_KEY(
             "coop.consumer.key", "STRING", "INTEGRATION", "",
@@ -776,23 +789,6 @@ public enum ConfigKey {
             "coop.status.query.max.attempts", "INTEGER", "INTEGRATION", "2",
             "Automatic status queries per payment",
             "How many times the sweep asks Co-op about one stuck payment before leaving it for a person.",
-            false, false),
-    /**
-     * How long the request holds open while the customer decides.
-     *
-     * <p>A phone prompt is answered by a person walking to their handset and typing a PIN, so the honest
-     * interaction is to wait for them rather than to answer "sent" and make somebody watch a list. The
-     * request is held, the answer is the payment itself, and the screen closes on it.
-     *
-     * <p>Under the client's own timeout on purpose — the browser gives it three minutes — so a wait that
-     * runs out is answered by this server with an intent still in flight rather than by the browser with a
-     * network error and nothing to show.
-     */
-    COOP_STK_WAIT_SECONDS(
-            "coop.stk.wait.seconds", "INTEGER", "INTEGRATION", "150",
-            "Seconds to wait at the screen",
-            "How long a phone prompt holds the screen while the customer approves it. After this the "
-                    + "payment is left in flight and the status query settles it.",
             false, false),
     COOP_CALLBACK_TIMEOUT_SECONDS(
             "coop.callback.timeout.seconds", "INTEGER", "INTEGRATION", "60",

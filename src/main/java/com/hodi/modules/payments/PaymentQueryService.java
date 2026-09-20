@@ -14,7 +14,6 @@ import com.hodi.modules.developments.Development;
 import com.hodi.modules.developments.DevelopmentRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.developments.DevelopmentUnitRepository;
-import com.hodi.modules.developments.DevelopmentVisibility;
 import com.hodi.modules.payments.PaymentDtos.*;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
@@ -54,7 +53,6 @@ public class PaymentQueryService {
     private final BookingInstalmentRepository instalments;
     private final DevelopmentRepository developments;
     private final DevelopmentUnitRepository units;
-    private final DevelopmentVisibility visibility;
     private final com.hodi.modules.bookings.BookingAccess access;
     private final BookingBalanceReader balances;
     /** Knows what this organisation has configured, which is what may be offered. */

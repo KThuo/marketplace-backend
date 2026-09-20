@@ -64,7 +64,7 @@ public class CoopBillerController {
 
     private ResponseEntity<Map<String, Object>> refusedAddress(Map<String, Object> body,
                                                                HttpServletRequest request) {
-        String caller = callerAddress(request);
+        String caller = addresses.callerAddress(request);
         if (addresses.isFromAllowedAddress(caller)) return null;
         log.warn("Refused a Co-op biller call from {} — not in the allowed addresses", caller);
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -77,12 +77,5 @@ public class CoopBillerController {
         if (body == null || !(body.get("header") instanceof Map<?, ?> header)) return null;
         Object id = ((Map<String, Object>) header).get("messageID");
         return id == null ? null : String.valueOf(id);
-    }
-
-    private static String callerAddress(HttpServletRequest request) {
-        if (request == null) return null;
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
-        return request.getRemoteAddr();
     }
 }

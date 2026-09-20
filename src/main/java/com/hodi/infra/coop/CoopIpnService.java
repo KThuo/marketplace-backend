@@ -390,6 +390,22 @@ public class CoopIpnService {
      * <p>One list for the bank, not one per account: which of Co-op's addresses may reach us is a fact
      * about Co-op.
      */
+    /**
+     * The address a request came from, as the allow-list should see it.
+     *
+     * <p>The socket's address, unless the deployment has said it sits behind a proxy — then the first entry
+     * of {@code X-Forwarded-For}, which is the caller as the proxy saw it. Trusting that header on a directly
+     * exposed server lets a caller name any address and walk through the list.
+     */
+    public String callerAddress(jakarta.servlet.http.HttpServletRequest request) {
+        if (request == null) return null;
+        if (configs.getBoolean(ConfigKey.COOP_IPN_TRUST_FORWARDED_FOR)) {
+            String forwarded = request.getHeader("X-Forwarded-For");
+            if (forwarded != null && !forwarded.isBlank()) return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
+    }
+
     public boolean isFromAllowedAddress(String remoteAddress) {
         String allowed = configs.getString(ConfigKey.COOP_IPN_ALLOWED_IPS);
         if (allowed == null || allowed.isBlank()) return true;

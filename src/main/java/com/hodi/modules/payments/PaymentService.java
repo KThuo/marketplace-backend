@@ -16,7 +16,6 @@ import com.hodi.modules.developments.Development;
 import com.hodi.modules.developments.DevelopmentRepository;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.developments.DevelopmentUnitRepository;
-import com.hodi.modules.developments.DevelopmentVisibility;
 import com.hodi.modules.payments.PaymentDtos.PaymentResponse;
 import com.hodi.modules.payments.PaymentDtos.ReceiveRequest;
 import com.hodi.modules.payments.PaymentDtos.VoidRequest;
@@ -75,7 +74,6 @@ public class PaymentService {
     private final UnitBookingRepository bookings;
     private final DevelopmentRepository developments;
     private final DevelopmentUnitRepository units;
-    private final DevelopmentVisibility visibility;
     private final com.hodi.modules.bookings.BookingAccess access;
     private final BookingBalanceReader balances;
     private final PaymentAccountRepository accounts;

@@ -1,5 +1,11 @@
 # One payment form, and who may see what
 
+> **Superseded, 20 September 2026.** Written when payments went through the pesi gateway. The names,
+> the shape and the sequence below no longer describe the code. The current plan and progress is
+> [PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md](PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md). Kept for the
+> reasoning that still holds.
+
+
 **18 September 2026.** Seven corrections from using it, which reduce to three ideas.
 
 ---

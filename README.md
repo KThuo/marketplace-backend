@@ -151,9 +151,11 @@ its development's inventory and its booking, never through the listing screens. 
 
 ## Known gaps
 
-- **STK push is not wired.** The payment-type catalogue carries the M-Pesa, KCB and Co-op prompt channels,
-  switched off, because there is no outbound Pesi client yet. Inbound credits (IPN) and hand-recorded
-  payments work; see `claudedocs/PAYMENTS_AND_PAYMENT_TYPES_PLAN.md`.
+- **Payments talk to Co-op directly** — the phone prompt, the account notification, the biller, and
+  the status enquiry — and every electronic payment is written from a bank statement row; what the
+  matcher cannot place waits in a queue a person works from `/app/statements`. The current state, the
+  rules, and what is still open (disbursements) are in `claudedocs/PAYMENTS_REBUILD_GAP_ANALYSIS_AND_PLAN.md`;
+  the older `PAYMENTS_*` and `COOP_*` plans there are history.
 
 - **Notifications** are not built. SMS and email go out through `NotifyClient`, but there is no
   in-app inbox or template catalogue yet.

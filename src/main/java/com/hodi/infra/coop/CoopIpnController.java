@@ -72,10 +72,13 @@ public class CoopIpnController {
          * Refused outright, before the body is read into anything.
          *
          * An address outside the allow-list is not a payment we failed to record — it is somebody who is
-         * not Co-op — so it gets no retry instruction and nothing is stored. The list being empty accepts
-         * everybody, which is what keeps an unconfigured deployment from discarding real notifications.
+         * not Co-op — so nothing is stored and the answer is a 403. The body still says "retry", because if
+         * it really is Co-op behind an address nobody added to the list, retrying and being refused again
+         * is the loud failure an allow-list mistake should be; a quiet success would lose the money. The
+         * list being empty accepts everybody, which is what keeps an unconfigured deployment from
+         * discarding real notifications.
          */
-        String caller = callerAddress(request);
+        String caller = service.callerAddress(request);
         if (!service.isFromAllowedAddress(caller)) {
             log.warn("Refused a Co-op notification from {} — not in the allowed addresses", caller);
             return ResponseEntity.status(org.springframework.http.HttpStatus.FORBIDDEN)
@@ -139,12 +142,4 @@ public class CoopIpnController {
      * internet. A header can be forged by anybody who can reach the application directly, so this narrows
      * a control rather than being one on its own — which is exactly how it is documented on the setting.
      */
-    private static String callerAddress(jakarta.servlet.http.HttpServletRequest request) {
-        if (request == null) return null;
-        String forwarded = request.getHeader("X-Forwarded-For");
-        if (forwarded != null && !forwarded.isBlank()) {
-            return forwarded.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
-    }
 }
