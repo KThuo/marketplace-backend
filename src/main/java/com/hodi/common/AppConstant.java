@@ -569,6 +569,10 @@ public final class AppConstant {
     /** Money arrived and was receipted, or a receipt was voided. The most disputed events in the product. */
     public static final String AUDIT_PAYMENT_RECEIVED = "PAYMENT_RECEIVED";
     public static final String AUDIT_PAYMENT_VOIDED   = "PAYMENT_VOIDED";
+    /** A person decided whose money an unmatched bank credit was, or that it was nobody's. */
+    public static final String AUDIT_STATEMENT_ATTACHED  = "STATEMENT_ATTACHED";
+    public static final String AUDIT_STATEMENT_SET_ASIDE = "STATEMENT_SET_ASIDE";
+    public static final String AUDIT_STATEMENT_RESTORED  = "STATEMENT_RESTORED";
     /** A cost line or a facility drawdown written or voided on a development. */
     public static final String AUDIT_COST_RECORDED    = "COST_RECORDED";
     public static final String AUDIT_COST_VOIDED      = "COST_VOIDED";

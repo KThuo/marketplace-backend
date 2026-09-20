@@ -2,14 +2,42 @@ package com.hodi.infra.coop;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface CoopStatementRepository extends JpaRepository<CoopStatement, Long> {
+public interface CoopStatementRepository extends JpaRepository<CoopStatement, Long>,
+        JpaSpecificationExecutor<CoopStatement> {
+
+    /**
+     * The row, held for update.
+     *
+     * <p>A person attaching a credit and a notification or a sweep crediting the same money can meet in the
+     * same second — the slip is validated, the bank's own callback lands, the operator presses the button.
+     * The lock makes the second of them see the first one's decision rather than credit again.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from CoopStatement s where s.id = :id and s.status <> 5")
+    Optional<CoopStatement> lockById(@Param("id") Long id);
+
+    /** What is waiting to be placed: how many, how much, and how long the oldest has waited. */
+    @Query("select count(s), coalesce(sum(s.amount), 0), min(s.paidAt) from CoopStatement s "
+            + "where s.state = 'UNMAPPED' and s.status <> 5")
+    List<Object[]> waiting();
+
+    @Query("select count(s), coalesce(sum(s.amount), 0), min(s.paidAt) from CoopStatement s "
+            + "where s.state = 'UNMAPPED' and s.status <> 5 and s.tenantId = :tenantId")
+    List<Object[]> waitingForTenant(@Param("tenantId") Long tenantId);
+
+    @Query("select count(s), coalesce(sum(s.amount), 0), min(s.paidAt) from CoopStatement s "
+            + "where s.state = 'UNMAPPED' and s.status <> 5 and s.institutionId = :institutionId")
+    List<Object[]> waitingForInstitution(@Param("institutionId") Long institutionId);
 
     /**
      * Whether this notification has already been recorded.

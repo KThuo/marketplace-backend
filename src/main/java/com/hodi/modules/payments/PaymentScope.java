@@ -84,6 +84,32 @@ public class PaymentScope {
     }
 
     /** Whether this caller may read or change one account. The single-row form of {@link #accounts}. */
+    /**
+     * The bank's notifications this caller may see: those that landed in their own organisation's accounts.
+     *
+     * <p>A statement has no development — it knows the account it landed in, and the account knows its
+     * owner — so the scope is the account's owner, as it is for accounts themselves. Money in an account
+     * nobody has registered belongs to nobody yet and is the platform's to see.
+     */
+    public Specification<com.hodi.infra.coop.CoopStatement> statements(UserPrincipal caller) {
+        if (caller.isPlatformStaff()) return null;
+        Long tenantId = caller.getTenantId();
+        Long institutionId = caller.getInstitutionId();
+        return (root, query, cb) -> {
+            if (institutionId != null) return cb.equal(root.get("institutionId"), institutionId);
+            if (tenantId != null) return cb.equal(root.get("tenantId"), tenantId);
+            return cb.disjunction();
+        };
+    }
+
+    public boolean readsStatement(com.hodi.infra.coop.CoopStatement statement, UserPrincipal caller) {
+        if (caller.isPlatformStaff()) return true;
+        return (caller.getInstitutionId() != null
+                        && Objects.equals(caller.getInstitutionId(), statement.getInstitutionId()))
+                || (caller.getTenantId() != null
+                        && Objects.equals(caller.getTenantId(), statement.getTenantId()));
+    }
+
     public boolean ownsAccount(PaymentAccount account, UserPrincipal caller) {
         if (caller.isPlatformStaff()) return true;
         if (account.isPlatformOwned()) return false;

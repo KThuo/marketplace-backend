@@ -294,7 +294,9 @@ public class PaymentService {
                 .method(method)
                 .paymentTypeId(type == null ? null : type.getId())
                 .paymentTypeName(type == null ? null : type.getName())
-                .quotedReference(blankToNull(quotedReference))
+                // Sixteen characters on the receipt; a statement's reference holds sixty-four. The payer's
+                // whole sentence overflowing this column used to roll back the notification that carried it.
+                .quotedReference(clip(blankToNull(quotedReference), 16))
                 .externalReference(blankToNull(externalReference))
                 .payerName(blankToNull(payerName))
                 .payerPhone(blankToNull(payerPhone))
@@ -400,5 +402,9 @@ public class PaymentService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String clip(String value, int width) {
+        return value == null || value.length() <= width ? value : value.substring(0, width);
     }
 }

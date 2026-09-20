@@ -433,6 +433,7 @@ Purpose, as the client put it: a bank admin disburses funds to a developer, or f
 | Step | State | Notes |
 |---|---|---|
 | 1 | **Done, 20 September** | `receive` takes cash and cheque only; a query-settled intent writes an `STK_QUERY` statement and credits through it; a void releases every statement on the payment; `ck_payment_statement` (NOT VALID, voided rows exempt so legacy payments can still be voided); `PayeeResolver` matches the listing reference, then the pay code, corroboration on the code only. The receive form's default of "bank transfer" is now refused with a message pointing at slip validation, until Step 6 replaces the form. |
+| 2 | **Done, 20 September** | `/api/v1/statements`: `list` (one list, `state=UNMAPPED` is the queue; search by bank ref, payer's words, name, phone; filters by channel, development, date), `waiting` (count, total, oldest), `find` (raw payload for platform staff only), `attach {bookingId}` with no amount and a row lock, `set-aside {reason}`, `restore`. Two permissions, `STATEMENTS_VIEW` (scoped to the caller's accounts) and `STATEMENTS_RECONCILE` (platform-only). Attach refuses a used credit naming the booking and receipt, a set-aside one with its reason, a dead booking, and an account that does not collect for the booking's development. Also fixed on the way: a payer's reference longer than 16 characters overflowed the receipt's column inside the IPN transaction, which would have rolled back the statement and made Co-op retry forever. |
 
 ## 4. Order, and what each step unblocks
 

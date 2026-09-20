@@ -247,6 +247,23 @@ public enum AppPermissionEnum {
      */
     PAYMENT_CATALOGUE_MANAGE("Switch payment methods on or off for the whole platform",
             AppModuleEnum.PAYMENTS, true),
+    /**
+     * The bank's side of the ledger: every notification that arrived, placed or not.
+     *
+     * <p>Reading it is scoped like payments are — an organisation sees the money that landed in its own
+     * accounts — because "what has the bank told us" is a question a seller is entitled to ask.
+     */
+    STATEMENTS_VIEW("See bank notifications, matched and unmatched", AppModuleEnum.PAYMENTS),
+    /**
+     * Deciding whose money an unmatched credit is.
+     *
+     * <p>Separate from recording a payment, and the separation is the point: "money arrived, write it
+     * down" and "that credit belongs to <em>this</em> booking" are different authorities, and the second
+     * is the one a mistyped reference turns into somebody else's balance. Platform-only, as recording is,
+     * because the bank collects and the bank decides.
+     */
+    STATEMENTS_RECONCILE("Apply an unmatched bank credit to a booking, or set it aside",
+            AppModuleEnum.PAYMENTS, true),
 
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
