@@ -695,18 +695,38 @@ public class DemoActivitySeeder {
         }
     }
 
-    /** The counters the services keep in step, recomputed from the units as they now stand. */
+    /**
+     * The counters the services keep in step, recomputed from the units as they now stand.
+     *
+     * <p>Three levels, the way {@code DevelopmentInventoryService.recountUnitType} cascades: the typology,
+     * the listing that mirrors it on the marketplace, and the development. Only typologies that have unit
+     * rows are touched — an off-plan kind published as "60 homes, 31 left" before a single row exists keeps
+     * the seller's figures, because a count of nothing is not a count.
+     */
     private void recount() {
+        String tally = """
+                select u.unit_type_id, u.development_id,
+                       count(*) total,
+                       count(*) filter (where u.sale_state = 'AVAILABLE') available,
+                       count(*) filter (where u.sale_state in ('HELD', 'RESERVED')) reserved,
+                       count(*) filter (where u.sale_state = 'SOLD') sold
+                  from properties u join developments d on d.id = u.development_id
+                 where u.listing_kind = 'UNIT' and u.status <> 5 and d.reference in ('DV260827DEMO', 'DV260915W8XJ')
+                 group by u.unit_type_id, u.development_id""";
+        jdbc.update("""
+                update development_unit_types t set
+                    units_total = s.total, units_available = s.available, units_reserved = s.reserved, units_sold = s.sold,
+                    updated_at = now()
+                from (%s) s where s.unit_type_id = t.id""".formatted(tally));
+        jdbc.update("""
+                update properties p set units_total = s.total, units_available = s.available, updated_at = now()
+                from (%s) s where s.unit_type_id = p.unit_type_id and p.listing_kind = 'TYPOLOGY' and p.status <> 5""".formatted(tally));
         jdbc.update("""
                 update developments d set
                     units_total = s.total, units_available = s.available, units_reserved = s.reserved, units_sold = s.sold, updated_at = now()
-                from (select development_id,
-                             count(*) total,
-                             count(*) filter (where sale_state = 'AVAILABLE') available,
-                             count(*) filter (where sale_state in ('HELD', 'RESERVED')) reserved,
-                             count(*) filter (where sale_state = 'SOLD') sold
-                        from properties where listing_kind = 'UNIT' and status <> 5 group by development_id) s
-                where s.development_id = d.id and d.reference in ('DV260827DEMO', 'DV260915W8XJ')""");
+                from (select development_id, sum(total) total, sum(available) available, sum(reserved) reserved, sum(sold) sold
+                        from (%s) x group by development_id) s
+                where s.development_id = d.id""".formatted(tally));
     }
 
     // ── small things ──────────────────────────────────────────────────────────
