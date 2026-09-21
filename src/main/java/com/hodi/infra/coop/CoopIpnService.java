@@ -44,15 +44,17 @@ import java.util.Optional;
  *
  * <h2>What the payer may quote, and when a match is enough</h2>
  *
- * <p>Three things, tried in this order by {@link PayeeResolver} and by the intent lookup before it: our own
- * reference for a prompt we started, the listing's sixteen-character reference, and the unit's four-character
- * pay code. The first two name one booking with no room for a near miss, so a match places the money.
+ * <p>Four things, tried in this order by the intent lookup and then {@link PayeeResolver}: our own reference
+ * for a prompt we started, the booking's reference, the listing's reference, and the booking's four-character
+ * pay code. The first three name one booking with no room for a near miss, so a match places the money.
  *
  * <p>The code does not. Four characters from a 32-letter alphabet carry no redundancy: a single mistyped
- * letter produces another well-formed code, and the chance it happens to be a live one is roughly units ÷
- * 1,048,576 — about one in two hundred at five thousand units. Small, not nothing, and it is money. So a code
- * match alone goes to the queue; to place it automatically, something else must agree — the amount equals
- * something outstanding on that unit, or the paying phone number is the buyer's. Anything less is a person's
+ * letter produces another well-formed code, and the chance it happens to be a live booking's is roughly live
+ * bookings ÷ 1,048,576. Small, not nothing, and it is money. So a code quoted on a free-text bank transfer
+ * goes to the queue unless something else agrees — the amount equals something outstanding on that booking,
+ * or the paying phone number is the buyer's. The exception is a biller advice: the bank validated the code
+ * with the payer moments earlier and showed them the buyer's name, which is stronger corroboration than an
+ * amount match, so the advice path says so and the code alone places it. Anything less is a person's
  * decision, which is what the unmapped queue is for.
  *
  * <h2>What this method must not do</h2>
@@ -198,11 +200,21 @@ public class CoopIpnService {
      * this decides whose money it is, or writes down why it cannot. Joins the caller's transaction.
      */
     public void placeAutomatically(CoopStatement statement, PaymentAccount account) {
+        placeAutomatically(statement, account, false);
+    }
+
+    /**
+     * The same rule, for a caller that can vouch for the code.
+     *
+     * @param codeConfirmed true when the payer's code was validated with them before the money moved — the
+     *                      biller flow — so a bare code match places the money without a second agreeing fact
+     */
+    public void placeAutomatically(CoopStatement statement, PaymentAccount account, boolean codeConfirmed) {
         /*
          * An intent first, when the reference is one of ours.
          *
          * <p>This is the payment somebody started from the app: we asked, and this is the answer. It is
-         * tried before the unit code because it needs no corroboration — we already know the amount, the
+         * tried before the pay code because it needs no corroboration — we already know the amount, the
          * booking and the person, because we chose them when we asked.
          */
         if (creditedAnIntent(statement)) return;
@@ -214,18 +226,18 @@ public class CoopIpnService {
         }
 
         UnitBooking target = match.booking();
-        if (match.needsCorroboration() && !corroborated(statement, target)) {
+        if (match.needsCorroboration() && !codeConfirmed && !corroborated(statement, target)) {
             /*
              * The code matched and nothing else did.
              *
-             * Four characters carry no redundancy, so one mistyped letter produces another well-formed code —
-             * and at five thousand units the chance it is a live one is about one in two hundred. Too high to
-             * credit somebody's balance on that alone. A listing reference is not one letter from another
-             * live one, which is why it does not come through here.
+             * Four characters carry no redundancy, so one mistyped letter produces another well-formed code,
+             * and with thousands of live bookings the chance it is one of theirs is small but not nothing.
+             * Too high to credit somebody's balance on that alone. A booking or listing reference is not one
+             * letter from another live one, which is why neither comes through here.
              */
-            unplaced(statement, "The code matches " + PayeeResolver.label(match.home())
-                    + ", but neither the amount nor the phone number does. Check before crediting "
-                    + target.getReference() + ".");
+            unplaced(statement, "The code matches booking " + target.getReference() + " ("
+                    + PayeeResolver.label(match.home())
+                    + "), but neither the amount nor the phone number does. Check before crediting it.");
             return;
         }
 

@@ -109,8 +109,10 @@ public class CoopStkService {
                 .amount(amount)
                 .currency("KES")
                 .phoneNo(prompting)
+                // The booking's pay code, on the customer's phone and on the bank's statement: the same four
+                // characters the buyer was told to quote anywhere else.
                 .narration(narration == null || narration.isBlank()
-                        ? "Payment for " + booking.getReference() : narration.trim())
+                        ? "Payment " + booking.getPayReference() + " for " + booking.getReference() : narration.trim())
                 .state(PaymentIntent.PENDING)
                 .traceId(traceIdOfThisRequest())
                 .callbackTimeoutSeconds(configs.getInt(ConfigKey.COOP_CALLBACK_TIMEOUT_SECONDS))
@@ -121,7 +123,7 @@ public class CoopStkService {
                 .build());
 
         CoopClient.Outcome<Map<String, Object>> answer =
-                coop.post(channel, pushBody(intent, channel, account), true);
+                coop.post(channel, pushBody(intent, channel, account, booking.getPayReference()), true);
 
         if (answer.neverSent()) {
             /*
@@ -356,7 +358,7 @@ public class CoopStkService {
     // ── the body Co-op expects ────────────────────────────────────────────────
 
     private Map<String, Object> pushBody(PaymentIntent intent, PaymentType channel,
-                                         PaymentAccount account) {
+                                         PaymentAccount account, String payCode) {
         Map<String, Object> body = new LinkedHashMap<>();
         // Ours. It comes back on the callback and it is what the status query asks about.
         body.put("MessageReference", intent.getReference());
@@ -369,9 +371,15 @@ public class CoopStkService {
         body.put("Narration", intent.getNarration());
         body.put("Amount", intent.getAmount());
         body.put("MessageDateTime", OffsetDateTime.now(ZoneOffset.UTC).format(COOP_TIME));
-        // What the payer would have typed at a till, so the credit can be placed even if the callback
-        // is lost and the money arrives as an ordinary notification.
-        body.put("OtherDetails", List.of(Map.of("Name", "Reference", "Value", intent.getReference())));
+        /*
+         * Two details. Our reference is what the payer would have typed at a till, so the credit is placed
+         * on the intent — with no corroboration needed — even if the callback is lost and the money arrives
+         * as an ordinary notification. The booking's pay code is the reference the buyer knows, carried so a
+         * statement read by a person shows it too.
+         */
+        body.put("OtherDetails", List.of(
+                Map.of("Name", "Reference", "Value", intent.getReference()),
+                Map.of("Name", "PayCode", "Value", payCode == null ? "" : payCode)));
         return body;
     }
 

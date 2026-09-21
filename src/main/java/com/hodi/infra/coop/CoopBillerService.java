@@ -216,7 +216,9 @@ public class CoopBillerService {
             return error(messageId, DUPLICATE, "Duplicate transaction");
         }
 
-        placer.placeAutomatically(stored, biller.account);
+        // The bank validated this code with the payer a moment ago and showed them the buyer's name; the code
+        // alone places the money.
+        placer.placeAutomatically(stored, biller.account, true);
 
         Map<String, Object> answer = new LinkedHashMap<>();
         answer.put("TransactionReferenceCode", transactionRef);

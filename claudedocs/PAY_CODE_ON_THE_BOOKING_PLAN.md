@@ -68,10 +68,12 @@ retries 25 times against the database and the unique index is the last word.
   bank confirmed the code with the payer moments earlier and showed them the buyer's name, which is stronger
   corroboration than an amount match. Implemented as a `trusted` flag on the placing call, set only from the
   biller advice path.
-- `CoopStkService.push`: `OtherDetails.Reference` and the narration carry the booking's pay code
-  (`"Payment for <code>"`), so the customer's phone and the bank statement show the same four characters the
-  buyer knows. `MessageReference` stays the intent reference, which is the correlation key for the callback.
-  `creditedAnIntent` still runs first; a statement that quotes only the code falls through to the resolver.
+- `CoopStkService.push`: the narration carries the booking's pay code (`"Payment <code> for BK…"`), so the
+  customer's phone and the bank statement show the same four characters the buyer knows, and a second
+  `OtherDetails` entry (`PayCode`) carries it for a statement read by a person. `OtherDetails.Reference`
+  **stays the intent reference**: it is what places a lost-callback notification on the intent with no
+  corroboration, and swapping it for a code would send that money to the queue whenever the amount differed
+  from the deposit. `MessageReference` stays the intent reference, the correlation key for the callback.
 - Responses: `BookingResponse.payReference` and `BookingBalance.payReference` read the booking's own field.
   `UnitResponse.payReference` becomes the live booking's code, or null when the unit is not booked.
 - `DemoActivitySeeder`: statements and payments quote the booking's code.
@@ -107,6 +109,6 @@ retries 25 times against the database and the unique index is the last word.
 | Step | State | Notes |
 |---|---|---|
 | 0 | **Done, 21 September** | `V20260921120000`: `unit_bookings.pay_reference` NOT NULL with `uk_booking_pay_reference`; live bookings inherited their unit's code, every other booking drew a fresh one in SQL; the code joined the booking's `search_text`; `properties.pay_reference` dropped. `PayCodeAllocator` moved to `modules/bookings` and checks bookings; `BookingService.book` allocates in the insert transaction and names a pay-code clash in its conflict message. `PayeeResolver` resolves a code to its booking (`onBooking`: live → found, closed → "is cancelled, nothing to credit"). Unit responses carry the live booking's code or null; the unit search finds a unit through its live booking's code. Seeder draws a code per seeded booking. Fixtures moved the code to the booking; 397 tests green. |
-| 1 | Pending | |
+| 1 | **Done, 21 September** | `CoopIpnService.placeAutomatically(statement, account, codeConfirmed)`: a bare code still needs the amount or the buyer's phone to agree, except when the caller vouches for the code; the biller advice does (`CoopBillerService.advise` passes `true`), because the bank validated the code with the payer moments earlier. Queue reason names the booking. STK narration `Payment <code> for BK…` plus an `OtherDetails.PayCode` entry; `Reference` stays the intent's so a lost callback still credits without corroboration. Responses were moved in step 0. Co-op test classes green (34). |
 | 2 | Pending | |
 | 3 | Pending | |
