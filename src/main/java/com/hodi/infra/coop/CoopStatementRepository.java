@@ -58,6 +58,11 @@ public interface CoopStatementRepository extends JpaRepository<CoopStatement, Lo
     @Query("select s from CoopStatement s where s.refNo = :refNo and s.status <> 5")
     Optional<CoopStatement> findByRefNo(@Param("refNo") String refNo);
 
+    /** Credits waiting for an account with this number or short code to be registered. */
+    @Query("select s from CoopStatement s where s.state = 'NO_ACCOUNT' and s.status <> 5 "
+            + "and s.accountIdentifier = :identifier order by s.id")
+    List<CoopStatement> findAwaitingAccount(@Param("identifier") String identifier);
+
     /** The ops queue: what arrived and could not be placed, oldest first — the oldest is being chased. */
     @Query("select s from CoopStatement s where s.state = 'UNMAPPED' and s.status <> 5 "
             + "order by s.createdAt")

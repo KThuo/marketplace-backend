@@ -252,6 +252,67 @@ class CoopIpnIT {
                 .compareTo(BigDecimal.ZERO));
     }
 
+    /** A notification into an account nobody has registered yet, quoting this code. */
+    private IpnPayload intoUnknownAccount(String unknownAccount, String reference) {
+        return new IpnPayload(RrnGenerator.generate("RF"), "PS-" + RrnGenerator.generate("TR"),
+                "2026-08-27 10:30:00", "950000.00", "KES", reference, "Asha Mwangi", "254700000000",
+                unknownAccount, "BUNI_IPN_TILL");
+    }
+
+    /** Registers that account, live, the way the account screen would once approved. */
+    private PaymentAccount register(String accountNo) {
+        PaymentType channel = types.findByProviderType("BUNI_IPN_TILL").orElseThrow();
+        PaymentAccount row = PaymentAccount.builder()
+                .accountNo(accountNo).accountName("Seller's till").tenantId(tenantId).createdBy("test").build();
+        row.stampChannel(channel);
+        return accounts.save(row);
+    }
+
+    @Test
+    @DisplayName("a credit into an unregistered account waits for the account — not in the queue — and is placed when the account goes live")
+    void anUnregisteredAccountWaitsThenPlaces() {
+        String unknown = "TILLNEW" + Long.toString(System.nanoTime(), 36).toUpperCase();
+        long queued = statements.countUnmapped();
+
+        CoopStatement stored = service.accept(intoUnknownAccount(unknown, "Z4XP"), true);
+
+        assertEquals(AppConstant.STATEMENT_NO_ACCOUNT, stored.getState());
+        assertNull(stored.getPaymentAccountId());
+        assertTrue(stored.getUnmappedReason().contains(unknown), stored.getUnmappedReason());
+        assertTrue(stored.getUnmappedReason().contains("Register it"), stored.getUnmappedReason());
+        assertEquals(queued, statements.countUnmapped(), "it is not unused money: nobody can place it yet");
+
+        // Still nothing to do while the account is missing — the retry says so and the row stays put.
+        CoopStatement retried = service.retry(statements.findById(stored.getId()).orElseThrow(), "test");
+        assertEquals(AppConstant.STATEMENT_NO_ACCOUNT, retried.getState());
+        assertTrue(retried.getUnmappedReason().contains("still not registered"), retried.getUnmappedReason());
+
+        PaymentAccount registered = register(unknown);
+        service.onAccountLive(new com.hodi.modules.payments.PaymentAccountWentLive(registered.getId()));
+
+        CoopStatement after = statements.findById(stored.getId()).orElseThrow();
+        assertEquals(AppConstant.STATEMENT_MAPPED, after.getState(), after.getUnmappedReason());
+        assertEquals(registered.getId(), after.getPaymentAccountId(), "it took the account it was waiting for");
+        assertEquals(tenantId, after.getTenantId(), "and the account's owner");
+        assertEquals(HashIdUtil.decodeId(booking.id()), after.getMappedBookingId(), "the code and the amount agreed");
+    }
+
+    @Test
+    @DisplayName("once the account is live, a credit whose code matches nothing goes to the queue like any other")
+    void anUnregisteredAccountRetriedIntoTheQueue() {
+        String unknown = "TILLNEW" + Long.toString(System.nanoTime(), 36).toUpperCase();
+        CoopStatement stored = service.accept(intoUnknownAccount(unknown, "QQQQ"), true);
+        assertEquals(AppConstant.STATEMENT_NO_ACCOUNT, stored.getState());
+
+        PaymentAccount registered = register(unknown);
+        service.onAccountLive(new com.hodi.modules.payments.PaymentAccountWentLive(registered.getId()));
+
+        CoopStatement after = statements.findById(stored.getId()).orElseThrow();
+        assertEquals(AppConstant.STATEMENT_UNMAPPED, after.getState());
+        assertEquals(registered.getId(), after.getPaymentAccountId());
+        assertTrue(after.getUnmappedReason().contains("QQQQ"), after.getUnmappedReason());
+    }
+
     @Test
     @DisplayName("a code nobody has goes to the queue, with the code it looked for")
     void unknownCodeGoesToTheQueue() {
@@ -272,14 +333,15 @@ class CoopIpnIT {
     }
 
     @Test
-    @DisplayName("a till we do not recognise is stored, named, and left for a person")
+    @DisplayName("a till we do not recognise is stored, named, and left waiting for the account — not in the queue")
     void unknownTillIsStored() {
         IpnPayload elsewhere = new IpnPayload(RrnGenerator.generate("RF"), null,
                 "2026-08-27 10:30:00", "950000.00", "KES", "Z4XP", "Asha Mwangi", "254712345678",
                 "999999", "BUNI_IPN_TILL");
 
         CoopStatement stored = service.accept(elsewhere, true);
-        assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
+        assertEquals(AppConstant.STATEMENT_NO_ACCOUNT, stored.getState(),
+                "nobody can place money whose account is unknown, so it is not unused money");
         assertTrue(stored.getUnmappedReason().contains("999999"), stored.getUnmappedReason());
         assertNull(stored.getTenantId(), "and nobody owns money that arrived in an account we do not know");
 

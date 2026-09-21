@@ -287,6 +287,8 @@ public final class AppConstant {
     public static final String STATEMENT_MAPPED   = "MAPPED";
     public static final String STATEMENT_UNMAPPED = "UNMAPPED";
     public static final String STATEMENT_IGNORED  = "IGNORED";
+    /** Landed in an account nobody has registered: not placeable until the account exists, then retried. */
+    public static final String STATEMENT_NO_ACCOUNT = "NO_ACCOUNT";
 
     /*
      * Where a payment stands. Received or voided, and nothing in between.

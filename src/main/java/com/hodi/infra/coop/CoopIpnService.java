@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -185,11 +186,67 @@ public class CoopIpnService {
             return;
         }
         if (account == null) {
-            unplaced(statement, "The account " + statement.getAccountIdentifier()
-                    + " is not one of ours, or has not been registered here yet.");
+            /*
+             * Not the unused queue. Money in an account we do not know cannot be placed by anybody: a slip
+             * must not find it, and a queue worker must not apply it to some booking. It waits for the
+             * account to be registered and is then retried — on its own when the account goes live, or by
+             * hand from the statements screen.
+             */
+            statement.awaitingAccount("The account " + statement.getAccountIdentifier()
+                    + " is not registered here. Register it under Payment accounts and the credit is retried.");
+            statements.save(statement);
+            log.info("Co-op notification {} waits for account {} to be registered", statement.getRefNo(),
+                    statement.getAccountIdentifier());
             return;
         }
         placeAutomatically(statement, account);
+    }
+
+    /**
+     * A credit that waited for its account, tried again.
+     *
+     * <p>Joins the caller's transaction and expects the row locked. If the account is still not registered
+     * the row stays where it is with its reason refreshed; otherwise it takes the account's owner and goes
+     * through the one matcher, ending up used or unused like any other credit. Trust is not re-asked: the
+     * unauthenticated check runs before the account check on arrival, so a row could only reach this state
+     * from an authenticated notification.
+     */
+    public CoopStatement retry(CoopStatement statement, String by) {
+        if (!statement.isAwaitingAccount()) return statement;
+        PaymentAccount account = resolveAccount(statement.getAccountIdentifier());
+        if (account == null) {
+            statement.awaitingAccount("The account " + statement.getAccountIdentifier()
+                    + " is still not registered here. Register it under Payment accounts and retry.");
+            statement.setUpdatedBy(by);
+            return statements.save(statement);
+        }
+        statement.linkedTo(account, by);
+        statements.save(statement);
+        placeAutomatically(statement, account);
+        log.info("Co-op notification {} retried against account {} by {}: {}", statement.getRefNo(),
+                account.getAccountNo(), by, statement.getState());
+        return statement;
+    }
+
+    /**
+     * Every credit that was waiting for this account, retried, now that the account is live.
+     *
+     * <p>Fired by the account going live — approved, or switched back on — so the money that arrived before
+     * the account was set up is placed without anybody remembering to press retry.
+     */
+    @Transactional
+    @org.springframework.context.event.EventListener
+    public void onAccountLive(com.hodi.modules.payments.PaymentAccountWentLive event) {
+        PaymentAccount account = accounts.findById(event.accountId()).filter(PaymentAccount::isLive).orElse(null);
+        if (account == null) return;
+        List<CoopStatement> waiting = new java.util.ArrayList<>(statements.findAwaitingAccount(account.getAccountNo()));
+        if (account.getShortCode() != null && !account.getShortCode().equals(account.getAccountNo())) {
+            waiting.addAll(statements.findAwaitingAccount(account.getShortCode()));
+        }
+        for (CoopStatement statement : waiting) retry(statement, AppConstant.USERNAME_SYSTEM);
+        if (!waiting.isEmpty()) {
+            log.info("Account {} went live: {} waiting credit(s) retried", account.getAccountNo(), waiting.size());
+        }
     }
 
     /**

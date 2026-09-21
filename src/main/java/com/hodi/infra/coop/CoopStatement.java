@@ -88,6 +88,30 @@ public class CoopStatement {
     public boolean isMapped() { return AppConstant.STATEMENT_MAPPED.equals(state); }
     public boolean isUnmapped() { return AppConstant.STATEMENT_UNMAPPED.equals(state); }
     public boolean isIgnored() { return AppConstant.STATEMENT_IGNORED.equals(state); }
+    public boolean isAwaitingAccount() { return AppConstant.STATEMENT_NO_ACCOUNT.equals(state); }
+
+    /**
+     * The account this landed in is not one of ours yet.
+     *
+     * <p>Not the unused queue: nobody can place money whose account is unknown, a slip must not find it, and
+     * a queue worker must not apply it to a booking in an organisation it may not belong to. It waits here
+     * until the account is registered, then {@link #linkedTo} puts it through the matcher.
+     */
+    public void awaitingAccount(String reason) {
+        this.state = AppConstant.STATEMENT_NO_ACCOUNT;
+        this.unmappedReason = reason;
+    }
+
+    /** The account exists now: the credit takes its owner and goes back to being ordinary unplaced money. */
+    public void linkedTo(com.hodi.modules.payments.PaymentAccount account, String by) {
+        this.paymentAccountId = account.getId();
+        this.accountIdentifier = account.getAccountNo();
+        this.tenantId = account.getTenantId();
+        this.institutionId = account.getInstitutionId();
+        this.state = AppConstant.STATEMENT_UNMAPPED;
+        this.unmappedReason = null;
+        this.updatedBy = by;
+    }
 
     /**
      * A person has decided this is not money for any booking — a refund that bounced back, a supplier's

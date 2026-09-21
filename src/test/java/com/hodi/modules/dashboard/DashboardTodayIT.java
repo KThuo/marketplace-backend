@@ -146,8 +146,9 @@ class DashboardTodayIT {
 
         signInAsPlatform("DASHBOARD_VIEW", "STATEMENTS_VIEW");
         TodayView statementsOnly = service.today(null);
-        assertTrue(statementsOnly.attention().stream().allMatch(a -> a.key().equals("unplacedCredits")),
-                "only the one line the permission opens: " + statementsOnly.attention());
+        assertTrue(statementsOnly.attention().stream().allMatch(a ->
+                        a.key().equals("unplacedCredits") || a.key().equals("creditsAwaitingAccount")),
+                "only the statement lines the permission opens: " + statementsOnly.attention());
     }
 
     @Test

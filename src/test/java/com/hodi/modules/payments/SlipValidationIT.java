@@ -212,6 +212,38 @@ class SlipValidationIT {
         assertNull(byQuoted.statementId());
     }
 
+    @Test
+    @DisplayName("a credit in the platform's own account validates for a seller's booking: that account collects for everyone")
+    void thePlatformsAccountCollectsForEveryListing() {
+        PaymentAccount platform = till(null, null);
+        CoopStatement credit = unused(platform, "PLAT", "125000");
+
+        SlipResult result = slips.validate(credit.getRefNo(), booking.id());
+
+        assertTrue(result.valid(), result.message());
+        assertEquals(HashIdUtil.encodeId(credit.getId()), result.statementId());
+    }
+
+    @Test
+    @DisplayName("a credit waiting for its account to be registered is not found, and staff are told what to do")
+    void aCreditWaitingForItsAccountIsNotOffered() {
+        CoopStatement waiting = statements.saveAndFlush(CoopStatement.builder()
+                .refNo("SLIP" + RrnGenerator.generate("RF")).ourReference(RrnGenerator.generate("PS"))
+                .transType("BUNI_IPN_TILL").paymentAccountId(null).accountIdentifier("UNREG" + RrnGenerator.payCode())
+                .reference("S2K2").amount(new BigDecimal("950000")).phoneNo("254700000000")
+                .customerName("Asha Mwangi").paidAt(OffsetDateTime.now().minusHours(3))
+                .state(AppConstant.STATEMENT_NO_ACCOUNT)
+                .unmappedReason("The account is not registered here.")
+                .createdBy("system").build());
+
+        SlipResult result = slips.validate(waiting.getRefNo(), booking.id());
+
+        assertFalse(result.valid(), "money in an account we do not know cannot be applied to anything");
+        assertNull(result.statementId());
+        assertTrue(result.message().contains(waiting.getAccountIdentifier()), result.message());
+        assertTrue(result.message().contains("not registered"), result.message());
+    }
+
     // ── the take ──────────────────────────────────────────────────────────────
 
     @Test

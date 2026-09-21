@@ -142,7 +142,8 @@ public class AnalyticsStockQueries {
                 + " count(*) FILTER (WHERE s.state = 'MAPPED' AND s.mapped_by = 'system') AS automatic,"
                 + " count(*) FILTER (WHERE s.state = 'MAPPED' AND coalesce(s.mapped_by, '') <> 'system') AS by_hand,"
                 + " count(*) FILTER (WHERE s.state = 'IGNORED') AS set_aside,"
-                + " count(*) FILTER (WHERE s.state = 'UNMAPPED') AS unplaced"
+                // Waiting for its account is unplaced too: money the bank confirmed that no booking has yet.
+                + " count(*) FILTER (WHERE s.state IN ('UNMAPPED', 'NO_ACCOUNT')) AS unplaced"
                 + " FROM coop_statements s WHERE s.status <> 5");
         window(q, "s.created_at", window);
         q.add(" GROUP BY 1");

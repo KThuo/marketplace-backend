@@ -226,6 +226,14 @@ public class SlipValidationService {
                             + " An administrator can restore it from the statements screen."
                     : "No payment with that reference is available for this booking.";
         }
+        Optional<CoopStatement> waiting = found.stream().filter(CoopStatement::isAwaitingAccount).findFirst();
+        if (waiting.isPresent()) {
+            return staff
+                    ? "That payment was found, but it landed in account " + waiting.get().getAccountIdentifier()
+                            + ", which is not registered here. Register it under Payment accounts and retry the"
+                            + " credit from the statements screen; then validate the slip again."
+                    : "No payment with that reference is available for this booking yet.";
+        }
         // Unused, but in an account that does not collect for this listing.
         CoopStatement s = found.get(0);
         PaymentAccount account = s.getPaymentAccountId() == null ? null

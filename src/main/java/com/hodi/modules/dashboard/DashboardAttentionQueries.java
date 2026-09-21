@@ -40,6 +40,13 @@ public class DashboardAttentionQueries {
                 + " AND s.status <> 5 AND s.state = 'UNMAPPED'");
     }
 
+    /** Credits that landed in accounts nobody has registered, so nobody can place them. */
+    public Tally creditsAwaitingAccount() {
+        return tally("SELECT count(*), coalesce(sum(s.amount), 0), min(s.paid_at) FROM coop_statements s WHERE "
+                + OwnerScopeSql.predicate("s.tenant_id", "s.institution_id", null)
+                + " AND s.status <> 5 AND s.state = 'NO_ACCOUNT'");
+    }
+
     /** Requests waiting for a decision that this person may make: not their own. */
     public int approvalsAwaiting(Long userId) {
         return count("SELECT count(*) FROM approval_workflows w WHERE "

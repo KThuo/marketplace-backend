@@ -1,5 +1,6 @@
 package com.hodi.modules.payments;
 
+import com.hodi.common.AppConstant;
 import com.hodi.common.ApiResponse;
 import com.hodi.common.PagedResponse;
 import com.hodi.logging.RequestAction;
@@ -110,6 +111,18 @@ public class StatementController {
         return ApiResponse.success(outcome.rows() + " rows: " + outcome.placed() + " applied, "
                 + outcome.queued() + " for a person, " + outcome.skipped() + " already known, "
                 + outcome.failed() + " could not be read.", outcome);
+    }
+
+    @PostMapping("/{hashId}/retry")
+    @PreAuthorize("hasAuthority('STATEMENTS_RECONCILE')")
+    @RequestAction("RETRY_STATEMENT")
+    public ApiResponse<StatementResponse> retry(@PathVariable String hashId) {
+        StatementResponse row = service.retry(hashId);
+        return ApiResponse.success(switch (row.state()) {
+            case AppConstant.STATEMENT_MAPPED -> "Placed on booking " + row.bookingReference() + ".";
+            case AppConstant.STATEMENT_UNMAPPED -> "The account is registered now; the credit is in the queue to be placed.";
+            default -> "The account is still not registered.";
+        }, row);
     }
 
     @PostMapping("/{hashId}/restore")

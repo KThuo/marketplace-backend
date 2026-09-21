@@ -164,6 +164,12 @@ public class DashboardService {
             if (t.any()) out.add(new Attention("unplacedCredits", plural(t.count(), "bank credit") + " unplaced",
                     "KES " + KES.format(t.amount()) + " arrived and has not been applied to a booking.",
                     t.count(), t.amount(), t.oldest(), "warning", "/app/statements?state=UNMAPPED"));
+            DashboardAttentionQueries.Tally a = attention.creditsAwaitingAccount();
+            if (a.any()) out.add(new Attention("creditsAwaitingAccount",
+                    plural(a.count(), "bank credit") + " in an unregistered account",
+                    "KES " + KES.format(a.amount()) + " landed in an account nobody has registered here. Register it "
+                            + "under Payment accounts and the credit is placed.",
+                    a.count(), a.amount(), a.oldest(), "warning", "/app/statements?state=NO_ACCOUNT"));
         }
         if (AuthContext.hasAuthority("BOOKINGS_VIEW")) {
             DashboardAttentionQueries.Tally t = attention.buyersBehind(developmentId);

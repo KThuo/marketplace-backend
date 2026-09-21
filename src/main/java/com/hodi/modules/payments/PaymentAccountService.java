@@ -55,6 +55,7 @@ public class PaymentAccountService {
     /** What {@code payments.collection.scope} reads when an organisation may collect its own money. */
     static final String SCOPE_ORGANISATION = "ORGANISATION";
 
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final PaymentAccountRepository accounts;
     private final PaymentTypeRepository types;
     private final TenantRepository tenants;
@@ -519,6 +520,7 @@ public class PaymentAccountService {
         accounts.save(account);
         audit.record(active ? AppConstant.ACTION_ACTIVATE : AppConstant.ACTION_DEACTIVATE,
                 "PaymentAccount", account.getId(), before, snapshot(account, type));
+        if (active) events.publishEvent(new PaymentAccountWentLive(account.getId()));
 
         return active
                 ? name + " is available again."
@@ -594,6 +596,8 @@ public class PaymentAccountService {
         account.setUpdatedBy(approvedBy);
         accounts.save(account);
         log.info("Payment account {} approved by {}", accountId, approvedBy);
+        // Money that arrived before this account existed has been waiting for exactly this.
+        events.publishEvent(new PaymentAccountWentLive(account.getId()));
     }
 
     /**

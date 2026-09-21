@@ -79,6 +79,8 @@ public class StatementService {
     private final PaymentScope scope;
     private final PaymentService paymentService;
     private final AuditService audit;
+    /** The one matcher, for a credit retried once its account exists. */
+    private final com.hodi.infra.coop.CoopIpnService placer;
 
     // ── reading ───────────────────────────────────────────────────────────────
 
@@ -156,6 +158,11 @@ public class StatementService {
             throw new HodiException("This credit was set aside" + reasonSuffix(statement)
                     + " Restore it before applying it to a booking.", HttpStatus.CONFLICT);
         }
+        if (statement.isAwaitingAccount()) {
+            throw new HodiException("This credit landed in account " + statement.getAccountIdentifier()
+                    + ", which is not registered here. Register the account under Payment accounts and retry"
+                    + " the credit; it cannot be applied to a booking until then.", HttpStatus.CONFLICT);
+        }
 
         UnitBooking booking = bookings.findById(HashIdUtil.decodeId(request.bookingId()))
                 .filter(b -> b.getStatus() != AppConstant.STATUS_DELETED)
@@ -209,12 +216,43 @@ public class StatementService {
         return saved;
     }
 
-    /** Whether money that landed in this account may be applied to a booking on this listing. */
+    /**
+     * Whether money that landed in this account may be applied to a booking on this listing.
+     *
+     * <p>The platform's own accounts collect for every organisation: they are what every buyer is offered
+     * when the seller has no account of their own, and offered beside the seller's when they have (see
+     * {@code PaymentAccountService.liveFor}). This used to demand the owner pair match exactly, which refused
+     * a slip that had landed in the platform's account with "does not collect for this listing" — for the
+     * account the buyer had been told to pay into.
+     */
     boolean collectsFor(PaymentAccount account, Property home, Development development) {
+        Long developmentId = development == null ? null : development.getId();
+        if (account.isPlatformOwned()) return account.reaches(developmentId);
         Long ownerTenant = development == null ? home.getTenantId() : development.getTenantId();
         Long ownerInstitution = development == null ? home.getInstitutionId() : development.getInstitutionId();
-        return account.belongsTo(ownerTenant, ownerInstitution)
-                && account.reaches(development == null ? null : development.getId());
+        return account.belongsTo(ownerTenant, ownerInstitution) && account.reaches(developmentId);
+    }
+
+    /**
+     * A credit that waited for its account, tried again by hand.
+     *
+     * <p>Idempotent and never an error for the person: if the account is still not registered the row says
+     * so and stays; if it is, the credit goes through the matcher and comes back used or unused.
+     */
+    @Transactional
+    public StatementResponse retry(String hashId) {
+        UserPrincipal caller = AuthContext.require();
+        CoopStatement statement = statements.lockById(HashIdUtil.decodeId(hashId))
+                .filter(s -> scope.readsStatement(s, caller))
+                .orElseThrow(() -> new ResourceNotFoundException("Statement", hashId));
+        if (!statement.isAwaitingAccount()) {
+            throw new HodiException("This credit is not waiting for an account; it is "
+                    + stateLabel(statement.getState()).toLowerCase(java.util.Locale.ROOT) + ".", HttpStatus.CONFLICT);
+        }
+        String before = snapshot(statement);
+        CoopStatement after = placer.retry(statement, AuthContext.username());
+        audit.record(AppConstant.ACTION_UPDATE, "CoopStatement", after.getId(), before, snapshot(after));
+        return toResponse(after, lookups(List.of(after)));
     }
 
     /**
@@ -373,6 +411,7 @@ public class StatementService {
             case AppConstant.STATEMENT_MAPPED -> "Used";
             case AppConstant.STATEMENT_UNMAPPED -> "Unused";
             case AppConstant.STATEMENT_IGNORED -> "Set aside";
+            case AppConstant.STATEMENT_NO_ACCOUNT -> "Account not set up";
             default -> state;
         };
     }
