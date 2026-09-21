@@ -137,8 +137,17 @@ public final class AnalyticsViews {
     public record CompositionView(AnalyticsWindow window, List<Slice> collectionsByType,
                                   List<Slice> spendByCategory, List<Slice> unitsByState) {}
 
+    /**
+     * What the schedules say will fall due within a horizon and is not yet covered by what has been paid.
+     *
+     * <p>Beyond the overdue: a booking that has paid ahead owes nothing in the horizon until its payments run
+     * out, and a booking behind counts only the further instalments here — the arrears are in {@code overdue}.
+     */
+    public record Expected(int days, LocalDate through, BigDecimal amount, int bookings) {}
+
     public record ReceivablesView(BigDecimal receivable, BigDecimal overdue, int liveBookings,
-                                  int overdueBookings, List<AgeBucket> ageing, List<OwingBooking> worst) {}
+                                  int overdueBookings, List<AgeBucket> ageing, List<OwingBooking> worst,
+                                  List<Expected> expected) {}
 
     public record DevelopmentsView(AnalyticsWindow window, List<DevelopmentComparison> rows, boolean capped,
                                    int units, int unitsSold, BigDecimal contracted, BigDecimal collected,

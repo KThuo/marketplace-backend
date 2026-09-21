@@ -126,6 +126,29 @@ class AnalyticsFlowIT {
     }
 
     @Test
+    @DisplayName("expected receivables: the horizons widen, never shrink, and the nearest agrees with the schedule")
+    void expectedWidens() {
+        signInAsPlatform();
+        List<com.hodi.modules.analytics.AnalyticsViews.Expected> expected = service.receivables(null).expected();
+
+        assertEquals(List.of(30, 60, 90), expected.stream().map(e -> e.days()).toList());
+        for (int i = 1; i < expected.size(); i++) {
+            assertTrue(expected.get(i).amount().compareTo(expected.get(i - 1).amount()) >= 0,
+                    "what falls due by day 90 includes what falls due by day 30");
+            assertTrue(expected.get(i).bookings() >= expected.get(i - 1).bookings());
+        }
+        assertTrue(expected.stream().allMatch(e -> e.amount().signum() >= 0), "beyond the overdue, never below it");
+
+        BigDecimal in30 = sum("select coalesce(sum(greatest(h.due - v.paid, 0) - v.overdue), 0)"
+                + " from v_booking_balances v join unit_bookings b on b.id = v.booking_id"
+                + " join lateral (select coalesce(sum(i.amount), 0) due from booking_instalments i where i.booking_id = b.id and i.status <> 5"
+                + "   and i.plan_no = (select max(plan_no) from booking_instalments i2 where i2.booking_id = i.booking_id and i2.status <> 5)"
+                + "   and i.due_on <= current_date + 30) h on true"
+                + " where b.status <> 5 and b.state in ('RESERVED','AGREED')");
+        assertEquals(0, in30.compareTo(expected.get(0).amount()), "the schedule's own answer for the next thirty days");
+    }
+
+    @Test
     @DisplayName("the funnel: each stage is the list it counts, conversions read against the stage before, and steps have a median")
     void theFunnelCounts() {
         signInAsPlatform();

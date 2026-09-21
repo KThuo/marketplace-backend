@@ -178,7 +178,7 @@ public class AnalyticsService {
         Long developmentId = development(developmentHash);
         Positions now = queries.positions(developmentId);
         return new ReceivablesView(now.receivable(), now.overdue(), now.liveBookings(), now.overdueBookings(),
-                queries.ageing(developmentId), queries.worstBookings(developmentId, WORST));
+                queries.ageing(developmentId), queries.worstBookings(developmentId, WORST), flow.expected(developmentId));
     }
 
     /** Every development in scope, one row each, so the portfolio can be ranked — and who moved. */

@@ -2,6 +2,7 @@ package com.hodi.modules.analytics;
 
 import com.hodi.modules.analytics.AnalyticsViews.ChannelMonth;
 import com.hodi.modules.analytics.AnalyticsViews.DuePoint;
+import com.hodi.modules.analytics.AnalyticsViews.Expected;
 import com.hodi.modules.analytics.AnalyticsViews.Interval;
 import com.hodi.modules.analytics.AnalyticsViews.Lateness;
 import com.hodi.modules.analytics.AnalyticsViews.PromptPoint;
@@ -175,6 +176,37 @@ public class AnalyticsFlowQueries {
         for (YearMonth m : window.eachMonth()) {
             int[] v = by.getOrDefault(m, new int[4]);
             out.add(new PromptPoint(m.getYear(), m.getMonthValue(), AnalyticsWindow.shortLabel(m), v[0], v[1], v[2], v[3]));
+        }
+        return out;
+    }
+
+    // ── what is expected ──────────────────────────────────────────────────────
+
+    private static final int[] HORIZONS = {30, 60, 90};
+
+    /**
+     * What falls due within 30, 60 and 90 days beyond what is already overdue.
+     *
+     * <p>Per booking, what is outstanding by a date is what the schedule says is due by then less what has
+     * been paid, floored at nothing; what is expected within a horizon is that figure at the horizon less the
+     * same figure today, which is the overdue. A booking paid ahead expects nothing until its cover runs out.
+     */
+    public List<Expected> expected(Long developmentId) {
+        LocalDate today = LocalDate.now();
+        List<Expected> out = new ArrayList<>();
+        for (int days : HORIZONS) {
+            LocalDate through = today.plusDays(days);
+            Q q = new Q();
+            q.add("SELECT coalesce(sum(greatest(h.due - v.paid, 0) - v.overdue), 0) AS amount,"
+                    + " count(*) FILTER (WHERE greatest(h.due - v.paid, 0) - v.overdue > 0) AS n"
+                    + " FROM v_booking_balances v JOIN unit_bookings b ON b.id = v.booking_id"
+                    + " JOIN LATERAL (SELECT coalesce(sum(i.amount), 0) AS due FROM booking_instalments i"
+                    + "   WHERE i.booking_id = b.id AND i.status <> 5" + CURRENT_PLAN + " AND i.due_on <= ?) h ON true"
+                    + " WHERE " + scope("b") + " AND b.status <> 5 AND b.state IN ('RESERVED','AGREED')", through);
+            development(q, "b.development_id", developmentId);
+            Expected e = jdbc.queryForObject(q.sql.toString(), (rs, i) ->
+                    new Expected(days, through, money(rs, "amount"), rs.getInt("n")), q.params.toArray());
+            out.add(e);
         }
         return out;
     }
