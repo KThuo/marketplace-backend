@@ -87,14 +87,7 @@ public class PayeeResolver {
 
         Optional<UnitBooking> byBooking = bookingNamedIn(quoted, cleaned);
         if (byBooking.isPresent()) {
-            UnitBooking booking = byBooking.get();
-            Property home = units.findById(booking.getPropertyId()).orElse(null);
-            if (AppConstant.BOOKING_RESERVED.equals(booking.getState())
-                    || AppConstant.BOOKING_AGREED.equals(booking.getState())) {
-                return new Resolution(booking, home, Via.BOOKING_REFERENCE, null);
-            }
-            return new Resolution(null, home, Via.BOOKING_REFERENCE, "Booking " + booking.getReference()
-                    + " is " + booking.getState().toLowerCase(Locale.ROOT) + ", so there is nothing to credit.");
+            return onBooking(byBooking.get(), Via.BOOKING_REFERENCE);
         }
 
         Optional<Property> byReference = listingNamedIn(quoted, cleaned);
@@ -103,15 +96,30 @@ public class PayeeResolver {
         }
 
         String code = payCode(cleaned);
-        Optional<Property> byCode = units.findByPayReference(code)
-                .filter(p -> p.getStatus() == null || p.getStatus() != AppConstant.STATUS_DELETED);
+        Optional<UnitBooking> byCode = bookings.findByPayReference(code)
+                .filter(b -> b.getStatus() == null || b.getStatus() != AppConstant.STATUS_DELETED);
         if (byCode.isEmpty()) {
             return Resolution.none(cleaned.length() <= 4
-                    ? "No unit has the code \"" + code + "\". The payer may have mistyped it."
-                    : "No listing has the reference \"" + cleaned + "\" and no unit has the code \"" + code
+                    ? "No booking has the code \"" + code + "\". The payer may have mistyped it."
+                    : "No listing has the reference \"" + cleaned + "\" and no booking has the code \"" + code
                             + "\". The payer may have mistyped it.");
         }
-        return onHome(byCode.get(), Via.PAY_CODE);
+        return onBooking(byCode.get(), Via.PAY_CODE);
+    }
+
+    /**
+     * The booking a reference or a code named, live or not.
+     *
+     * <p>A closed booking is found and then refused with its state in the reason, rather than not found: the
+     * person working the queue needs "cancelled" and not "unknown" to know what to do with the money.
+     */
+    private Resolution onBooking(UnitBooking booking, Via via) {
+        Property home = units.findById(booking.getPropertyId()).orElse(null);
+        if (booking.isLive()) {
+            return new Resolution(booking, home, via, null);
+        }
+        return new Resolution(null, home, via, "Booking " + booking.getReference()
+                + " is " + booking.getState().toLowerCase(Locale.ROOT) + ", so there is nothing to credit.");
     }
 
     /**
@@ -166,6 +174,7 @@ public class PayeeResolver {
 
     /** What a person calls this listing: the unit's label on a development, the title on a house. */
     public static String label(Property home) {
+        if (home == null) return "the booking's home";
         if (home.getUnitLabel() != null && !home.getUnitLabel().isBlank()) return "Unit " + home.getUnitLabel();
         return home.getTitle() == null ? "Listing " + home.getReference() : home.getTitle();
     }

@@ -71,18 +71,8 @@ public interface DevelopmentUnitRepository
     List<Object[]> priceRangeForDevelopment(@Param("developmentId") Long developmentId);
 
     boolean existsByReference(String reference);
-    boolean existsByPayReference(String payReference);
 
     Optional<Property> findByReference(String reference);
-
-    /**
-     * By the code a buyer quoted when paying.
-     *
-     * <p>Unscoped by state on purpose: a payment arriving three weeks after a cancellation still has to land
-     * on the unit it names, and refusing to find it would put real money in an unmapped queue for no reason.
-     * Whether it may be applied is the payment layer's decision, not this lookup's.
-     */
-    Optional<Property> findByPayReference(String payReference);
 
     @Query("select count(u) from Property u where u.listingKind = 'UNIT' and u.developmentId = :developmentId "
             + "and upper(u.unitLabel) = upper(:label) and u.status <> 5 and u.id <> :exceptId")

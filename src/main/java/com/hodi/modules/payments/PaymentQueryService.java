@@ -243,7 +243,7 @@ public class PaymentQueryService {
                 development == null ? unit.getTitle() : development.getName(),
                 HashIdUtil.encodeId(booking.getPropertyId()),
                 unit == null ? null : unit.getUnitLabel(),
-                unit == null ? null : unit.getPayReference(),
+                booking.getPayReference(),
                 booking.getCurrency(), booking.getPriceAgreed(),
                 balance.map(BalanceRow::scheduled).orElse(BigDecimal.ZERO),
                 balance.map(BalanceRow::paid).orElse(BigDecimal.ZERO),

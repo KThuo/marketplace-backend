@@ -58,7 +58,7 @@ public final class DevelopmentUnitDtos {
     public record UnitResponse(
             String id,
             String reference,
-            /** The short code a buyer quotes when paying for this unit. */
+            /** The live booking's pay code — what a buyer quotes for this unit today — or null when nobody holds it. */
             String payReference,
             String unitLabel,
             String block,

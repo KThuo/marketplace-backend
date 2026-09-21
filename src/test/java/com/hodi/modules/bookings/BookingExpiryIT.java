@@ -84,7 +84,7 @@ class BookingExpiryIT {
         unit = units.save(Property.builder()
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
-                .unitTypeId(typology.getId()).unitLabel("A-2-04").payReference(RrnGenerator.payCode())
+                .unitTypeId(typology.getId()).unitLabel("A-2-04")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
     }

@@ -194,7 +194,7 @@ class CoopStkIT {
         Property unit = units.save(Property.builder()
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
-                .unitTypeId(typology.getId()).unitLabel("P-1-01").payReference("P1K1")
+                .unitTypeId(typology.getId()).unitLabel("P-1-01")
                 .saleState(AppConstant.UNIT_AVAILABLE).constructionStatus(AppConstant.BUILD_PLANNED).build());
         booking = bookings.create(HashIdUtil.encodeId(development.getId()), new CreateBookingRequest(
                 HashIdUtil.encodeId(unit.getId()), "Asha Mwangi", "+254712000111", null, null,

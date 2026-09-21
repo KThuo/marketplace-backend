@@ -39,7 +39,6 @@ class DevelopmentInventoryIT {
     @Autowired DevelopmentUnitRepository units;
     @Autowired DevelopmentPhaseRepository phases;
     @Autowired PropertyRepository properties;
-    @Autowired PayCodeAllocator payCodes;
     @Autowired JdbcTemplate jdbc;
 
     private Long someTenant() {
@@ -74,7 +73,6 @@ class DevelopmentInventoryIT {
                 .developmentId(d.getId())
                 .unitTypeId(t.getId())
                 .reference(RrnGenerator.generate("UN"))
-                .payReference(payCodes.next())
                 .unitLabel(label)
                 .saleState(state);
         if (ownPrice != null) b.price(new BigDecimal(ownPrice));

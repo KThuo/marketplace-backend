@@ -99,12 +99,13 @@ class SlipValidationIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("S-2-02")
-                .payReference("S2K2")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
         booking = bookings.create(HashIdUtil.encodeId(development.getId()), new CreateBookingRequest(
                 HashIdUtil.encodeId(unit.getId()), "Asha Mwangi", "+254712000111", null, null,
                 new BigDecimal("9500000"), new BigDecimal("950000"), null, 14, null, null));
+        // The code a booking is given is random; this test quotes a known one, so it is pinned on the booking.
+        jdbc.update("update unit_bookings set pay_reference = ? where reference = ?", "S2K2", booking.reference());
         // The booking is this buyer's, by identity as well as by name.
         bookingRaw = HashIdUtil.decodeId(booking.id());
         UnitBooking row = bookingRows.findById(bookingRaw).orElseThrow();
@@ -296,7 +297,7 @@ class SlipValidationIT {
         Property otherUnit = units.save(Property.builder()
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(otherDevelopment.getId())
-                .unitTypeId(typology.getId()).unitLabel("O-1-01").payReference("O1K1")
+                .unitTypeId(typology.getId()).unitLabel("O-1-01")
                 .saleState(AppConstant.UNIT_AVAILABLE).constructionStatus(AppConstant.BUILD_PLANNED).build());
         BookingResponse otherBooking = bookings.create(HashIdUtil.encodeId(otherDevelopment.getId()),
                 new CreateBookingRequest(HashIdUtil.encodeId(otherUnit.getId()), "Someone Else",

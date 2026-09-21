@@ -1,5 +1,6 @@
 package com.hodi.seed;
 
+import com.hodi.common.util.RrnGenerator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,6 +22,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -115,7 +117,7 @@ public class DemoActivitySeeder {
 
     private record Buyer(long id, String name, String phone, String email) {}
     private record Unit(long id, long developmentId, String developmentName, long tenantId, long unitTypeId,
-                        String label, String reference, String payCode, BigDecimal price) {}
+                        String label, String reference, BigDecimal price) {}
     private record Channel(long typeId, String typeName, Long accountId, String accountIdentifier) {}
 
     private List<Buyer> buyers;
@@ -305,15 +307,30 @@ public class DemoActivitySeeder {
     /** A closed booking carries its closing in the same row version: ck_booking_closed ties the two together. */
     private long booking(Unit u, Buyer who, String state, BigDecimal price, BigDecimal deposit, LocalDate bookedOn,
                          OffsetDateTime expiresAt, OffsetDateTime closedAt, String closeReason) {
-        return one("""
-                insert into unit_bookings (reference, development_id, unit_type_id, tenant_id, buyer_user_id, buyer_name,
+        String code = payCode();
+        long id = one("""
+                insert into unit_bookings (reference, pay_reference, development_id, unit_type_id, tenant_id, buyer_user_id, buyer_name,
                     buyer_phone, buyer_email, state, price_agreed, currency, deposit_due, payment_plan, booked_on, expires_at,
                     closed_at, close_reason, notes, status, status_flag, created_at, updated_at, created_by, updated_by, property_id)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'KES', ?, 'INSTALMENTS', ?, ?, ?, ?, ?, 1, 'Active', ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'KES', ?, 'INSTALMENTS', ?, ?, ?, ?, ?, 1, 'Active', ?, ?, ?, ?, ?)
                 returning id""", Long.class,
-                ref("BK", bookedOn), u.developmentId(), u.unitTypeId(), u.tenantId(), who.id(), who.name(), who.phone(),
+                ref("BK", bookedOn), code, u.developmentId(), u.unitTypeId(), u.tenantId(), who.id(), who.name(), who.phone(),
                 who.email(), state, price, deposit, bookedOn, expiresAt, closedAt, closeReason, "Demo activity.",
                 at(bookedOn, 10), closedAt == null ? at(bookedOn, 10) : closedAt, ACTOR, ACTOR, u.id());
+        payCodes.put(id, code);
+        return id;
+    }
+
+    /** The code each seeded booking was given, so its statements and payments quote it. */
+    private final Map<Long, String> payCodes = new HashMap<>();
+
+    /** A code no booking holds, drawn the way {@code PayCodeAllocator} draws one. */
+    private String payCode() {
+        for (int attempt = 0; attempt < 25; attempt++) {
+            String candidate = RrnGenerator.payCode();
+            if (one("select count(*) from unit_bookings where pay_reference = ?", Long.class, candidate) == 0) return candidate;
+        }
+        throw new IllegalStateException("Could not draw a free pay code");
     }
 
     /** A deposit on the day, then equal monthly instalments. Returns [dueOn epochDay, amount cents] per line. */
@@ -364,7 +381,7 @@ public class DemoActivitySeeder {
                         created_at, updated_at, created_by)
                     values (?, ?, ?, ?, ?, ?, ?, ?, 'KES', ?, ?, ?, 'UNMAPPED', null, 1, 'Active', ?, ?, ?) returning id""", Long.class,
                     bankRef, trace(on), ref("ST", on),
-                    via == stk ? "STK_QUERY" : "CREDIT", via.accountId(), via.accountIdentifier(), u.payCode(), amount,
+                    via == stk ? "STK_QUERY" : "CREDIT", via.accountId(), via.accountIdentifier(), payCodes.get(bookingId), amount,
                     who.phone(), who.name().toUpperCase(), paidAt, paidAt, paidAt, ACTOR);
         }
         BigDecimal balanceAfter = balanceBefore.subtract(amount);
@@ -378,7 +395,7 @@ public class DemoActivitySeeder {
                 ref("PY", on), bookingId, u.developmentId(), u.id(), u.tenantId(), u.developmentName(), u.label(),
                 who.name(), who.phone(), on, amount, source, method,
                 via == null ? manualTypeId(method) : via.typeId(), via == null ? null : via.typeName(),
-                via == null ? null : u.payCode(), bankRef, who.name(), who.phone(), balanceBefore, balanceAfter, statementId,
+                via == null ? null : payCodes.get(bookingId), bankRef, who.name(), who.phone(), balanceBefore, balanceAfter, statementId,
                 paidAt, paidAt, via == null ? "kamanza" : "system", via == null ? "kamanza" : "system");
         if (statementId != null) {
             jdbc.update("""
@@ -748,7 +765,7 @@ public class DemoActivitySeeder {
 
     private List<Unit> units(String developmentReference, String typeCode) {
         return jdbc.query("""
-                select p.id, p.development_id, d.name, d.tenant_id, p.unit_type_id, p.unit_label, p.reference, p.pay_reference,
+                select p.id, p.development_id, d.name, d.tenant_id, p.unit_type_id, p.unit_label, p.reference,
                        coalesce(p.price, t.list_price) price
                   from properties p
                   join developments d on d.id = p.development_id
@@ -756,7 +773,7 @@ public class DemoActivitySeeder {
                  where d.reference = ? and t.code = ? and p.listing_kind = 'UNIT' and p.status <> 5
                  order by p.unit_label""",
                 (rs, n) -> new Unit(rs.getLong(1), rs.getLong(2), rs.getString(3), rs.getLong(4), rs.getLong(5), rs.getString(6),
-                        rs.getString(7), rs.getString(8), rs.getBigDecimal(9)),
+                        rs.getString(7), rs.getBigDecimal(8)),
                 developmentReference, typeCode);
     }
 

@@ -72,7 +72,6 @@ public class DevelopmentUnitService {
     private final DevelopmentVisibility visibility;
     private final DevelopmentInventoryService inventory;
     private final DevelopmentPublication publication;
-    private final PayCodeAllocator payCodes;
     private final AuditService audit;
     private final com.hodi.modules.bookings.UnitBookingRepository bookings;
     private final com.hodi.modules.bookings.BookingService bookingService;
@@ -156,7 +155,6 @@ public class DevelopmentUnitService {
         Property unit = unitRow(development, type)
                 .phaseId(phaseId)
                 .reference(nextReference())
-                .payReference(payCodes.next())
                 .currency(type.getCurrency())
                 .createdBy(AuthContext.username())
                 .build();
@@ -237,14 +235,12 @@ public class DevelopmentUnitService {
                     HttpStatus.CONFLICT);
         }
 
-        List<String> codes = payCodes.nextBatch(slots.size());
         List<Property> batch = new ArrayList<>(slots.size());
         for (int i = 0; i < slots.size(); i++) {
             UnitLabels.Slot slot = slots.get(i);
             batch.add(unitRow(development, type)
                     .phaseId(phaseId)
                     .reference(nextReference())
-                    .payReference(codes.get(i))
                     .unitLabel(slot.label())
                     .title(development.getName() + " · " + slot.label())
                     .block(slot.block())
@@ -640,7 +636,18 @@ public class DevelopmentUnitService {
             List<Predicate> ors = new ArrayList<>(4);
             ors.add(cb.like(cb.lower(root.get("unitLabel")), like));
             ors.add(cb.like(cb.lower(root.get("reference")), like));
-            ors.add(cb.like(cb.lower(root.get("payReference")), like));
+            /*
+             * The pay code is the live booking's, not the unit's, so a unit is found by the code somebody
+             * quoted on a payment through the booking that holds it.
+             */
+            jakarta.persistence.criteria.Subquery<Long> bookedUnder = query.subquery(Long.class);
+            jakarta.persistence.criteria.Root<com.hodi.modules.bookings.UnitBooking> b =
+                    bookedUnder.from(com.hodi.modules.bookings.UnitBooking.class);
+            bookedUnder.select(b.get("propertyId")).where(
+                    cb.like(cb.lower(b.get("payReference")), like),
+                    b.get("state").in(AppConstant.BOOKING_RESERVED, AppConstant.BOOKING_AGREED),
+                    cb.notEqual(b.get("status"), AppConstant.STATUS_DELETED));
+            ors.add(root.get("id").in(bookedUnder));
             ors.add(cb.like(cb.lower(cb.coalesce(root.get("buyerName"), "")), like));
             return cb.or(ors.toArray(new Predicate[0]));
         };
@@ -686,7 +693,8 @@ public class DevelopmentUnitService {
         return new UnitResponse(
                 HashIdUtil.encodeId(u.getId()),
                 u.getReference(),
-                u.getPayReference(),
+                // The live booking's code: what a buyer quotes for this unit today, and nothing when nobody holds it.
+                booking == null ? null : booking.getPayReference(),
                 u.getUnitLabel(),
                 u.getBlock(),
                 u.getFloorNo(),

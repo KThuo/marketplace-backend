@@ -88,12 +88,13 @@ class StatementServiceIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("Q-1-01")
-                .payReference("Q1K1")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
         booking = bookings.create(HashIdUtil.encodeId(development.getId()), new CreateBookingRequest(
                 HashIdUtil.encodeId(unit.getId()), "Asha Mwangi", "+254712000111", null, null,
                 new BigDecimal("9500000"), new BigDecimal("950000"), null, 14, null, null));
+        // The code a booking is given is random; this test quotes a known one, so it is pinned on the booking.
+        jdbc.update("update unit_bookings set pay_reference = ? where reference = ?", "Q1K1", booking.reference());
         till = till(tenantId, null);
     }
 

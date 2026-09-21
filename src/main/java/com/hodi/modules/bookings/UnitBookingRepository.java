@@ -14,6 +14,17 @@ public interface UnitBookingRepository
 
     Optional<UnitBooking> findByReference(String reference);
 
+    boolean existsByPayReference(String payReference);
+
+    /**
+     * By the code a buyer quoted when paying.
+     *
+     * <p>Unscoped by state on purpose: a payment arriving three weeks after a cancellation still has to find
+     * the booking it names, so the matcher can say "cancelled" rather than "unknown". Whether it may be
+     * credited is the payment layer's decision, not this lookup's.
+     */
+    Optional<UnitBooking> findByPayReference(String payReference);
+
     /** A buyer's own bookings, by identity: the ones they can pay and read receipts for. */
     @Query("select b from UnitBooking b where b.buyerUserId = :userId and b.status <> 5 "
             + "order by b.bookedOn desc, b.id desc")

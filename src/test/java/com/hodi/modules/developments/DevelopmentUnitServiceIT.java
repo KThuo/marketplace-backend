@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -120,9 +121,6 @@ class DevelopmentUnitServiceIT {
                         .equals(u.getDevelopmentId()))
                 .filter(u -> u.getUnitLabel().startsWith("B-")).toList();
         assertEquals(70, all.size());
-        assertEquals(70, all.stream().map(Property::getPayReference).distinct().count(),
-                "a batch of pay codes must not repeat — the unique index would refuse the second");
-        assertTrue(all.stream().allMatch(u -> u.getPayReference().length() == 4));
 
         DevelopmentUnitType after = typeRepository.findById(
                 com.hodi.security.hashid.HashIdUtil.decodeId(typeId)).orElseThrow();
@@ -236,15 +234,15 @@ class DevelopmentUnitServiceIT {
     }
 
     @Test
-    @DisplayName("the search finds a unit by its label, its reference or its pay code")
-    void searchesByPayCode() {
+    @DisplayName("the search finds a unit by its label or its reference; the pay code is its booking's")
+    void searchesByReference() {
         units.generate(developmentId, plan(3, "B", (short) 1, (short) 3, null));
         var first = units.list(developmentId, new UnitListRequest()).getContent().getFirst();
+        assertNull(first.payReference(), "an unbooked unit has no code: the code belongs to a booking");
 
-        UnitListRequest byCode = new UnitListRequest();
-        byCode.setSearch(first.payReference());
-        assertEquals(1, units.list(developmentId, byCode).getTotalElements(),
-                "a payment quoting only the short code has to be findable by it");
+        UnitListRequest byReference = new UnitListRequest();
+        byReference.setSearch(first.reference());
+        assertEquals(1, units.list(developmentId, byReference).getTotalElements());
 
         UnitListRequest byLabel = new UnitListRequest();
         byLabel.setSearch("B-10");

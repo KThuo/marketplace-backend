@@ -42,6 +42,13 @@ public class UnitBooking {
 
     @Column(nullable = false, unique = true, length = 16) private String reference;
 
+    /**
+     * The four characters a buyer quotes when paying for this booking — at the bank, on a transfer, on an STK
+     * prompt. Unique across every booking ever, so a late payment quoting a cancelled booking's code finds the
+     * cancelled booking and not whoever booked the home next.
+     */
+    @Column(name = "pay_reference", nullable = false, length = 8) private String payReference;
+
     /** Null for a house: a booking is on a property, and only a unit has a project above it. */
     @Column(name = "development_id") private Long developmentId;
     /** The home being bought — a UNIT row or a HOUSE row of {@code properties}. */

@@ -111,7 +111,6 @@ class PaymentIntentIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("C-3-07")
-                .payReference("Z4XP")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
 

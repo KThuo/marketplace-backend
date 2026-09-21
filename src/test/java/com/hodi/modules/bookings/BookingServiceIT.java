@@ -109,7 +109,6 @@ class BookingServiceIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-1-01")
-                .payReference("A7K2")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
     }
@@ -139,7 +138,8 @@ class BookingServiceIT {
         assertEquals(AppConstant.BOOKING_RESERVED, saved.state());
         assertNotNull(saved.expiresAt(), "a reservation expires");
         assertFalse(saved.expired());
-        assertEquals("A7K2", saved.payReference(), "the code the buyer quotes, on the response");
+        assertTrue(saved.payReference().matches("[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}"),
+                "the booking's own four-character code, on the response: " + saved.payReference());
 
         Property after = units.findById(unit.getId()).orElseThrow();
         assertEquals(AppConstant.UNIT_HELD, after.getSaleState(),

@@ -201,8 +201,6 @@ public class Property {
     @Column(length = 32) private String block;
     @Column(name = "floor_no") private Short floorNo;
     @Column(name = "door_no", length = 16) private String doorNo;
-    /** Short code a buyer quotes when paying for this unit. Unique across every unit ever. */
-    @Column(name = "pay_reference", length = 8) private String payReference;
     @Column(name = "sale_state", length = 16) private String saleState;
     @Column(name = "completed_on") private LocalDate completedOn;
     @Column(name = "handed_over_on") private LocalDate handedOverOn;

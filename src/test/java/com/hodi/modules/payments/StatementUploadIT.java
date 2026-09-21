@@ -103,7 +103,6 @@ class StatementUploadIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("U-4-04")
-                .payReference("U4K4")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
 

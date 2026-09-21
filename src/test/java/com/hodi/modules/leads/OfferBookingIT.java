@@ -77,7 +77,7 @@ class OfferBookingIT {
         unit = units.save(Property.builder()
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit O-1-01")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
-                .unitTypeId(typology.getId()).unitLabel("O-1-01").payReference("O1K1")
+                .unitTypeId(typology.getId()).unitLabel("O-1-01")
                 .tenantId(tenantId)
                 .saleState(AppConstant.UNIT_AVAILABLE).constructionStatus(AppConstant.BUILD_PLANNED).build());
     }

@@ -76,6 +76,7 @@ public class BookingService {
     private static final int DEFAULT_HOLD_DAYS = 14;
 
     private final UnitBookingRepository repository;
+    private final PayCodeAllocator payCodes;
     private final BookingInstalmentRepository instalments;
     private final PaymentRepository payments;
     private final PaymentQueryService paymentQueries;
@@ -318,6 +319,9 @@ public class BookingService {
         OffsetDateTime now = OffsetDateTime.now();
         UnitBooking booking = UnitBooking.builder()
                 .reference(RrnGenerator.generate("BK"))
+                // Allocated here, in the transaction that inserts the row: a booking never exists without the
+                // code a buyer will be told to pay against.
+                .payReference(payCodes.next())
                 .developmentId(development == null ? null : development.getId())
                 .propertyId(property.getId())
                 .unitTypeId(property.getUnitTypeId())
@@ -502,6 +506,14 @@ public class BookingService {
         try {
             return repository.saveAndFlush(booking);
         } catch (DataIntegrityViolationException e) {
+            // Two constraints can refuse the row: one live booking per home, and one pay code per booking. The
+            // second is a random draw two bookings made at the same instant, and trying again will succeed.
+            String cause = e.getMostSpecificCause() == null ? "" : String.valueOf(e.getMostSpecificCause().getMessage());
+            if (cause.contains("uk_booking_pay_reference")) {
+                log.info("Pay code {} was taken between the check and the insert", booking.getPayReference());
+                throw new HodiException("The payment code drawn for this booking was taken a moment ago. Try again.",
+                        HttpStatus.CONFLICT);
+            }
             log.info("Concurrent booking refused for {}", labelOf(property));
             throw new HodiException("Somebody booked " + labelOf(property)
                     + " a moment ago. Refresh to see who has it.", HttpStatus.CONFLICT);
@@ -685,7 +697,7 @@ public class BookingService {
         return new BookingResponse(
                 HashIdUtil.encodeId(b.getId()), b.getReference(), developmentName,
                 home == null ? null : home.getUnitLabel(),
-                home == null ? null : home.getPayReference(),
+                b.getPayReference(),
                 typeName,
                 b.getBuyerName(), b.getBuyerPhone(), b.getBuyerEmail(), b.getBuyerIdNumber(),
                 b.getState(), b.getPriceAgreed(), b.getDepositDue(), b.getCurrency(), b.getPaymentPlan(),

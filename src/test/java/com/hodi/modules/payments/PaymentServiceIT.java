@@ -93,7 +93,6 @@ class PaymentServiceIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("R-2-04")
-                .payReference("R2K4")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
 
@@ -102,8 +101,7 @@ class PaymentServiceIT {
                 new BigDecimal("9500000"), new BigDecimal("950000"), AppConstant.PLAN_INSTALMENTS, 14, null,
                 List.of(new InstalmentLine("Deposit", LocalDate.now().minusDays(10), new BigDecimal("950000")),
                         new InstalmentLine("Balance", LocalDate.now().plusDays(90),
-                                new BigDecimal("8550000")))));
-    }
+                                new BigDecimal("8550000")))));    }
 
     private void signIn(Long tenant, String... permissions) {
         User user = User.builder().id(1L).username("pay-test").password("x")
@@ -344,7 +342,7 @@ class PaymentServiceIT {
         BookingBalance balance = queries.balanceOf(booking.id());
 
         assertEquals("R-2-04", balance.unitLabel());
-        assertEquals("R2K4", balance.payReference());
+        assertEquals(booking.payReference(), balance.payReference(), "the booking's own code, on the balance panel");
         assertEquals("Receipt Heights", balance.developmentName());
         assertEquals(2, balance.schedule().size());
         assertTrue(balance.schedule().get(0).past(), "the deposit was due ten days ago");

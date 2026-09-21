@@ -109,7 +109,6 @@ class CoopBillerIT {
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
                 .unitTypeId(typology.getId()).unitLabel("B-1-01")
-                .payReference("B1K1")
                 .saleState(AppConstant.UNIT_AVAILABLE)
                 .constructionStatus(AppConstant.BUILD_PLANNED).build());
         booking = bookings.create(HashIdUtil.encodeId(development.getId()), new CreateBookingRequest(
@@ -118,6 +117,8 @@ class CoopBillerIT {
                 List.of(new InstalmentLine("Deposit", LocalDate.now().minusDays(10), new BigDecimal("950000")),
                         new InstalmentLine("Balance", LocalDate.now().plusDays(90),
                                 new BigDecimal("8550000")))));
+        // The code a booking is given is random; this test quotes a known one, so it is pinned on the booking.
+        jdbc.update("update unit_bookings set pay_reference = ? where reference = ?", "B1K1", booking.reference());
 
         // The biller, as the account screen would create it: keyed on the pair Co-op advises with, the
         // password encrypted at rest.
