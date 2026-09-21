@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.math.RoundingMode;
 import java.util.List;
 import java.util.Map;
 
@@ -49,6 +50,7 @@ public class AnalyticsService {
     private static final int WORST = 10;
 
     private final AnalyticsQueries queries;
+    private final AnalyticsFlowQueries flow;
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
 
@@ -74,6 +76,39 @@ public class AnalyticsService {
                 now.bookings(), now.payments(), now.unitsSold(),
                 queries.positions(developmentId),
                 queries.trend(window, developmentId));
+    }
+
+    /**
+     * How well what is due gets paid: due against collected, how promptly, by what channel, and how the
+     * phone prompts fared.
+     */
+    @Transactional(readOnly = true)
+    public CollectionsView collections(AnalyticsWindow window, String developmentHash) {
+        Long developmentId = development(developmentHash);
+        List<DuePoint> months = flow.dueAndCollected(window, developmentId);
+        BigDecimal due = months.stream().map(DuePoint::due).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal collected = months.stream().map(DuePoint::collected).reduce(BigDecimal.ZERO, BigDecimal::add);
+        List<PromptPoint> prompts = flow.promptsByMonth(window, developmentId);
+        return new CollectionsView(window, due, collected, flow.lateness(window, developmentId), months,
+                flow.channelsByMonth(window, developmentId), prompts,
+                prompts.stream().mapToInt(PromptPoint::sent).sum(), prompts.stream().mapToInt(PromptPoint::paid).sum(),
+                prompts.stream().mapToInt(PromptPoint::failed).sum(), prompts.stream().mapToInt(PromptPoint::unanswered).sum());
+    }
+
+    /** How many enquiries become sales in the window, how many fall out at each step, and how long each took. */
+    @Transactional(readOnly = true)
+    public FunnelView funnel(AnalyticsWindow window) {
+        int[] n = flow.stageCounts(window);
+        String[] keys = {"enquiries", "viewings", "offers", "bookings", "completed"};
+        String[] labels = {"Enquiries", "Viewings", "Offers", "Bookings", "Completed"};
+        List<Stage> stages = new ArrayList<>();
+        for (int i = 0; i < n.length; i++) {
+            BigDecimal conversion = i == 0 || n[i - 1] == 0 ? null
+                    : BigDecimal.valueOf(n[i]).multiply(BigDecimal.valueOf(100)).divide(BigDecimal.valueOf(n[i - 1]), 1, RoundingMode.HALF_UP);
+            stages.add(new Stage(keys[i], labels[i], n[i], conversion));
+        }
+        return new FunnelView(window, stages, flow.intervals(window), flow.offersByOutcome(window),
+                flow.offersConverted(window), flow.viewingsByOutcome(window));
     }
 
     @Transactional(readOnly = true)

@@ -168,6 +168,66 @@ public final class AnalyticsViews {
     /** <b>The calendar.</b> Twelve months of receipts, including the empty ones. */
     public record CalendarView(int year, List<MonthlyCollection> months) {}
 
+    // ── collections: how well what is due gets paid ───────────────────────────
+
+    /** One month: what the schedules said was due, and what actually arrived. */
+    public record DuePoint(int year, int month, String label, BigDecimal due, BigDecimal collected) {}
+
+    /**
+     * How promptly payments met their instalments.
+     *
+     * <p>Payments are not allocated to instalments by the system, so each one is read against the instalment
+     * its running total first reaches — the same reading a person makes of a schedule beside a receipt list. A
+     * payment with no instalment to meet (ahead of the whole schedule, or a booking with no plan) is counted
+     * in neither column.
+     *
+     * @param graceDays how many days after the due date still counts as on time
+     * @param medianDaysLate among the late ones only; null when none were late
+     */
+    public record Lateness(int scheduled, int onTime, int late, int graceDays, Integer medianDaysLate,
+                           BigDecimal lateAmount) {
+        @JsonProperty("onTimeShare")
+        public BigDecimal onTimeShare() {
+            if (scheduled == 0) return null;
+            return BigDecimal.valueOf(onTime).multiply(HUNDRED).divide(BigDecimal.valueOf(scheduled), 1, RoundingMode.HALF_UP);
+        }
+    }
+
+    /** One channel's take in one month, for the stacked bar. */
+    public record ChannelMonth(int year, int month, String label, String channel, BigDecimal amount, int count) {}
+
+    /** Prompts sent in a month, and what became of them. */
+    public record PromptPoint(int year, int month, String label, int sent, int paid, int failed, int unanswered) {}
+
+    public record CollectionsView(AnalyticsWindow window, BigDecimal due, BigDecimal collected, Lateness lateness,
+                                  List<DuePoint> months, List<ChannelMonth> channels, List<PromptPoint> prompts,
+                                  int promptsSent, int promptsPaid, int promptsFailed, int promptsUnanswered) {
+        /** Collected as a share of what was due in the window. Null when nothing was due. */
+        @JsonProperty("efficiency")
+        public BigDecimal efficiency() {
+            if (due == null || due.signum() == 0) return null;
+            return collected.multiply(HUNDRED).divide(due, 1, RoundingMode.HALF_UP);
+        }
+        /** Of the prompts that got an answer, how many were paid. Null when none were answered. */
+        @JsonProperty("promptSuccessRate")
+        public BigDecimal promptSuccessRate() {
+            int answered = promptsPaid + promptsFailed;
+            if (answered == 0) return null;
+            return BigDecimal.valueOf(promptsPaid).multiply(HUNDRED).divide(BigDecimal.valueOf(answered), 1, RoundingMode.HALF_UP);
+        }
+    }
+
+    // ── the funnel: how many enquiries become sales, and how long ────────────
+
+    /** @param conversion the share of the stage before that reached this one, in percent; null for the first */
+    public record Stage(String key, String label, int count, BigDecimal conversion) {}
+
+    /** The typical time between two stages, for the people who made it from one to the other. */
+    public record Interval(String key, String label, Integer medianDays, int sample) {}
+
+    public record FunnelView(AnalyticsWindow window, List<Stage> stages, List<Interval> intervals,
+                             List<Slice> offersByOutcome, int offersConverted, List<Slice> viewingsByOutcome) {}
+
     // ── the dashboard: today ──────────────────────────────────────────────────
 
     /**

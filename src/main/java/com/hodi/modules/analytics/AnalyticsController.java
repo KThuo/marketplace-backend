@@ -70,6 +70,25 @@ public class AnalyticsController {
                 AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth), developmentId));
     }
 
+    @GetMapping("/collections")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ApiResponse<CollectionsView> collections(
+            @RequestParam(required = false) Integer fromYear, @RequestParam(required = false) Integer fromMonth,
+            @RequestParam(required = false) Integer toYear, @RequestParam(required = false) Integer toMonth,
+            @RequestParam(required = false) String developmentId) {
+        return ApiResponse.success(service.collections(
+                AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth), developmentId));
+    }
+
+    /** Leads sit on listings, which have no development, so this takes the window alone. */
+    @GetMapping("/funnel")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ApiResponse<FunnelView> funnel(
+            @RequestParam(required = false) Integer fromYear, @RequestParam(required = false) Integer fromMonth,
+            @RequestParam(required = false) Integer toYear, @RequestParam(required = false) Integer toMonth) {
+        return ApiResponse.success(service.funnel(AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth)));
+    }
+
     @GetMapping("/pipeline")
     @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
     public ApiResponse<PipelineView> pipeline(
