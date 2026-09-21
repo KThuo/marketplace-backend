@@ -51,12 +51,12 @@ import java.util.Optional;
  *
  * <p>The code does not. Four characters from a 32-letter alphabet carry no redundancy: a single mistyped
  * letter produces another well-formed code, and the chance it happens to be a live booking's is roughly live
- * bookings ÷ 1,048,576. Small, not nothing, and it is money. So a code quoted on a free-text bank transfer
- * goes to the queue unless something else agrees — the amount equals something outstanding on that booking,
- * or the paying phone number is the buyer's. The exception is a biller advice: the bank validated the code
- * with the payer moments earlier and showed them the buyer's name, which is stronger corroboration than an
- * amount match, so the advice path says so and the code alone places it. Anything less is a person's
- * decision, which is what the unmapped queue is for.
+ * bookings ÷ 1,048,576. Small, not nothing, and it is money. Whether that is worth a person's time on every
+ * credit is the institution's setting, {@code payments.code.match}: CODE places on the code alone — a buyer
+ * paying from a relative's phone is the common case; CODE_AND_CONTACT also wants the paying phone to be the
+ * buyer's or the amount to equal something due, and otherwise the credit waits in the queue. A biller
+ * advice places on the code either way: the bank validated the code with the payer moments earlier and
+ * showed them the buyer's name.
  *
  * <h2>What this method must not do</h2>
  *
@@ -305,14 +305,13 @@ public class CoopIpnService {
         }
 
         UnitBooking target = match.booking();
-        if (match.needsCorroboration() && !codeConfirmed && !corroborated(statement, target)) {
+        if (match.needsCorroboration() && !codeConfirmed && codeNeedsContact() && !corroborated(statement, target)) {
             /*
-             * The code matched and nothing else did.
+             * The code matched, nothing else did, and the institution has asked for something else to.
              *
-             * Four characters carry no redundancy, so one mistyped letter produces another well-formed code,
-             * and with thousands of live bookings the chance it is one of theirs is small but not nothing.
-             * Too high to credit somebody's balance on that alone. A booking or listing reference is not one
-             * letter from another live one, which is why neither comes through here.
+             * Four characters carry no redundancy, so one mistyped letter produces another well-formed code.
+             * A booking or listing reference is not one letter from another live one, which is why neither
+             * comes through here.
              */
             unplaced(statement, "The code matches booking " + target.getReference() + " ("
                     + PayeeResolver.label(match.home())
@@ -427,6 +426,17 @@ public class CoopIpnService {
         if (value == null) return null;
         String digits = value.replaceAll("\\D", "");
         return digits.length() < 9 ? null : digits.substring(digits.length() - 9);
+    }
+
+    /**
+     * Whether a pay code on a credit needs the phone or the amount to agree as well.
+     *
+     * <p>Read each time rather than cached: the setting is changed from the settings screen and the next
+     * credit should obey it. Anything but an exact CODE is the careful reading.
+     */
+    private boolean codeNeedsContact() {
+        String rule = configs.getString(ConfigKey.PAYMENTS_CODE_MATCH);
+        return rule == null || !"CODE".equalsIgnoreCase(rule.trim());
     }
 
     private void unplaced(CoopStatement statement, String reason) {

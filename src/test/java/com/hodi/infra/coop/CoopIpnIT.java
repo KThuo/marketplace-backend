@@ -68,6 +68,7 @@ class CoopIpnIT {
     @Autowired DevelopmentUnitRepository units;
     @Autowired DevelopmentUnitTypeRepository unitTypes;
     @Autowired JdbcTemplate jdbc;
+    @Autowired com.hodi.modules.configurations.ConfigurationService configs;
 
     private Long tenantId;
     private Development development;
@@ -234,22 +235,43 @@ class CoopIpnIT {
 
     // ── sent to the queue ─────────────────────────────────────────────────────
 
+    /** The institution's choice of what a code must agree with; put back by every test that changes it. */
+    private void codeMatch(String rule) {
+        jdbc.update("update configurations set config_value = ? where config_key = 'payments.code.match'", rule);
+        configs.evictAll();
+    }
+
     @Test
-    @DisplayName("a code match on its own is never enough, and the reason says why")
-    void bareCodeMatchGoesToTheQueue() {
-        /*
-         * The whole point of the corroboration rule. Four characters carry no redundancy, so one mistyped
-         * letter produces another well-formed code — and at five thousand units the chance it is a live one is
-         * about one in two hundred. Too high to move a balance on.
-         */
+    @DisplayName("under CODE_AND_CONTACT a code match on its own is not enough, and the reason says why")
+    void bareCodeMatchGoesToTheQueueWhenContactIsRequired() {
+        codeMatch("CODE_AND_CONTACT");
+        try {
+            // Four characters carry no redundancy, so one mistyped letter produces another well-formed code;
+            // an institution that would rather a person looked first can say so.
+            CoopStatement stored = service.accept(payload("Z4XP", "37500.00", "254700000000"), true);
+
+            assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
+            assertTrue(stored.getUnmappedReason().contains("C-3-07"), stored.getUnmappedReason());
+            assertTrue(stored.getUnmappedReason().contains(booking.reference()),
+                    "and it names the booking, so a person can go and check it");
+            assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(booking.id()))
+                    .compareTo(BigDecimal.ZERO));
+        } finally {
+            codeMatch("CODE");
+        }
+    }
+
+    @Test
+    @DisplayName("under CODE, the default, the code alone places the money: any phone, any amount")
+    void theCodeAloneIsEnoughByDefault() {
+        codeMatch("CODE");
+        // A stranger's phone and an amount that is neither the deposit nor the price.
         CoopStatement stored = service.accept(payload("Z4XP", "37500.00", "254700000000"), true);
 
-        assertEquals(AppConstant.STATEMENT_UNMAPPED, stored.getState());
-        assertTrue(stored.getUnmappedReason().contains("C-3-07"), stored.getUnmappedReason());
-        assertTrue(stored.getUnmappedReason().contains(booking.reference()),
-                "and it names the booking, so a person can go and check it");
+        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(), stored.getUnmappedReason());
+        assertEquals(HashIdUtil.decodeId(booking.id()), stored.getMappedBookingId());
         assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(booking.id()))
-                .compareTo(BigDecimal.ZERO));
+                .compareTo(new BigDecimal("37500.00")));
     }
 
     /** A notification into an account nobody has registered yet, quoting this code. */

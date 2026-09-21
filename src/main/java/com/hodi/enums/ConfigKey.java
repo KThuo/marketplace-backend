@@ -738,6 +738,25 @@ public enum ConfigKey {
                     + "transfer they made and have the matching credit applied. Platform staff can always "
                     + "do this on a buyer's behalf.", false, false),
 
+    /**
+     * What a pay code quoted on an incoming credit has to agree with before the money is placed.
+     *
+     * <p>A four-character code carries no checksum, so one mistyped letter can name another live booking.
+     * Whether that risk is worth a person's time on every credit is the institution's call, not the code's:
+     * a buyer who pays from a relative's phone with the right code is the common case, and a queue full of
+     * those teaches people to stop reading it. CODE places on the code alone. CODE_AND_CONTACT also wants
+     * the paying phone to be the buyer's, or the amount to equal something due — the rule until now.
+     * Anything unrecognised is read as CODE_AND_CONTACT, because a misconfiguration should queue money,
+     * not move it.
+     */
+    PAYMENTS_CODE_MATCH(
+            "payments.code.match", "STRING", "PAYMENTS", "CODE",
+            "What a pay code must agree with",
+            "CODE: a credit quoting a booking's pay code is placed on that booking on its own — the buyer "
+                    + "may pay from anybody's phone and any amount. CODE_AND_CONTACT: the code alone is not "
+                    + "enough; the paying phone must be the buyer's or the amount must equal something due, "
+                    + "otherwise the credit waits in the queue for a person.", false, false),
+
     PAYMENT_COLLECTION_SCOPE(
             "payments.collection.scope", "STRING", "PAYMENTS", "PLATFORM",
             "Who collects payments",
