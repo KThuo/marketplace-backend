@@ -365,7 +365,7 @@ public class PublicDevelopmentService {
                         java.util.LinkedHashMap::new));
         List<PublicFeature> resolved = catalogue.values().stream()
                 .filter(c -> spec.featureCodes().contains(c.getCode()))
-                .map(c -> new PublicFeature(c.getCode(), c.getName(), c.getCategory()))
+                .map(c -> new PublicFeature(c.getCode(), c.getName(), c.getCategory(), c.getIcon()))
                 .toList();
 
         /*

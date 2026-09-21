@@ -170,7 +170,7 @@ public final class DevelopmentUnitDtos {
             BigDecimal longitude) {}
 
     /** A feature, in words a buyer reads rather than the code we store. */
-    public record PublicFeature(String code, String name, String category) {}
+    public record PublicFeature(String code, String name, String category, String icon) {}
 
     public record ReserveUnitRequest(
             @NotBlank @Size(max = 160) String buyerName,
