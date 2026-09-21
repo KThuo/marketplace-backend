@@ -1,113 +1,126 @@
-# Dashboard and analytics: from a row of counters to a view of the business
+# A dashboard that says what needs doing, and analytics that answer the questions a bank asks
 
-**The complaint:** the dashboard is a row of access-management counters — organisations, staff, partnerships,
-live sessions — and the analytics page is six charts from a catalogue with no window, no comparison and no
-drill-down. Neither says how the business is doing.
-**Reference:** `../../new-hodi` — `com.hodi.analytics` (`DashboardService`, `DashboardQueries`,
-`AnalyticsService`, `AnalyticsWindow`, `AnalyticsScope`, the money and portfolio queries) and on the client
-`pages/dashboard/DashboardPage.vue`, `pages/analytics/AnalyticsPage.vue`, `components/analytics/KpiTile.vue`.
-**Touches:** `modules/dashboard`, `modules/analytics`, a new `security/OwnerScopeSql`; on the client the
-dashboard and analytics pages, a KPI tile, and the chart service.
+**Date:** 21 September 2026 · **Branch:** `feature/coop-bank` (backend and frontend)
 
-## 1. What is worth borrowing, and what is not
+## 1. What exists
 
-new-hodi runs a rental business: its dashboard is invoiced, collected, spent and arrears; its analytics is a
-window of months read against the window before, cut by charge, by channel, by tenure and by age of debt.
-This platform sells homes off-plan and finances their construction. The *shapes* carry across exactly; the
-*figures* do not, and the translation is the whole of the work.
+The two pages are already real, and nothing here throws them away.
 
-| new-hodi | Here |
-|---|---|
-| Invoiced | **Contracted** — the price agreed on live and completed bookings |
-| Collected | **Collected** — payments received, voided excluded |
-| Spent (estate expenses) | **Spent** — the development cost ledger (§ finance plan) |
-| Arrears | **Receivable** and **overdue** — from `v_booking_balances` |
-| Occupancy rate, occupied/vacant/total | **Sales rate** — sold and reserved against total units |
-| Payment collections table | The same: the month's receipts, paged |
-| Twelve-month calendar of receipts | The same |
-| Composition by charge / channel / tenure | **Collections by payment type**, **spend by cost category**, **units by state** |
-| Arrears by age, worst tenancies | **Receivables by age of the oldest unpaid instalment**, worst bookings |
-| Property comparison table, movers | **Development comparison** — units, contracted, collected, receivable, budget, spent, drawn, percent complete, slippage; movers by collected |
-| Operations: maintenance, visits, stays | **Pipeline** — enquiries, viewings and offers, from the lead tables |
-| Platform overview (HODI's own revenue) | Not carried: the platform's revenue here is commission, and that module has its own screen. Platform staff get the same dashboard and analytics, unscoped, plus the existing platform cards. |
+**Dashboard** (`/app`, `DASHBOARD_VIEW`): a greeting; a row of audience cards assembled server-side
+(platform: seller organisations, suspended, staff, live sessions, plus projects late / over budget / buyers
+behind when non-zero; seller: your team; buyer: account state); then three figure panels each with its own
+period — *Overall* (all time or a year: contracted, collected, spent, drawn, receivable, sales rate),
+*Monthly summary* (the month's totals, cash flow, and a paged table of its receipts), *Calendar* (twelve months
+of collected and spent) — and the chart catalogue underneath.
 
-Three rules from the reference are kept verbatim because they are the reason its screens are trusted:
+**Analytics** (`/app/analytics`, `DASHBOARD_VIEW`): one window (twelve months by default) and a development
+filter; five headline figures each read against the previous window; a where-things-stand strip; a
+contracted-vs-collected trend; four tabs — *Money* (collections by type, spend by category, units by state),
+*Receivables* (ageing, who owes most), *Developments* (side by side, who moved), *Pipeline* (enquiries,
+viewings by outcome, offers by state); and the catalogue of nine declared charts.
 
-- **Nothing is stored, generated overnight or cached.** Every figure is a sum over bookings, payments, the
-  cost ledger and the units when the page asks, so it cannot disagree with the lists behind it and there is
-  no refresh button.
-- **Each dashboard card owns its period; the analytics page shares one window.** Overall is all time or a
-  year, the summary a month, the calendar a year. On analytics every panel answers the same question about
-  the same months, and every KPI is read against the window before, of equal length.
-- **Scope becomes SQL in exactly one place.** The failure this prevents has already happened here once:
-  `ChartService.scope` splices the caller's *tenant* ids into an `institution_id IN (…)` predicate, which
-  is wrong for every lender. A single `OwnerScopeSql` replaces it — platform sees all; a lender sees its own
-  institution's rows and its partnered sellers'; a seller sees its own, the developments it markets and the
-  ones it has been granted — and the dashboard, the analytics and the charts all call it.
+Everything is summed live through `AnalyticsQueries`, scoped by `OwnerScopeSql`, nothing cached. That
+architecture is right and stays.
 
-## 2. What is built
+## 2. What is missing
 
-### Backend
+1. **Nothing says what needs doing.** The dashboard is figures with filters. The modules built this month all
+   produce work for a person — bank credits nobody has placed, approvals waiting, disbursements awaiting
+   release, prompts the bank never answered, offers awaiting a decision, viewings to confirm, holds about to
+   lapse, buyers behind — and none of it is on the page a person lands on.
+2. **The new modules are invisible.** Statements, disbursements, payment prompts and offer conversion have
+   no figure anywhere.
+3. **Analytics stops at money in and money out.** It cannot answer: how well do we collect against what is
+   due; how many enquiries become sales and how long that takes; how fast are units selling and how much
+   stock is left; how much of the bank's money arrives matched and how quickly; what left the bank.
+4. **No hierarchy.** Every dashboard panel has the same weight, and the month's receipts table duplicates
+   the payments page on the one screen every session opens.
 
-- `security/OwnerScopeSql` — the predicate above, over a table's `tenant_id`, `institution_id` and optional
-  `development_id` columns. `ChartService` switches to it.
-- `modules/analytics/AnalyticsWindow` — the reference's window, ported: inclusive months, `previous()` of
-  equal length, sixty-month cap, defaults to the last twelve.
-- `modules/analytics/AnalyticsQueries` — JDBC, every query scoped through `OwnerScopeSql`, every value
-  bound. Totals over a window, monthly trend, the three compositions, receivable ageing and the worst
-  bookings, the development comparison, the pipeline.
-- `modules/analytics/AnalyticsService` + controller at `/api/v1/analytics/{summary|trend|composition|
-  receivables|developments|pipeline}`, each taking the window and an optional development.
-- `modules/dashboard/DashboardService` — keeps the audience cards it has (they are the only place the
-  stranded-lender and unverified-buyer facts are said in words) and gains `overall`, `monthly` and
-  `calendar`, each its own endpoint under `/api/v1/dashboard`.
+## 3. The design
 
-### Frontend
+### 3.1 Dashboard — "today"
 
-- `DashboardView` — the cards row stays; below it Overall (contracted · collected · spent · receivable, with
-  a year select), Monthly Summary (Sales performance with its rate and thresholds; Cash flow with in, out and
-  net; the Collections table with a pager), and the Calendar. A development filter narrows all three.
-- `AnalyticsView` — a from/to month window and a development filter pinned at the top; a KPI strip of tiles
-  each with its move against the previous window and a sparkline of the window's months; the trend chart;
-  then tabs: Money, Receivables, Developments, Pipeline. The catalogue charts stay at the bottom as "More
-  charts".
-- `components/analytics/KpiTile.vue` — the reference's tile, without its UI library: label, formatted value,
-  change chip that knows whether up is good, hand-drawn SVG sparkline.
+Server-assembled per audience as now; every block is present only when the caller holds the permission
+that would let them act on it. The buyer's dashboard is out of scope: buyers land on the marketplace.
 
-## 3. Out of scope
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ Good morning, Eric.            [development ▾]                               │
+│ KES 12.4M collected in September   ▲ 18% on August                           │
+├────────────────────────────────┬─────────────────────────────────────────────┤
+│ Needs you                      │ This month against last                     │
+│ ● 4 bank credits unplaced      │ Collected · Contracted · Receivable ·       │
+│   KES 1.2M, oldest 6 days ago  │ Overdue · Spent · Drawn   (tiles, deltas)   │
+│ ● 2 approvals await you        ├─────────────────────────────────────────────┤
+│ ● 1 transfer awaiting release  │ Twelve months: contracted vs collected      │
+│ ● 3 offers awaiting a decision │ (line chart)                                │
+│ ● 7 buyers behind, KES 3.1M    │                                             │
+│ ● 2 holds lapse this week      ├──────────────────────┬──────────────────────┤
+│ ● 1 prompt unanswered          │ Recent receipts (6)  │ Inventory (donut)    │
+│                                │                      │ Funnel this month    │
+└────────────────────────────────┴──────────────────────┴──────────────────────┘
+```
 
-- A stored monthly report table and a recompute job (the reference's `property_reports`). Nothing here is
-  large enough to need one; the day it is, the queries in `AnalyticsQueries` are what the job would run.
-- Exports of the analytics panels. The report centre exports rows; a development finance report is added
-  with the finance work and covers the comparison table's columns.
-- A platform revenue overview. Commission has its own module and screen.
+- **Hero**: the one number this audience runs on — money collected this month — with the delta on last
+  month. Left-aligned display type; no gradient, no decoration.
+- **Needs you**: a list, not tiles. Each line a count, a sentence, the money where money is the point, and
+  a link to the screen that clears it. Items, each gated:
+  unplaced bank credits (`STATEMENTS_VIEW`), approvals awaiting *my* decision (`APPROVALS_VIEW`),
+  disbursements awaiting release or out past their deadline (`DISBURSEMENTS_VIEW`), prompts unanswered past
+  their deadline (`PAYMENTS_VIEW`), offers awaiting a decision (`PURCHASE_REQUESTS_DECIDE`), viewings to
+  confirm (`SITE_VISITS_DECIDE`), buyers with an instalment overdue (`BOOKINGS_VIEW`), holds lapsing within
+  seven days (`BOOKINGS_VIEW`), listings awaiting approval and seller applications pending (platform),
+  projects late / over budget (`DEVELOPMENTS_FINANCE_VIEW`, as today). An empty list says so in one line.
+- **This month against last**: six `KpiTile`s with `Figure` deltas — the strip the analytics summary already
+  computes, for one month.
+- **Twelve months**: the existing trend query, drawn once.
+- **Recent receipts**: the six latest, linking to receipts; the paged table goes.
+- **Inventory** donut and **funnel this month** (enquiries → viewings → offers → bookings, counts only).
+- **What moves to analytics**: *Overall* and *Calendar* become the analytics *Calendar* tab; *Monthly
+  summary*'s receipts table is the payments page. The development filter stays on the dashboard.
 
-## 4. Delivered (8 September 2026)
+### 3.2 Analytics — questions, not panels
 
-**Backend** — `modules/analytics/AnalyticsWindow` (inclusive months, `previous()` of equal length, sixty-month
-cap, defaults to the last twelve; bad input is a 400). `AnalyticsViews` (the records). `AnalyticsQueries`
-(JDBC; every query starts from `OwnerScopeSql`, every window edge, development filter and page size bound):
-totals over a window or a year or all time, today's positions (receivable, overdue, unit tallies, projects
-late / over budget, budgets, facilities), monthly trend with quiet months present, collections by payment
-type, spend by cost category, units by state, receivable ageing by the oldest unpaid instalment, the worst
-bookings, the development comparison from `v_development_finance` with collections in the window, the
-pipeline (tenant-scoped: leads sit on listings), the month's receipts paged, and the twelve-month calendar.
-`AnalyticsService`/`AnalyticsController` at `/api/v1/analytics/{summary,trend,composition,receivables,
-developments,pipeline}` behind `DASHBOARD_VIEW`; a development filter is checked through
-`DevelopmentVisibility` and is not-found when the caller may not see it. `DashboardService` gains
-`overall`, `monthly` and `calendar` (`/api/v1/dashboard/{overall,monthly,calendar}`) and three project cards
-(late, over budget, buyers behind) for holders of `DEVELOPMENTS_FINANCE_VIEW`. `ChartService` already reads
-`OwnerScopeSql`. Tests: `AnalyticsWindowTest`, `AnalyticsIT` (window arithmetic against the ledger, the
-comparison, another seller's exclusion, the lender's scope, the dashboard's month and calendar).
+Window and development filter as now. Tabs become questions:
 
-**Frontend** — `AnalyticsView` rebuilt: from/to month window and development filter; a KPI strip read
-against the previous window with sparklines; a position strip; the trend chart; tabs Money (three donuts and
-the budget/facility tiles), Receivables (ageing bars, who owes most), Developments (comparison table with
-totals, movers), Pipeline; the catalogue charts at the bottom as "More charts". `DashboardView` keeps the
-cards and gains Overall (year select), Monthly summary (sales performance with rate bar, cash flow in/out/net,
-paged receipts) and Calendar (bar chart plus twelve month tiles), all narrowed by one development filter.
-`components/analytics/KpiTile.vue` (tone, change chip that knows whether up is good, hand-drawn sparkline),
-`DevelopmentFilter.vue`. `services/analytics.ts` gains `analyticsApi` and `dashboardFiguresApi`.
+| Tab | What it answers | New queries |
+|---|---|---|
+| **Money** (keep) | What came in, went out, what it was made of | — |
+| **Collections** (new) | How well we collect what is due | due vs collected by month (from `booking_instalments`); on-time vs late share; median days late; channel mix by month (stacked); prompts sent / paid / failed / unanswered by month with success rate |
+| **Receivables** (keep + one) | Who owes, how old, what is expected | expected in 30 / 60 / 90 days from the schedule |
+| **Sales funnel** (replaces Pipeline) | How many enquiries become sales, and how long | counts per stage in the window; conversion between stages; median days enquiry → viewing → offer → booking; offers accepted / declined / withdrawn / converted |
+| **Inventory** (new) | How fast units sell and how much is left | units sold per month; absorption rate; months of stock at current pace; availability by development and type; price per m² by development |
+| **Bank** (new, platform only) | How the bank's money behaves | statements by month split matched automatically / by hand / set aside / unplaced; median hours arrival → placed; disbursements by month and state; net flow in vs out |
+| **Developments** (keep) | Side by side | — |
+| **Calendar** (moved) | Twelve months of receipts and spend, any year | — |
 
-Not carried from §2: a separate `trend` fetch on the page (the summary already carries the window's months,
-so the trend chart is drawn from it; the endpoint exists for a client that wants the points alone).
+Every table on the page gets **Download CSV**, built client-side from the loaded rows: no server change, no
+new permission, and the reports module keeps the heavy exports.
+
+### 3.3 What does not change
+- Scope: every new sum goes through `OwnerScopeSql`; no request input is spliced. Bank-only tabs are refused
+  server-side, not hidden client-side.
+- Live sums, no cache, no nightly job. The tables involved are small for years yet; if a query slows, it
+  gets a view like the chart views, not a cache.
+- The chart component, palette and text alternatives. New charts use `ChartData` through `AppChart`.
+- The audience-card mechanism: "Needs you" is assembled the same way, in `DashboardService`.
+
+## 4. Steps
+
+| # | Step | Backend | Frontend | Size |
+|---|---|---|---|---|
+| 1 | Dashboard "today": hero, Needs you, month strip, twelve-month chart, recent receipts, inventory, funnel | `DashboardService.attention()` + `hero()` (one endpoint, gated items); funnel-this-month and inventory from existing queries | `DashboardView` rebuilt; Overall/Monthly/Calendar panels removed | L |
+| 2 | Analytics: Collections and Sales funnel tabs | `AnalyticsQueries`: due-vs-collected, lateness, channel mix by month, prompt outcomes, funnel stages and durations, offer outcomes | two tabs, CSV download on every table | L |
+| 3 | Analytics: Inventory and Bank tabs | absorption, stock, price per m², statements by outcome and time-to-place, disbursements by month | two tabs | M |
+| 4 | Analytics: Calendar tab (Overall + Calendar moved), expected receivables | reuse | one tab, one strip | S |
+
+Each step: integration tests on the new queries with fixtures (bookings, payments, statements, prompts,
+offers), full suite green, `vue-tsc` and build green, commit, jar and `dist.zip` rebuilt.
+
+## 5. Two things to know before starting
+
+- **The dev database is thin**: one booking, two payments, four statements, sixteen prompts, two offers.
+  Charts will render, mostly empty. If you want to see the pages populated, a seed of a few months of
+  realistic activity would help; it is not in this plan unless you want it.
+- **Removing the Monthly receipts table from the dashboard** is my recommendation and a judgement call. Say
+  so if you want it kept.
