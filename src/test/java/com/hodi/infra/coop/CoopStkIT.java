@@ -233,6 +233,10 @@ class CoopStkIT {
     }
 
     private void purge() {
+        // Statements first, while the intents they are found through still exist.
+        jdbc.update("delete from coop_statements where mapped_payment_id is null and trace_id in "
+                + "(select reference from payment_intents where booking_id in (select id from unit_bookings "
+                + "where development_id in (select id from developments where name = ?)))", DEVELOPMENT);
         jdbc.update("delete from payment_intents where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = ?))", DEVELOPMENT);
         jdbc.update("update coop_statements set state = 'UNMAPPED', mapped_payment_id = null, "
@@ -384,21 +388,24 @@ class CoopStkIT {
     @DisplayName("the enquiry confirms the payment, reads the receipt out of the narration, and writes the statement")
     void theEnquiryConfirmsAndReadsTheReceipt() {
         IntentResponse intent = prompts.prompt(new PromptRequest(booking.id(), null, null, null));
+        // A receipt of this run's own: the settlement reuses an unplaced statement carrying the same receipt
+        // by design, and a fixed one here let a row left by an earlier run stand in for this one.
+        String receipt = "T" + RrnGenerator.generate("R").substring(1);
         statusAnswer.set("""
                 {"MessageReference":"%s","MessageCode":"0","MessageDescription":"Success",
                  "TransactionMetadata":{"Items":[
                    {"Name":"Amount","Value":"950000"},
-                   {"Name":"Narration","Value":"Coop Test HODI~TIP6V5IRAG~2026-09-20 10:05"}]}}"""
-                .formatted(intent.reference()));
+                   {"Name":"Narration","Value":"Coop Test HODI~%s~2026-09-20 10:05"}]}}"""
+                .formatted(intent.reference(), receipt));
 
         String state = stk.query(HashIdUtil.decodeId(intent.id()), true, "tester");
 
         assertEquals(PaymentIntent.SUCCEEDED, state);
         PaymentIntent settled = reload(intent.id());
-        assertEquals("TIP6V5IRAG", settled.getReceipt(), "second field of the narration");
+        assertEquals(receipt, settled.getReceipt(), "second field of the narration");
         assertNotNull(settled.getPaymentId());
         CoopStatement evidence = statements.findById(settled.getStatementId()).orElseThrow();
-        assertEquals("TIP6V5IRAG", evidence.getRefNo(), "keyed on the receipt a later notification would quote");
+        assertEquals(receipt, evidence.getRefNo(), "keyed on the receipt a later notification would quote");
         assertEquals(CoopIntentSettlement.STK_QUERY, evidence.getTransType());
         assertNotNull(evidence.getRawPayload(), "the bank's whole answer, kept");
         assertEquals(1, paymentsOnTheBooking());
