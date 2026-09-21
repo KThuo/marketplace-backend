@@ -253,27 +253,59 @@ class PaymentIntentIT {
     }
 
     @Test
-    @DisplayName("a notification for a payment the query already settled is linked, not credited again")
-    void aLateCallbackDoesNotCreditTwice() {
+    @DisplayName("a notification for a payment the query already settled is the same row, not a second one")
+    void aLateNotificationIsTheSameRow() {
         PaymentIntent intent = anIntentFor(new BigDecimal("950000"));
         settlement.inFlight(intent.getId(), "COOP-REF-2", "Prompt sent.");
         settlement.succeeded(intent.getId(), "COOP-REF-2", "RCPT-2", "Success", "tester");
         assertEquals(1, paymentsOnTheBooking());
 
-        // Co-op calls back about the same payment afterwards, quoting our reference.
+        // The bank's notification about the same money follows, quoting our reference.
         CoopStatement stored = service.accept(payload(intent.getReference(), "950000", "+254712345678"),
                 true);
 
         assertEquals(1, paymentsOnTheBooking(), "still one payment");
-        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(),
-                "and the notification is accounted for rather than left in the unmatched queue");
+        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState());
         PaymentIntent settled = intents.findById(intent.getId()).orElseThrow();
-        assertEquals(settled.getPaymentId(), stored.getMappedPaymentId(),
-                "the notification is placed on the same payment the enquiry credited");
-        assertNotEquals(stored.getId(), settled.getStatementId(),
-                "the intent keeps pointing at the statement that credited it — the enquiry's");
-        assertEquals(2, statements.findByMappedPaymentId(settled.getPaymentId()).size(),
-                "two bank messages, one payment; a void would release both");
+        assertEquals(settled.getStatementId(), stored.getId(),
+                "the notification is the bank's side of the row the settlement wrote, not a row of its own");
+        assertEquals("RCPT-2", stored.getRefNo(), "the receipt the callback carried stays the bank reference");
+        assertEquals(1, statements.findByMappedPaymentId(settled.getPaymentId()).size(),
+                "two bank messages, one payment, one statement");
+    }
+
+    @Test
+    @DisplayName("a callback that carried no receipt, then the bank's notification with it: one row, which gains the receipt")
+    void aReceiptlessCallbackAndTheNotificationMakeOneRow() {
+        PaymentIntent intent = anIntentFor(new BigDecimal("950000"));
+        settlement.inFlight(intent.getId(), "COOP-REF-5", "Prompt sent.");
+        // Co-op's own envelope confirmed the prompt but named no receipt: the statement went in under our key.
+        settlement.succeeded(intent.getId(), "COOP-REF-5", null, "Success", "callback");
+        PaymentIntent settled = intents.findById(intent.getId()).orElseThrow();
+        CoopStatement placeholder = statements.findById(settled.getStatementId()).orElseThrow();
+        assertTrue(placeholder.getRefNo().startsWith("INTENT-"), placeholder.getRefNo());
+
+        // Then the bank's credit notification, in Co-op's shape: an STK line carrying the receipt and our reference.
+        String receipt = "T" + RrnGenerator.generate("R").substring(1);
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("AcctNo", account);
+        body.put("Amount", "950000.00");
+        body.put("Currency", "KES");
+        body.put("EventType", "CREDIT");
+        body.put("Narration", receipt + "~Payment for " + booking.reference() + "~254712345678~" + intent.getReference());
+        body.put("PaymentRef", "22092026_1");
+        body.put("TransactionDate", "2026-09-22T09:00:00");
+        body.put("TransactionId", "CB_" + receipt);
+        CoopStatement stored = service.accept(CoopInbound.parse(body), true, body);
+
+        assertEquals(placeholder.getId(), stored.getId(), "the same row");
+        assertEquals(receipt, stored.getRefNo(), "which now carries the receipt the customer holds");
+        assertEquals("CB_" + receipt, stored.getFt(), "and the bank's id");
+        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState());
+        assertEquals(1, paymentsOnTheBooking());
+        assertEquals(1, statements.findByMappedPaymentId(settled.getPaymentId()).size());
+        assertEquals(1, jdbc.queryForObject("select count(*) from coop_statements where ref_no = ? or ref_no = ?",
+                Integer.class, receipt, placeholder.getRefNo()), "and no second row exists under either key");
     }
 
     @Test

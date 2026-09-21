@@ -124,6 +124,30 @@ public class CoopIpnService {
         }
 
         /*
+         * The same money, already written when the prompt was confirmed.
+         *
+         * An STK payment reaches us twice: the callback (or the status enquiry) confirms the prompt and the
+         * settlement writes its statement, and the bank's credit notification follows quoting the same
+         * receipt. When the callback carried the receipt the two meet on ref_no above. When it did not, the
+         * settlement wrote its row under our own key, and this notification is not a second payment but the
+         * bank's side of the one row: it takes the receipt, the bank's id and the payer, and nothing more is
+         * inserted. One payment, one statement, whichever message arrived first.
+         */
+        CoopStatement ours = settlementsStatementFor(payload);
+        if (ours != null) {
+            if (refNo != null && ours.getRefNo() != null && ours.getRefNo().startsWith("INTENT-")) ours.setRefNo(refNo);
+            if (ours.getFt() == null) ours.setFt(trim(payload.ft()));
+            if (ours.getPhoneNo() == null) ours.setPhoneNo(trim(payload.phoneNo()));
+            if (ours.getCustomerName() == null) ours.setCustomerName(trim(payload.customerName()));
+            if (ours.getRawPayload() == null) ours.setRawPayload(rawBody == null ? toJson(payload) : toJson(rawBody));
+            ours.setUpdatedBy(AppConstant.USERNAME_SYSTEM);
+            CoopStatement merged = statements.save(ours);
+            log.info("Co-op notification {} is the prompt's own money, already recorded as {}; merged",
+                    refNo, merged.getOurReference());
+            return merged;
+        }
+
+        /*
          * The account the payer named on a paybill first, when it is one we registered: a seller's paybill
          * account credited through the bank's collection account is the seller's money. Otherwise the
          * account the bank says it credited.
@@ -328,6 +352,26 @@ public class CoopIpnService {
 
         log.info("Co-op notification {} placed on booking {} as {}", statement.getRefNo(),
                 target.getReference(), payment.getReference());
+    }
+
+    /**
+     * The statement the settlement wrote for the prompt this notification answers, if there is one.
+     *
+     * <p>The notification names the prompt by the reference we put on it — the last part of an STK narration,
+     * or the message reference — or by the bank's reference for it. Only a prompt that already has a
+     * statement counts: one still waiting is credited from this notification below, which then becomes its
+     * statement.
+     */
+    private CoopStatement settlementsStatementFor(IpnPayload payload) {
+        for (String named : new String[] {trim(payload.reference()), trim(payload.traceId())}) {
+            if (named == null) continue;
+            PaymentIntent intent = intents.findByReference(named)
+                    .or(() -> intents.findByBankReference(named)).orElse(null);
+            if (intent != null && intent.getStatementId() != null) {
+                return statements.findById(intent.getStatementId()).orElse(null);
+            }
+        }
+        return null;
     }
 
     /**
