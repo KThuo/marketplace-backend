@@ -4,8 +4,15 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.modules.analytics.AnalyticsQueries;
 import com.hodi.modules.analytics.AnalyticsService;
+import com.hodi.modules.analytics.AnalyticsViews.Attention;
 import com.hodi.modules.analytics.AnalyticsViews.CalendarView;
+import com.hodi.modules.analytics.AnalyticsViews.Figure;
+import com.hodi.modules.analytics.AnalyticsViews.Funnel;
+import com.hodi.modules.analytics.AnalyticsViews.MoneyTotals;
+import com.hodi.modules.analytics.AnalyticsViews.MonthFigures;
 import com.hodi.modules.analytics.AnalyticsViews.MonthlyView;
+import com.hodi.modules.analytics.AnalyticsViews.PipelineStats;
+import com.hodi.modules.analytics.AnalyticsViews.TodayView;
 import com.hodi.modules.analytics.AnalyticsViews.OverallView;
 import com.hodi.modules.analytics.AnalyticsViews.Positions;
 import com.hodi.modules.analytics.AnalyticsWindow;
@@ -25,6 +32,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.DecimalFormat;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,6 +66,7 @@ public class DashboardService {
     private final RefreshTokenRepository refreshTokens;
     private final AnalyticsQueries figures;
     private final AnalyticsService analytics;
+    private final DashboardAttentionQueries attention;
 
     /** The collections table's page. Ten, like every list in the platform. */
     private static final int COLLECTIONS = 10;
@@ -95,6 +104,155 @@ public class DashboardService {
          * is the right dashboard for somebody who runs the place rather than one who was let into it.
          */
         return new DashboardResponse("BUYER", greeting, buyerCards(caller));
+    }
+
+    // ── today ─────────────────────────────────────────────────────────────────
+
+    private static final DecimalFormat KES = new DecimalFormat("#,##0");
+    /** How far ahead a hold is "about to lapse": the working week somebody has to chase the buyer in. */
+    private static final int LAPSING_DAYS = 7;
+
+    /**
+     * The dashboard as one read.
+     *
+     * <p>The month against the month before, where things stand today, what is waiting for this person, the
+     * year's shape, the latest money in, the stock, and the month's funnel. One call, because a landing page
+     * that fires eight is a landing page that reflows eight times; each part is small.
+     */
+    @Transactional(readOnly = true)
+    public TodayView today(String developmentHash) {
+        UserPrincipal caller = AuthContext.require();
+        Long developmentId = analytics.development(developmentHash);
+        YearMonth thisMonth = YearMonth.now();
+        AnalyticsWindow month = new AnalyticsWindow(thisMonth.getYear(), thisMonth.getMonthValue(),
+                thisMonth.getYear(), thisMonth.getMonthValue());
+        AnalyticsWindow year = AnalyticsWindow.of(null, null, null, null);
+
+        MoneyTotals now = figures.totals(month, developmentId);
+        MoneyTotals then = figures.totals(month.previous(), developmentId);
+        MonthFigures figuresOfTheMonth = new MonthFigures(
+                MONTH.format(thisMonth), MONTH.format(thisMonth.minusMonths(1)),
+                Figure.of(now.collected(), then.collected()), Figure.of(now.contracted(), then.contracted()),
+                Figure.of(now.spent(), then.spent()), Figure.of(now.drawn(), then.drawn()),
+                now.payments(), now.bookings(), now.unitsSold());
+
+        String audience = caller.isPlatformStaff() ? "PLATFORM" : caller.isSellerStaff() ? "SELLER" : "BUYER";
+        PipelineStats funnel = figures.pipeline(month);
+        return new TodayView(audience, greetingFor(caller), figuresOfTheMonth, figures.positions(developmentId),
+                attentionFor(caller, developmentId), figures.trend(year, developmentId),
+                attention.recentReceipts(6, developmentId), figures.unitsByState(developmentId),
+                new Funnel(funnel.enquiries(), funnel.visits(), funnel.offers(), now.bookings()));
+    }
+
+    /** "Good morning" by the server's clock: the person and the server are in the same country. */
+    private static String greetingFor(UserPrincipal caller) {
+        int hour = OffsetDateTime.now(java.time.ZoneId.of("Africa/Nairobi")).getHour();
+        String part = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+        return part + ", " + firstNameOf(caller) + ".";
+    }
+
+    /**
+     * What is waiting for this person, in the order it costs them: money first, then time, then work.
+     *
+     * <p>Every line is gated on the permission to act, and only lines with something in them are sent — a
+     * dashboard that says "0 offers waiting" every morning teaches people to stop reading it.
+     */
+    private List<Attention> attentionFor(UserPrincipal caller, Long developmentId) {
+        List<Attention> out = new ArrayList<>();
+        if (AuthContext.hasAuthority("STATEMENTS_VIEW")) {
+            DashboardAttentionQueries.Tally t = attention.unplacedCredits();
+            if (t.any()) out.add(new Attention("unplacedCredits", plural(t.count(), "bank credit") + " unplaced",
+                    "KES " + KES.format(t.amount()) + " arrived and has not been applied to a booking.",
+                    t.count(), t.amount(), t.oldest(), "warning", "/app/statements?state=UNMAPPED"));
+        }
+        if (AuthContext.hasAuthority("BOOKINGS_VIEW")) {
+            DashboardAttentionQueries.Tally t = attention.buyersBehind(developmentId);
+            if (t.any()) out.add(new Attention("buyersBehind", plural(t.count(), "buyer") + " behind",
+                    "KES " + KES.format(t.amount()) + " due and unpaid across their bookings.",
+                    t.count(), t.amount(), null, "warning", "/app/bookings"));
+        }
+        // The bank's own money: the permission is platform-only, and the check says so as well, because a
+        // permission a seller can never hold is one somebody will one day grant by mistake.
+        if (caller.isPlatformStaff() && AuthContext.hasAuthority("DISBURSEMENTS_VIEW")) {
+            DashboardAttentionQueries.Tally waiting = attention.disbursementsAwaitingRelease();
+            if (waiting.any()) out.add(new Attention("disbursementsAwaiting",
+                    plural(waiting.count(), "transfer") + " awaiting release",
+                    "KES " + KES.format(waiting.amount()) + " proposed and not yet approved by a second person.",
+                    waiting.count(), waiting.amount(), waiting.oldest(), "warning", "/app/disbursements?state=AWAITING_APPROVAL"));
+            DashboardAttentionQueries.Tally silent = attention.disbursementsUnanswered();
+            if (silent.any()) out.add(new Attention("disbursementsUnanswered",
+                    plural(silent.count(), "transfer") + " unanswered by the bank",
+                    "Sent, and past the time Co-op promised an answer by. Ask Co-op now from the transfer.",
+                    silent.count(), silent.amount(), silent.oldest(), "warning", "/app/disbursements?state=SENT"));
+        }
+        if (AuthContext.hasAuthority("APPROVALS_VIEW")) {
+            int n = attention.approvalsAwaiting(caller.getUserId());
+            if (n > 0) out.add(new Attention("approvals", plural(n, "approval") + " await your decision",
+                    "Somebody else proposed them; they wait for a second pair of eyes.", n, null, null, "neutral", "/app/approvals"));
+        }
+        if (AuthContext.hasAuthority("PAYMENTS_VIEW")) {
+            DashboardAttentionQueries.Tally t = attention.promptsUnanswered();
+            if (t.any()) out.add(new Attention("promptsUnanswered", plural(t.count(), "phone prompt") + " unanswered",
+                    "Sent to a handset and past the deadline with no answer from the bank. Each booking's Requests tab can ask again.",
+                    t.count(), t.amount(), t.oldest(), "neutral", "/app/bookings"));
+        }
+        if (AuthContext.hasAuthority("BOOKINGS_VIEW")) {
+            DashboardAttentionQueries.Tally t = attention.holdsLapsing(LAPSING_DAYS, developmentId);
+            if (t.any()) out.add(new Attention("holdsLapsing", plural(t.count(), "hold") + " lapse this week",
+                    "Reserved homes whose window runs out within " + LAPSING_DAYS + " days. Agree them or let them go.",
+                    t.count(), null, t.oldest(), "neutral", "/app/bookings"));
+        }
+        if (AuthContext.hasAuthority("PURCHASE_REQUESTS_DECIDE")) {
+            DashboardAttentionQueries.Tally t = attention.offersAwaiting();
+            if (t.any()) out.add(new Attention("offers", plural(t.count(), "offer") + " awaiting a decision",
+                    "KES " + KES.format(t.amount()) + " offered on your listings and not yet answered.",
+                    t.count(), t.amount(), t.oldest(), "neutral", "/app/offers"));
+        }
+        if (AuthContext.hasAuthority("SITE_VISITS_DECIDE")) {
+            DashboardAttentionQueries.Tally t = attention.viewingsToConfirm();
+            if (t.any()) out.add(new Attention("viewings", plural(t.count(), "viewing") + " to confirm",
+                    "Buyers have asked for a time and wait to hear back.", t.count(), null, t.oldest(), "neutral", "/app/viewings"));
+        }
+        if (AuthContext.hasAuthority("ENQUIRIES_VIEW")) {
+            DashboardAttentionQueries.Tally t = attention.enquiriesAwaiting();
+            if (t.any()) out.add(new Attention("enquiries", plural(t.count(), "enquiry", "enquiries") + " awaiting a reply",
+                    "The last word was the buyer's.", t.count(), null, t.oldest(), "neutral", "/app/enquiries"));
+        }
+        if (caller.isPlatformStaff()) {
+            if (AuthContext.hasAuthority("PROPERTIES_APPROVE")) {
+                int n = attention.listingsPending();
+                if (n > 0) out.add(new Attention("listingsPending", plural(n, "listing") + " awaiting publication",
+                        "Sent by sellers and not yet approved.", n, null, null, "neutral", "/app/listings"));
+            }
+            if (AuthContext.hasAuthority("SELLERS_VIEW")) {
+                int n = attention.sellerApplicationsPending();
+                if (n > 0) out.add(new Attention("sellerApplications", plural(n, "seller application") + " pending",
+                        "Organisations asking to sell on the platform.", n, null, null, "neutral", "/app/seller-applications"));
+            }
+            if (AuthContext.hasAuthority("KYC_VIEW")) {
+                int n = attention.kycPending();
+                if (n > 0) out.add(new Attention("kycPending", plural(n, "KYC pack") + " to review",
+                        "Submitted and waiting for Compliance.", n, null, null, "neutral", "/app/compliance"));
+            }
+        }
+        if (AuthContext.hasAuthority("DEVELOPMENTS_FINANCE_VIEW")) {
+            Positions now = figures.positions(developmentId);
+            if (now.developmentsLate() > 0) out.add(new Attention("projectsLate",
+                    plural(now.developmentsLate(), "project") + " running late", "With a phase past its planned date.",
+                    now.developmentsLate(), null, null, "warning", "/app/developments"));
+            if (now.developmentsOverBudget() > 0) out.add(new Attention("projectsOverBudget",
+                    plural(now.developmentsOverBudget(), "project") + " over budget", "Spent more than was allowed.",
+                    now.developmentsOverBudget(), null, null, "warning", "/app/developments"));
+        }
+        return out;
+    }
+
+    private static String plural(int n, String noun) {
+        return plural(n, noun, noun + "s");
+    }
+
+    private static String plural(int n, String one, String many) {
+        return n + " " + (n == 1 ? one : many);
     }
 
     // ── the figures ───────────────────────────────────────────────────────────

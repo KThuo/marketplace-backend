@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -166,6 +167,36 @@ public final class AnalyticsViews {
 
     /** <b>The calendar.</b> Twelve months of receipts, including the empty ones. */
     public record CalendarView(int year, List<MonthlyCollection> months) {}
+
+    // ── the dashboard: today ──────────────────────────────────────────────────
+
+    /**
+     * One thing waiting for a person, and the way to it.
+     *
+     * <p>Assembled server-side and present only when the caller may act on it, so a line about bank credits
+     * never reaches somebody who cannot open the statements. {@code amount} and {@code oldest} are null where
+     * the thing has no money or no age worth saying.
+     *
+     * @param tone {@code warning} for money or time at stake, {@code neutral} for ordinary work
+     * @param action the route that clears it
+     */
+    public record Attention(String key, String title, String detail, int count, BigDecimal amount,
+                            OffsetDateTime oldest, String tone, String action) {}
+
+    /** The month's money against the month before: the strip a dashboard opens on. */
+    public record MonthFigures(String label, String previousLabel, Figure collected, Figure contracted,
+                               Figure spent, Figure drawn, int payments, int bookings, int unitsSold) {}
+
+    /** How many people moved through each stage this month. Counts, not money. */
+    public record Funnel(int enquiries, int viewings, int offers, int bookings) {}
+
+    /**
+     * The dashboard as one read: who is asking, what needs them, how the month is going, and the shape of the
+     * year behind it. Everything here is summed when asked for, through the caller's own scope.
+     */
+    public record TodayView(String audience, String greeting, MonthFigures month, Positions now,
+                            List<Attention> attention, List<TrendPoint> trend, List<Receipt> recent,
+                            List<Slice> inventory, Funnel funnel) {}
 
     static BigDecimal zero(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;

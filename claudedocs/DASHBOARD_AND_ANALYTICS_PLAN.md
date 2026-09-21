@@ -124,3 +124,10 @@ offers), full suite green, `vue-tsc` and build green, commit, jar and `dist.zip`
   activity (agreed 21 September). Run the backend once with `SEED_DEMO=true`; it writes once and refuses
   any datasource that is not on the machine.
 - **The Monthly receipts table leaves the dashboard** (agreed 21 September): it duplicates the payments page.
+
+## 6. Progress
+
+| Step | State | Notes |
+|---|---|---|
+| 0 | **Done, 21 September** | `DemoActivitySeeder` (backend `c1186b1`): 12 buyers, 28 bookings, 69 payments (KES 110M) each with statement and prompt where not cash, 4 unplaced and 2 set-aside credits, 8 stray prompts, 14 offers (2 converted), 16 viewings, 20 enquiries, 5 transfers, 17 spend lines, 5 drawdowns. Run once with `SEED_DEMO=true`. |
+| 1 | **Done, 21 September** | `GET /dashboard/today` assembles the page per caller: `MonthFigures` against the month before, `Positions`, a gated `Attention` list from `DashboardAttentionQueries` (unplaced credits, buyers behind, transfers awaiting release and unanswered, approvals not the caller's own, prompts unanswered, holds lapsing in 7 days, offers, viewings, enquiries, listings pending, seller applications, KYC packs, projects late / over budget), twelve months of trend, six recent receipts, units by state, the month's funnel. `DashboardTodayIT` (3) checks every line against the list behind its link and that lines are gated. Frontend `DashboardView` rebuilt; Overall, Monthly, Calendar and the receipts table removed. |

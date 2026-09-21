@@ -4,6 +4,7 @@ import com.hodi.common.ApiResponse;
 import com.hodi.modules.analytics.AnalyticsViews.CalendarView;
 import com.hodi.modules.analytics.AnalyticsViews.MonthlyView;
 import com.hodi.modules.analytics.AnalyticsViews.OverallView;
+import com.hodi.modules.analytics.AnalyticsViews.TodayView;
 import com.hodi.modules.dashboard.DashboardService.DashboardResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -31,6 +32,13 @@ public class DashboardController {
     @PreAuthorize("hasAnyAuthority('DASHBOARD_VIEW','BUYER_PORTAL_ACCESS')")
     public ApiResponse<DashboardResponse> dashboard() {
         return ApiResponse.success(service.build());
+    }
+
+    /** The dashboard as one read: the month, what needs the caller, the year behind it. */
+    @GetMapping("/today")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ApiResponse<TodayView> today(@RequestParam(required = false) String developmentId) {
+        return ApiResponse.success(service.today(developmentId));
     }
 
     /** @param year omit for all time, which is what this card is for */
