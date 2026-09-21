@@ -92,7 +92,9 @@ public final class StatementDtos {
             String unitLabel,
             OffsetDateTime mappedAt,
             String mappedBy,
-            String reason) {}
+            String reason,
+            /** The bank's own transaction id. Found by the search box; not a column. */
+            String ft) {}
 
     /** One statement with the payload as the bank sent it. The payload is platform staff's to read. */
     public record StatementDetail(StatementResponse statement, String rawPayload) {}

@@ -23,13 +23,13 @@ import java.util.Map;
  * sent. Both are normalised here rather than at two endpoints, because Co-op decides which it sends and
  * an endpoint per shape would mean guessing right in advance.
  *
- * <h2>The narration is the payer</h2>
+ * <h2>The narration is the payer, and the receipt</h2>
  *
  * <p>Co-op splits one line across {@code CustMemoLine1..3} and repeats it whole in {@code Narration},
- * tilde-separated:
- * {@code TIP6V5IRAG~254707919065~01120000568900~MPESAC2B_400200~MELVIN WANJIKU} — receipt, phone,
- * account, channel, name. It is the only place the payer's own number and name appear, and both are what
- * a credit is corroborated against, so it is parsed rather than stored as prose.
+ * tilde-separated, in one of the shapes {@link CoopNarration} knows. It is the only place the payer's own
+ * number and name appear, and both are what a credit is corroborated against, so it is parsed rather than
+ * stored as prose. Its first part is the M-Pesa receipt — the reference the customer holds — and that, not
+ * the bank's {@code TransactionId}, is the statement's bank reference; the bank's id is kept beside it.
  */
 public final class CoopInbound {
 
@@ -42,12 +42,19 @@ public final class CoopInbound {
         if (body == null) return new IpnPayload(null, null, null, null, null, null, null, null, null, null);
 
         List<String> narration = split(first(body, "Narration", "narration"));
+        CoopNarration line = CoopNarration.parse(first(body, "Narration", "narration"));
+        String bankId = first(body, "TransactionId", "transactionId");
 
         return new IpnPayload(
-                // Their own unique handle for the posting, which is what a retry repeats and therefore
-                // what deduplication turns on.
-                first(body, "TransactionId", "transactionId", "PaymentRef", "paymentRef",
-                        "MessageReference", "messageReference"),
+                /*
+                 * The bank reference is the receipt the customer holds — the first part of the narration —
+                 * so a slip validated on the number the payer reads off their phone finds the money. A retry
+                 * repeats the same narration, so it deduplicates just as well. The bank's own id is the
+                 * fallback for a narration that carries no receipt, and is always kept in ft.
+                 */
+                firstNotBlank(line.receipt(), bankId, first(body, "PaymentRef", "paymentRef",
+                        "MessageReference", "messageReference")),
+                bankId,
                 first(body, "MessageReference", "messageReference", "PaymentRef", "paymentRef"),
                 first(body, "TransactionDate", "transactionDate", "PostingDate", "postingDate",
                         "ValueDate", "valueDate"),
@@ -57,19 +64,24 @@ public final class CoopInbound {
                  * What the payer quoted, which is what a payment is matched on.
                  *
                  * The message reference first, because a prompt we started comes back carrying the one we
-                 * sent and that is an exact answer. Otherwise the first field of the narration — the
-                 * payer's own receipt — then whatever account reference the biller flow carries.
+                 * sent and that is an exact answer. Otherwise what the narration's shape says the payer
+                 * typed — the account reference after the hash on a paybill, the reference on a prompt.
+                 * A plain M-Pesa credit carries nothing the payer typed, and the receipt is not it: the
+                 * receipt is the bank reference, and a receipt fed to the matcher would be tried as a code.
                  */
                 firstNotBlank(
                         first(body, "MessageReference", "messageReference"),
-                        at(narration, 0),
-                        first(body, "AccountNumber", "accountNumber", "PaymentRef", "paymentRef")),
-                // The name is the last thing on the narration line, and Co-op sends no separate field.
-                firstNotBlank(first(body, "CustomerName", "customerName"), last(narration)),
+                        line.quoted(),
+                        line.known() ? null : first(body, "AccountNumber", "accountNumber")),
+                // The name where the shape puts it; the last part for a line we do not recognise.
+                firstNotBlank(first(body, "CustomerName", "customerName"), line.customerName(),
+                        line.known() ? null : last(narration)),
                 firstNotBlank(first(body, "MobileNumber", "mobileNumber", "PhoneNumber"),
-                        phoneIn(narration)),
+                        phone(line.phone()), phoneIn(narration)),
                 // Which of our accounts it landed in.
                 first(body, "AcctNo", "acctNo", "AccountNumber", "accountNumber"),
+                // The account the payer named on a paybill, which may be the one we registered.
+                line.format() == CoopNarration.Format.C2B_ACCOUNT ? line.account() : null,
                 firstNotBlank(first(body, "EventType", "eventType"), CREDIT));
     }
 
@@ -120,8 +132,9 @@ public final class CoopInbound {
         return null;
     }
 
-    private static String at(List<String> parts, int index) {
-        return parts.size() > index ? parts.get(index) : null;
+    /** A phone the shape pointed at, normalised the same way as one found by shape; null when it is not one. */
+    private static String phone(String part) {
+        return part == null ? null : phoneIn(List.of(part));
     }
 
     private static String last(List<String> parts) {

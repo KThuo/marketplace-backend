@@ -22,7 +22,10 @@ public final class CoopIpnDtos {
      * @param transType         which of the five inbound codes this is
      */
     public record IpnPayload(
+            /** The customer-facing reference: the M-Pesa receipt where the narration carries one, else the bank's id. */
             String refNo,
+            /** The bank's own transaction id for the posting — Co-op's TransactionId. Searchable, not shown. */
+            String ft,
             String traceId,
             String timestamp,
             String amount,
@@ -31,7 +34,18 @@ public final class CoopIpnDtos {
             String customerName,
             String phoneNo,
             String accountIdentifier,
-            String transType) {}
+            /** The account the payer named in a paybill narration, when it differs from the credited one. */
+            String narrationAccount,
+            String transType) {
+
+        /** The shape before the receipt was separated from the bank's id: no ft, no narration account. */
+        public IpnPayload(String refNo, String traceId, String timestamp, String amount, String currency,
+                          String reference, String customerName, String phoneNo, String accountIdentifier,
+                          String transType) {
+            this(refNo, null, traceId, timestamp, amount, currency, reference, customerName, phoneNo,
+                    accountIdentifier, null, transType);
+        }
+    }
 
     /**
      * What Co-op requires back.

@@ -402,7 +402,7 @@ public class StatementService {
                 HashIdUtil.encodeId(s.getMappedBookingId()),
                 booking == null ? null : booking.getReference(),
                 payment == null ? null : payment.getUnitLabel(),
-                s.getMappedAt(), s.getMappedBy(), s.getUnmappedReason());
+                s.getMappedAt(), s.getMappedBy(), s.getUnmappedReason(), s.getFt());
     }
 
     static String stateLabel(String state) {

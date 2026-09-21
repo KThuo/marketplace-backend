@@ -37,6 +37,8 @@ public class CoopStatement {
 
     @Column(name = "ref_no", nullable = false, length = 64) private String refNo;
     @Column(name = "trace_id", length = 64) private String traceId;
+    /** The bank's own transaction id for the posting. Searchable from the statements screen, not shown. */
+    @Column(length = 64) private String ft;
     /** Ours, returned to Co-op as the RRN. Generated once and kept, so a retry echoes the same value. */
     @Column(name = "our_reference", nullable = false, unique = true, length = 16) private String ourReference;
 

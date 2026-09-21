@@ -81,9 +81,12 @@ public class CoopIpnService {
     private final ConfigurationService configs;
     private final ObjectMapper mapper;
 
-    /** Co-op's timestamps are "yyyy-MM-dd HH:mm:ss", not ISO-8601. Parsed leniently; never fatal. */
+    /**
+     * Co-op's timestamps: "yyyy-MM-dd HH:mm:ss" in one document, ISO's "2025-09-25T08:01:01" in the bank's
+     * own example. Both are read; anything else falls back to now, never fatally.
+     */
     private static final DateTimeFormatter COOP_TIME =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ROOT);
+            DateTimeFormatter.ofPattern("yyyy-MM-dd[ HH:mm:ss]['T'HH:mm:ss]", Locale.ROOT);
 
     /**
      * Records the notification, and places it when that can be done safely.
@@ -96,6 +99,17 @@ public class CoopIpnService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CoopStatement accept(IpnPayload payload, boolean trusted) {
+        return accept(payload, trusted, null);
+    }
+
+    /**
+     * The same, with the body as it arrived.
+     *
+     * @param rawBody Co-op's message verbatim, for the audit copy; the normalised payload is stored when
+     *                there is none, which is what the tests and the upload path have
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public CoopStatement accept(IpnPayload payload, boolean trusted, java.util.Map<String, Object> rawBody) {
         String refNo = trim(payload.refNo());
 
         /*
@@ -109,22 +123,30 @@ public class CoopIpnService {
             return seen.get();
         }
 
-        PaymentAccount account = resolveAccount(trim(payload.accountIdentifier()));
+        /*
+         * The account the payer named on a paybill first, when it is one we registered: a seller's paybill
+         * account credited through the bank's collection account is the seller's money. Otherwise the
+         * account the bank says it credited.
+         */
+        PaymentAccount account = resolveAccount(trim(payload.narrationAccount()));
+        String landedIn = account != null ? account.getAccountNo() : trim(payload.accountIdentifier());
+        if (account == null) account = resolveAccount(trim(payload.accountIdentifier()));
 
         CoopStatement statement = CoopStatement.builder()
                 .refNo(refNo == null ? "UNKNOWN-" + RrnGenerator.generate("RX") : refNo)
+                .ft(trim(payload.ft()))
                 .traceId(trim(payload.traceId()))
                 .ourReference(RrnGenerator.generate("PS"))
                 .transType(trim(payload.transType()) == null ? "UNKNOWN" : trim(payload.transType()))
                 .paymentAccountId(account == null ? null : account.getId())
-                .accountIdentifier(trim(payload.accountIdentifier()))
+                .accountIdentifier(landedIn)
                 .reference(trim(payload.reference()))
                 .amount(parseAmount(payload.amount()))
                 .currency(trim(payload.currency()) == null ? "KES" : trim(payload.currency()))
                 .phoneNo(trim(payload.phoneNo()))
                 .customerName(trim(payload.customerName()))
                 .paidAt(parseTimestamp(payload.timestamp()))
-                .rawPayload(toJson(payload))
+                .rawPayload(rawBody == null ? toJson(payload) : toJson(rawBody))
                 // Whose money it is, from the till it landed in. Null when we do not recognise the account,
                 // which is itself a reason it cannot be placed.
                 .tenantId(account == null ? null : account.getTenantId())
@@ -506,14 +528,18 @@ public class CoopIpnService {
     private OffsetDateTime parseTimestamp(String timestamp) {
         if (timestamp == null || timestamp.isBlank()) return OffsetDateTime.now();
         try {
-            return LocalDateTime.parse(timestamp.trim(), COOP_TIME).atOffset(ZoneOffset.UTC);
+            String text = timestamp.trim();
+            if (text.length() == 10) return java.time.LocalDate.parse(text).atStartOfDay().atOffset(ZoneOffset.UTC);
+            // The bank's example carries seconds and no zone; a fraction or a zone, if one ever appears, is cut.
+            if (text.length() > 19) text = text.substring(0, 19);
+            return LocalDateTime.parse(text, COOP_TIME).atOffset(ZoneOffset.UTC);
         } catch (RuntimeException e) {
             log.debug("Co-op timestamp not in the documented format: {}", timestamp);
             return OffsetDateTime.now();
         }
     }
 
-    private String toJson(IpnPayload payload) {
+    private String toJson(Object payload) {
         try {
             return mapper.writeValueAsString(payload);
         } catch (RuntimeException e) {

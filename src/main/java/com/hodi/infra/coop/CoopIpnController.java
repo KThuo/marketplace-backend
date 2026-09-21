@@ -114,7 +114,7 @@ public class CoopIpnController {
         }
 
         try {
-            CoopStatement stored = service.accept(payload, service.isTrusted(authorization));
+            CoopStatement stored = service.accept(payload, service.isTrusted(authorization), body);
             return ResponseEntity.ok(IpnAck.accepted(stored.getOurReference()));
         } catch (Exception e) {
             /*

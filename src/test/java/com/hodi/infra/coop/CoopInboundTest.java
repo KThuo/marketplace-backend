@@ -46,8 +46,9 @@ class CoopInboundTest {
     void theBanksExampleParses() {
         IpnPayload parsed = CoopInbound.parse(theBanksOwnExample());
 
-        assertEquals("CB0089060_25092025_23", parsed.refNo(),
-                "their unique handle, which is what a retry repeats and deduplication turns on");
+        assertEquals("TIP6V5IRAG", parsed.refNo(),
+                "the M-Pesa receipt the customer holds is the bank reference; a retry repeats it too");
+        assertEquals("CB0089060_25092025_23", parsed.ft(), "the bank's own id, kept beside it");
         assertEquals("01120000568900", parsed.accountIdentifier(), "which of our accounts it landed in");
         assertEquals("20.0", parsed.amount());
         assertEquals("KES", parsed.currency());
@@ -62,8 +63,66 @@ class CoopInboundTest {
         assertEquals("+254707919065", parsed.phoneNo(),
                 "found by shape, not position — the same line carries an account number of similar length");
         assertEquals("MELVIN WANJIKU", parsed.customerName());
-        assertEquals("TIP6V5IRAG", parsed.reference(),
-                "the payer's own receipt, which is what they would quote");
+        assertNull(parsed.reference(),
+                "a plain M-Pesa credit carries nothing the payer typed; the receipt is the bank reference, not a quote");
+        assertNull(parsed.narrationAccount(), "the account on the line is the credited one, not one the payer named");
+    }
+
+    @Test
+    @DisplayName("a paybill credit: the receipt, the account the payer named, and what they typed after the hash")
+    void aPaybillCreditNamesItsAccountAndReference() {
+        Map<String, Object> body = theBanksOwnExample();
+        body.put("Narration", "UGRAA0WREC~1186059#B14~254720051193~MPESAC2B_400222~ERIC THUO");
+
+        IpnPayload parsed = CoopInbound.parse(body);
+
+        assertEquals("UGRAA0WREC", parsed.refNo());
+        assertEquals("CB0089060_25092025_23", parsed.ft());
+        assertEquals("1186059", parsed.narrationAccount(), "the paybill account the payer paid into");
+        assertEquals("B14", parsed.reference(), "what the payer typed — on this platform, a pay code");
+        assertEquals("+254720051193", parsed.phoneNo());
+        assertEquals("ERIC THUO", parsed.customerName());
+        assertEquals("01120000568900", parsed.accountIdentifier(), "the account the bank credited");
+    }
+
+    @Test
+    @DisplayName("a prompt's four-part line: receipt, narration, phone, and the reference we sent")
+    void aPromptsLineCarriesOurReference() {
+        Map<String, Object> body = theBanksOwnExample();
+        body.put("Narration", "TIP6V5IRAK~Payment 6CST for BK2609173P9V~254712000111~IN2609187KQX");
+
+        IpnPayload parsed = CoopInbound.parse(body);
+
+        assertEquals("TIP6V5IRAK", parsed.refNo());
+        assertEquals("IN2609187KQX", parsed.reference(), "the reference on the prompt, so the intent is credited");
+        assertEquals("+254712000111", parsed.phoneNo());
+    }
+
+    @Test
+    @DisplayName("PesaLink has no M-Pesa receipt: the reference is PESALINK and its RRN, the payer is named")
+    void aPesalinkCredit() {
+        Map<String, Object> body = theBanksOwnExample();
+        body.put("Narration", "PESALINK~1145zjt7e~QUANTUMNEX SOLUTIONS LIMITED~1325942715~0001~Transfer");
+
+        IpnPayload parsed = CoopInbound.parse(body);
+
+        assertEquals("PESALINK1145zjt7e", parsed.refNo(), "as the bank prints it");
+        assertEquals("QUANTUMNEX SOLUTIONS LIMITED", parsed.customerName(), "not the last word of the line");
+        assertNull(parsed.phoneNo(), "a source account is not a phone");
+        assertEquals("0001 Transfer", parsed.reference(), "whatever the payer wrote, for the matcher to read");
+    }
+
+    @Test
+    @DisplayName("a line nobody recognises falls back to the bank's id and the last word as the name")
+    void anUnknownLineFallsBackToTheBanksId() {
+        Map<String, Object> body = theBanksOwnExample();
+        body.put("Narration", "just some words");
+
+        IpnPayload parsed = CoopInbound.parse(body);
+
+        assertEquals("CB0089060_25092025_23", parsed.refNo(), "no receipt to hold, so the bank's id is the reference");
+        assertEquals("CB0089060_25092025_23", parsed.ft());
+        assertEquals("just some words", parsed.customerName());
     }
 
     @Test

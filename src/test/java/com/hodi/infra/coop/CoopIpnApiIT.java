@@ -66,13 +66,13 @@ class CoopIpnApiIT {
                   "Amount": "500.00",
                   "Currency": "KES",
                   "EventType": "CREDIT",
-                  "Narration": "TIPTEST~254700000000~not-a-till-of-ours~MPESAC2B~WALK IN",
+                  "Narration": "%s~254700000000~not-a-till-of-ours~MPESAC2B~WALK IN",
                   "PaymentRef": "25092026_TEST",
                   "PostingDate": "2026-08-27",
                   "TransactionDate": "2026-08-27T10:30:00",
-                  "TransactionId": "%s"
+                  "TransactionId": "CB_%s"
                 }
-                """.formatted(transactionId);
+                """.formatted(transactionId, transactionId);
     }
 
     @Test
@@ -140,8 +140,10 @@ class CoopIpnApiIT {
     @DisplayName("a notification with no reference of its own is still stored rather than lost")
     void missingRefNoIsStored() throws Exception {
         // No TransactionId and no PaymentRef: nothing Co-op sends that we could deduplicate on.
+        // No receipt on the line, no TransactionId and no PaymentRef: nothing Co-op sends that we could deduplicate on.
         String noRef = body("x")
-                .replace("\"TransactionId\": \"x\"", "\"TransactionId\": \"\"")
+                .replace("\"Narration\": \"x~254700000000~not-a-till-of-ours~MPESAC2B~WALK IN\"", "\"Narration\": \"\"")
+                .replace("\"TransactionId\": \"CB_x\"", "\"TransactionId\": \"\"")
                 .replace("\"PaymentRef\": \"25092026_TEST\",", "");
 
         mvc.perform(post("/api/v1/public/coop/notifications")
