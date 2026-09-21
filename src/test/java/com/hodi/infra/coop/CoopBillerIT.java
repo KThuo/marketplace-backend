@@ -287,6 +287,23 @@ class CoopBillerIT {
     // ── advice ────────────────────────────────────────────────────────────────
 
     @Test
+    @DisplayName("an advice quoting the bare code is placed without the amount or phone agreeing: the bank validated it with the payer")
+    void adviceOnABareCodeIsPlacedWithoutCorroboration() throws Exception {
+        String transactionRef = "4T19" + RrnGenerator.generate("S");
+
+        // 37,500 is neither the deposit nor the price — the corroboration a free-text transfer would need.
+        Map<String, Object> answer = biller.advise(advice(transactionRef, "b1k1", "37500"));
+
+        assertEquals("200", header(answer).get("statusCode"), answer.toString());
+        CoopStatement stored = statements.findByRefNo(transactionRef).orElseThrow();
+        assertEquals(AppConstant.STATEMENT_MAPPED, stored.getState(),
+                "the code alone places a biller advice: " + stored.getUnmappedReason());
+        assertEquals(HashIdUtil.decodeId(booking.id()), stored.getMappedBookingId());
+        assertEquals(1, paymentsOnTheBooking());
+        assertEquals(0, payments.totalPaid(HashIdUtil.decodeId(booking.id())).compareTo(new BigDecimal("37500")));
+    }
+
+    @Test
     @DisplayName("an advice is stored as a statement and placed on the booking it names; a repeat is a duplicate")
     void adviceIsRecordedOnceAndPlaced() throws Exception {
         String transactionRef = "4T19" + RrnGenerator.generate("S");

@@ -32,6 +32,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -173,12 +174,45 @@ class BookingServiceIT {
          * further query in this test would fail for that reason rather than for the reason under test — which
          * is how a passing assertion can end up proving nothing.
          */
+        // With a code of its own, so the only thing left to refuse the row is the live-booking index.
         assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
-                insert into unit_bookings (reference, development_id, property_id, tenant_id, buyer_name,
+                insert into unit_bookings (reference, pay_reference, development_id, property_id, tenant_id, buyer_name,
                     buyer_phone, state, currency, booked_on, expires_at, created_by)
-                values (?, ?, ?, ?, 'Race Condition', '+254700000000', 'RESERVED', 'KES',
+                values (?, ?, ?, ?, ?, 'Race Condition', '+254700000000', 'RESERVED', 'KES',
                         current_date, now() + interval '14 days', 'test')
-                """, RrnGenerator.generate("BK"), development.getId(), unit.getId(), tenantId));
+                """, RrnGenerator.generate("BK"), RrnGenerator.payCode(), development.getId(), unit.getId(), tenantId));
+    }
+
+    @Test
+    @DisplayName("a unit booked again after a cancellation gets a different pay code, and the old one stays on the old booking")
+    void aReBookedUnitGetsADifferentCode() {
+        BookingResponse first = service.create(devId(), booking(null));
+        service.cancel(devId(), first.id(), new CloseBookingRequest("The buyer changed their mind."));
+        BookingResponse second = service.create(devId(),
+                new CreateBookingRequest(unitId(), "Brian Otieno", "+254712000333", null, null,
+                        null, null, null, null, null, null));
+
+        assertNotEquals(first.payReference(), second.payReference(),
+                "a late payment quoting the first buyer's code must not land on the second buyer");
+        assertTrue(second.payReference().matches("[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}"));
+        assertEquals(first.payReference(), bookings.findByReference(first.reference()).orElseThrow().getPayReference(),
+                "the cancelled booking keeps its code, so the matcher can name it");
+    }
+
+    @Test
+    @DisplayName("the unique index is what guarantees one code per booking, not the allocator's check")
+    void indexRefusesADuplicatePayCode() {
+        BookingResponse first = service.create(devId(), booking(null));
+        service.cancel(devId(), first.id(), new CloseBookingRequest("Withdrawn."));
+        BookingResponse second = service.create(devId(),
+                new CreateBookingRequest(unitId(), "Brian Otieno", "+254712000333", null, null,
+                        null, null, null, null, null, null));
+
+        // Underneath the service: the only way to reach the state the pre-check cannot prevent. Nothing is
+        // asserted after it — a failed statement aborts the surrounding Postgres transaction.
+        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update(
+                "update unit_bookings set pay_reference = ? where id = ?",
+                first.payReference(), HashIdUtil.decodeId(second.id())));
     }
 
     @Test

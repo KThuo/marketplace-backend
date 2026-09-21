@@ -330,6 +330,12 @@ class CoopStkIT {
         assertEquals("+254712000111", first.phoneNo(), "the buyer's own phone, when nobody named another");
         assertEquals(first.reference(), first.bankReference(), "Co-op echoed our reference as theirs");
         assertTrue(pushBodies.get(0).contains("\"MessageReference\":\"" + first.reference() + "\""));
+        assertTrue(pushBodies.get(0).contains("\"Narration\":\"Payment " + booking.payReference() + " for " + booking.reference() + "\""),
+                "the booking's pay code, on the customer's phone and the bank's statement: " + pushBodies.get(0));
+        assertTrue(pushBodies.get(0).contains("\"Value\":\"" + booking.payReference() + "\""),
+                "and carried as a detail of its own");
+        assertTrue(pushBodies.get(0).contains("\"Value\":\"" + first.reference() + "\""),
+                "while our reference stays the detail the bank echoes, so a lost callback still credits the intent");
         assertTrue(pushBodies.get(0).contains("\"OperatorCode\":\"" + account.getAccountNo() + "\""),
                 "the seller's own account before the platform's, and its operator code: " + pushBodies.get(0));
 
