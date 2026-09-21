@@ -309,6 +309,48 @@ class PaymentIntentIT {
     }
 
     @Test
+    @DisplayName("the callback and the bank's notification arriving together still make one payment and one statement")
+    void aCallbackAndANotificationAtOnceMakeOneRow() throws Exception {
+        PaymentIntent intent = anIntentFor(new BigDecimal("950000"));
+        settlement.inFlight(intent.getId(), "COOP-REF-7", "Prompt sent.");
+        String receipt = "T" + RrnGenerator.generate("R").substring(1);
+        java.util.Map<String, Object> body = new java.util.LinkedHashMap<>();
+        body.put("AcctNo", account);
+        body.put("Amount", "950000.00");
+        body.put("Currency", "KES");
+        body.put("EventType", "CREDIT");
+        body.put("Narration", receipt + "~Payment for " + booking.reference() + "~254712345678~" + intent.getReference());
+        body.put("TransactionDate", "2026-09-22T09:00:00");
+        body.put("TransactionId", "CB_" + receipt);
+
+        // Released together, so both are inside their own transaction before either has committed — the
+        // moment the database alone cannot see, and the moment the lock is for.
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        java.util.concurrent.Future<PaymentIntent> callback = pool.submit(() -> {
+            go.await();
+            return settlement.succeeded(intent.getId(), "COOP-REF-7", null, "Success", "callback");
+        });
+        java.util.concurrent.Future<CoopStatement> notification = pool.submit(() -> {
+            go.await();
+            return service.accept(CoopInbound.parse(body), true, body);
+        });
+        go.countDown();
+        PaymentIntent settled = callback.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        CoopStatement stored = notification.get(30, java.util.concurrent.TimeUnit.SECONDS);
+        pool.shutdown();
+
+        assertEquals(1, paymentsOnTheBooking(), "one payment, whichever message won");
+        PaymentIntent after = intents.findById(intent.getId()).orElseThrow();
+        assertEquals(PaymentIntent.SUCCEEDED, after.getState());
+        assertEquals(1, statements.findByMappedPaymentId(after.getPaymentId()).size(), "one statement");
+        assertEquals(after.getStatementId(), stored.getId(), "and it is the row both messages ended up on");
+        assertEquals(receipt, statements.findById(stored.getId()).orElseThrow().getRefNo(),
+                "carrying the receipt, whichever message brought it");
+        assertNotNull(settled);
+    }
+
+    @Test
     @DisplayName("a notification quoting an intent credits it without needing the unit code to corroborate")
     void aCallbackAloneCanCreditAnIntent() {
         PaymentIntent intent = anIntentFor(new BigDecimal("500000"));

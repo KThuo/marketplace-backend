@@ -59,6 +59,8 @@ public class CoopIntentSettlement {
     private final UnitBookingRepository bookings;
     private final CoopStatementRepository statements;
     private final PaymentService payments;
+    private final CoopSettlementGate gate;
+    private final org.springframework.transaction.support.TransactionTemplate newTransaction;
 
     /**
      * Writes the intent and commits it, before anything is asked of the bank.
@@ -134,7 +136,6 @@ public class CoopIntentSettlement {
      * and Co-op retries callbacks it believes went unacknowledged; without this, one payment becomes two
      * on a buyer's statement.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentIntent succeeded(Long intentId, String bankReference, String receipt, String said,
                                    String by) {
         return succeeded(intentId, bankReference, receipt, said, null, by);
@@ -145,9 +146,26 @@ public class CoopIntentSettlement {
      *
      * @param rawAnswer the enquiry's response as JSON, or null when the caller has none to keep
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public PaymentIntent succeeded(Long intentId, String bankReference, String receipt, String said,
                                    String rawAnswer, String by) {
+        /*
+         * Under the same lock the notification takes, on the same names — our reference, the bank's, the
+         * receipt — so the callback and the bank's credit for one payment are written one after the other.
+         * The transaction runs inside the lock and commits before the lock is released.
+         */
+        String ourReference = intents.findById(intentId).map(PaymentIntent::getReference).orElse(null);
+        PaymentIntent settled = gate.serialised(java.util.Arrays.asList(ourReference, bankReference, receipt),
+                () -> newTransaction.execute(status -> settle(intentId, bankReference, receipt, said, rawAnswer, by)));
+        if (settled != null && settled.getStatementId() != null) {
+            gate.remember(receipt, settled.getStatementId());
+            gate.remember(settled.getReference(), settled.getStatementId());
+        }
+        return settled;
+    }
+
+    /** The write itself, inside the transaction opened under the lock. */
+    private PaymentIntent settle(Long intentId, String bankReference, String receipt, String said,
+                                 String rawAnswer, String by) {
         PaymentIntent intent = intents.findById(intentId).orElseThrow();
 
         if (PaymentIntent.SUCCEEDED.equals(intent.getState()) && intent.getPaymentId() != null) {

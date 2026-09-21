@@ -80,6 +80,9 @@ public class CoopIpnService {
     private final CoopIntentSettlement settlement;
     private final ConfigurationService configs;
     private final ObjectMapper mapper;
+    /** One message about a payment at a time, and a memory of the ones just written. */
+    private final CoopSettlementGate gate;
+    private final org.springframework.transaction.support.TransactionTemplate newTransaction;
 
     /**
      * Co-op's timestamps: "yyyy-MM-dd HH:mm:ss" in one document, ISO's "2025-09-25T08:01:01" in the bank's
@@ -97,7 +100,6 @@ public class CoopIpnService {
      *
      * @return the statement, whether mapped or not
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CoopStatement accept(IpnPayload payload, boolean trusted) {
         return accept(payload, trusted, null);
     }
@@ -108,8 +110,38 @@ public class CoopIpnService {
      * @param rawBody Co-op's message verbatim, for the audit copy; the normalised payload is stored when
      *                there is none, which is what the tests and the upload path have
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public CoopStatement accept(IpnPayload payload, boolean trusted, java.util.Map<String, Object> rawBody) {
+        String refNo = trim(payload.refNo());
+
+        /*
+         * Answered from what was just written, before any query: a retry, or the notification for a prompt
+         * whose callback landed a moment ago. Verified against the row, because a marker is a hint.
+         */
+        Long recalled = gate.recall(refNo);
+        if (recalled != null) {
+            Optional<CoopStatement> row = statements.findById(recalled);
+            if (row.isPresent() && refNo.equalsIgnoreCase(row.get().getRefNo())) {
+                log.info("Co-op notification {} already recorded as {} (from the marker)", refNo,
+                        row.get().getOurReference());
+                return row.get();
+            }
+        }
+
+        /*
+         * Serialised on every name this money goes by — the receipt, our reference for the prompt, the
+         * bank's — so the callback and the notification for one payment are written one after the other and
+         * the second finds the first's committed row. The transaction is opened inside the lock and the lock
+         * released after it commits; a lock released before the commit would leave the same gap.
+         */
+        List<String> names = java.util.Arrays.asList(refNo, trim(payload.reference()), trim(payload.traceId()));
+        CoopStatement stored = gate.serialised(names, () -> newTransaction.execute(status -> record(payload, trusted, rawBody)));
+        gate.remember(refNo, stored.getId());
+        gate.remember(trim(payload.reference()), stored.getId());
+        return stored;
+    }
+
+    /** The write itself, inside the transaction the caller opened under the lock. */
+    private CoopStatement record(IpnPayload payload, boolean trusted, java.util.Map<String, Object> rawBody) {
         String refNo = trim(payload.refNo());
 
         /*
