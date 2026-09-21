@@ -188,11 +188,19 @@ class DisbursementIT {
 
         // The platform's own PesaLink account, live: where the money leaves.
         PaymentType pesalink = types.findByProviderType("COOP_PESALINK").orElseThrow();
-        PaymentAccount row = PaymentAccount.builder()
-                .accountNo("01100" + Long.toString(System.nanoTime() % 100_000_000L))
-                .accountName(SOURCE_NAME).config(Map.of()).createdBy("test").build();
-        row.stampChannel(pesalink);
-        source = accounts.save(row);
+        // The platform sends from its oldest live PesaLink account. A shared development database may already
+        // hold one — the demo seed writes it — and the service will pick that one, so the test uses it too and
+        // only makes its own when there is none. Nothing here deletes an account it did not make.
+        source = accounts.findLiveForPlatform().stream()
+                .filter(a -> pesalink.getId().equals(a.getPaymentTypeId()))
+                .min(java.util.Comparator.comparing(PaymentAccount::getId))
+                .orElseGet(() -> {
+                    PaymentAccount row = PaymentAccount.builder()
+                            .accountNo("01100" + Long.toString(System.nanoTime() % 100_000_000L))
+                            .accountName(SOURCE_NAME).config(Map.of()).createdBy("test").build();
+                    row.stampChannel(pesalink);
+                    return accounts.save(row);
+                });
 
         signInAsMaker();
     }

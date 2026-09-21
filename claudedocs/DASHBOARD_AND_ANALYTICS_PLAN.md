@@ -109,6 +109,7 @@ new permission, and the reports module keeps the heavy exports.
 
 | # | Step | Backend | Frontend | Size |
 |---|---|---|---|---|
+| 0 | Demo activity for the development database: twelve buyers, nine months of bookings paying on time, late and not at all, every non-cash payment with its bank statement and prompt, unplaced and set-aside credits, failed and unanswered prompts, offers in every state (two converted), viewings, enquiries, transfers out, project spend and drawdowns | `DemoActivitySeeder` behind `hodi.seed.demo=true` (`SEED_DEMO`), refuses a non-local datasource, runs once | — | M |
 | 1 | Dashboard "today": hero, Needs you, month strip, twelve-month chart, recent receipts, inventory, funnel | `DashboardService.attention()` + `hero()` (one endpoint, gated items); funnel-this-month and inventory from existing queries | `DashboardView` rebuilt; Overall/Monthly/Calendar panels removed | L |
 | 2 | Analytics: Collections and Sales funnel tabs | `AnalyticsQueries`: due-vs-collected, lateness, channel mix by month, prompt outcomes, funnel stages and durations, offer outcomes | two tabs, CSV download on every table | L |
 | 3 | Analytics: Inventory and Bank tabs | absorption, stock, price per m², statements by outcome and time-to-place, disbursements by month | two tabs | M |
@@ -119,8 +120,7 @@ offers), full suite green, `vue-tsc` and build green, commit, jar and `dist.zip`
 
 ## 5. Two things to know before starting
 
-- **The dev database is thin**: one booking, two payments, four statements, sixteen prompts, two offers.
-  Charts will render, mostly empty. If you want to see the pages populated, a seed of a few months of
-  realistic activity would help; it is not in this plan unless you want it.
-- **Removing the Monthly receipts table from the dashboard** is my recommendation and a judgement call. Say
-  so if you want it kept.
+- **The dev database was thin** — one booking, two payments — so step 0 seeds nine months of realistic
+  activity (agreed 21 September). Run the backend once with `SEED_DEMO=true`; it writes once and refuses
+  any datasource that is not on the machine.
+- **The Monthly receipts table leaves the dashboard** (agreed 21 September): it duplicates the payments page.
