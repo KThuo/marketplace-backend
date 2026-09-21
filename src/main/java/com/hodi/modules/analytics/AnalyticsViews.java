@@ -228,6 +228,50 @@ public final class AnalyticsViews {
     public record FunnelView(AnalyticsWindow window, List<Stage> stages, List<Interval> intervals,
                              List<Slice> offersByOutcome, int offersConverted, List<Slice> viewingsByOutcome) {}
 
+    // ── inventory: how fast units sell, and how much is left ─────────────────
+
+    /** One month: units marked sold, and bookings made. */
+    public record SoldPoint(int year, int month, String label, int sold, int booked) {}
+
+    /** One kind of home in one development, as the stock stands today. */
+    public record StockRow(String developmentId, String developmentName, String unitType, int total, int available,
+                           int held, int sold, BigDecimal listPrice, BigDecimal pricePerSqm) {}
+
+    /**
+     * @param soldPerMonth the pace over the window
+     * @param monthsOfStock what is available, at that pace; null when nothing sold in the window
+     */
+    public record InventoryView(AnalyticsWindow window, int unitsTotal, int unitsAvailable, int unitsHeld, int unitsSold,
+                                int soldInWindow, int bookedInWindow, BigDecimal soldPerMonth, BigDecimal monthsOfStock,
+                                List<SoldPoint> months, List<StockRow> rows, int holdsAgreed, int holdsLapsed) {}
+
+    // ── the bank: how its money behaves ──────────────────────────────────────
+
+    /** Statements that arrived in a month, by what became of them. */
+    public record StatementPoint(int year, int month, String label, int arrived, BigDecimal amount, int automatic,
+                                 int byHand, int setAside, int unplaced) {}
+
+    /** Transfers proposed in a month, and how they ended. */
+    public record DisbursementPoint(int year, int month, String label, int count, BigDecimal amount, int succeeded,
+                                    int failed, int pending) {}
+
+    /** Money in against money out, month by month. */
+    public record FlowPoint(int year, int month, String label, BigDecimal in, BigDecimal out) {}
+
+    /** @param medianMinutesToPlace from a statement's arrival to its placing on a booking; null when none were placed */
+    public record BankView(AnalyticsWindow window, int statements, BigDecimal statementsAmount, int automatic, int byHand,
+                           int setAside, int unplaced, Integer medianMinutesToPlace, List<StatementPoint> months,
+                           List<DisbursementPoint> disbursements, int disbursementsSucceeded, BigDecimal disbursed,
+                           List<FlowPoint> flow) {
+        /** Of the statements placed, how many the matcher placed without a person. Null when none were placed. */
+        @JsonProperty("automaticShare")
+        public BigDecimal automaticShare() {
+            int placed = automatic + byHand;
+            if (placed == 0) return null;
+            return BigDecimal.valueOf(automatic).multiply(HUNDRED).divide(BigDecimal.valueOf(placed), 1, RoundingMode.HALF_UP);
+        }
+    }
+
     // ── the dashboard: today ──────────────────────────────────────────────────
 
     /**

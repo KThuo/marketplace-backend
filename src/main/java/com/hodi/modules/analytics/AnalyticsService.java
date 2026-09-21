@@ -7,6 +7,8 @@ import com.hodi.modules.developments.DevelopmentRepository;
 import com.hodi.modules.developments.DevelopmentVisibility;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
+import com.hodi.common.exception.HodiException;
+import org.springframework.http.HttpStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -51,6 +53,7 @@ public class AnalyticsService {
 
     private final AnalyticsQueries queries;
     private final AnalyticsFlowQueries flow;
+    private final AnalyticsStockQueries stock;
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
 
@@ -109,6 +112,43 @@ public class AnalyticsService {
         }
         return new FunnelView(window, stages, flow.intervals(window), flow.offersByOutcome(window),
                 flow.offersConverted(window), flow.viewingsByOutcome(window));
+    }
+
+    /** How fast units sell, and how much is left at that pace. */
+    @Transactional(readOnly = true)
+    public InventoryView inventory(AnalyticsWindow window, String developmentHash) {
+        Long developmentId = development(developmentHash);
+        Positions now = queries.positions(developmentId);
+        List<SoldPoint> months = stock.soldAndBooked(window, developmentId);
+        int soldInWindow = months.stream().mapToInt(SoldPoint::sold).sum();
+        int bookedInWindow = months.stream().mapToInt(SoldPoint::booked).sum();
+        BigDecimal perMonth = BigDecimal.valueOf(soldInWindow).divide(BigDecimal.valueOf(window.months()), 1, RoundingMode.HALF_UP);
+        BigDecimal monthsOfStock = perMonth.signum() == 0 ? null
+                : BigDecimal.valueOf(now.unitsAvailable()).divide(perMonth, 1, RoundingMode.HALF_UP);
+        int[] holds = stock.holdOutcomes(window, developmentId);
+        return new InventoryView(window, now.unitsTotal(), now.unitsAvailable(), now.unitsReserved(), now.unitsSold(),
+                soldInWindow, bookedInWindow, perMonth, monthsOfStock, months, stock.stock(developmentId), holds[0], holds[1]);
+    }
+
+    /**
+     * How the bank's money behaves. The platform's alone: refused before a query runs, not hidden on a screen.
+     */
+    @Transactional(readOnly = true)
+    public BankView bank(AnalyticsWindow window) {
+        if (!AuthContext.require().isPlatformStaff()) {
+            throw new HodiException("The bank's figures are the bank's.", HttpStatus.FORBIDDEN);
+        }
+        List<StatementPoint> months = stock.statementsByMonth(window);
+        List<DisbursementPoint> out = stock.disbursementsByMonth(window);
+        return new BankView(window,
+                months.stream().mapToInt(StatementPoint::arrived).sum(),
+                months.stream().map(StatementPoint::amount).reduce(BigDecimal.ZERO, BigDecimal::add),
+                months.stream().mapToInt(StatementPoint::automatic).sum(), months.stream().mapToInt(StatementPoint::byHand).sum(),
+                months.stream().mapToInt(StatementPoint::setAside).sum(), months.stream().mapToInt(StatementPoint::unplaced).sum(),
+                stock.medianMinutesToPlace(window), months, out,
+                out.stream().mapToInt(DisbursementPoint::succeeded).sum(),
+                stock.flow(window).stream().map(FlowPoint::out).reduce(BigDecimal.ZERO, BigDecimal::add),
+                stock.flow(window));
     }
 
     @Transactional(readOnly = true)

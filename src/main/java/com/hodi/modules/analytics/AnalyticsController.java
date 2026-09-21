@@ -89,6 +89,25 @@ public class AnalyticsController {
         return ApiResponse.success(service.funnel(AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth)));
     }
 
+    @GetMapping("/inventory")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ApiResponse<InventoryView> inventory(
+            @RequestParam(required = false) Integer fromYear, @RequestParam(required = false) Integer fromMonth,
+            @RequestParam(required = false) Integer toYear, @RequestParam(required = false) Integer toMonth,
+            @RequestParam(required = false) String developmentId) {
+        return ApiResponse.success(service.inventory(
+                AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth), developmentId));
+    }
+
+    /** The bank's own figures. Refused to anyone but the platform inside the service. */
+    @GetMapping("/bank")
+    @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
+    public ApiResponse<BankView> bank(
+            @RequestParam(required = false) Integer fromYear, @RequestParam(required = false) Integer fromMonth,
+            @RequestParam(required = false) Integer toYear, @RequestParam(required = false) Integer toMonth) {
+        return ApiResponse.success(service.bank(AnalyticsWindow.of(fromYear, fromMonth, toYear, toMonth)));
+    }
+
     @GetMapping("/pipeline")
     @PreAuthorize("hasAuthority('DASHBOARD_VIEW')")
     public ApiResponse<PipelineView> pipeline(
