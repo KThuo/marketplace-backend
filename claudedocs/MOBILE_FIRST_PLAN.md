@@ -101,7 +101,7 @@ rerun.
 | Step | State | Notes |
 |---|---|---|
 | 0 | **Done, 22 September** | `--bp-phone: 640px`, `--bp-tablet: 1024px` documented in `theme.css`; `viewport-fit=cover`. Touch block (`max-width: 639.98px` or `pointer: coarse`): `--control-h` 44px, inputs/selects/textareas 16px (the stylesheet's one `!important`; one-character code boxes exempt), `.hit` pseudo-element gives a 44px target without changing the drawn size — applied to the row-menu trigger, modal close, pagination buttons, `AppButton.sm`, the bars' icon buttons and the workspace burger. Safe-area insets on the marketplace and account bars (including their phone rules), the workspace topbar and drawer, and the content's bottom padding; `100dvh` beside `100vh` on the four layouts. `AppModal` below 640px is a bottom sheet: full width, top corners only, header and footer fixed with a scrolling body, footer padded past the home indicator. Verified in Playwright at 390px. |
-| 1 | Pending | |
+| 1 | **Done, 22 September** | `useViewport.ts` (`usePhone`, `useBelowTablet` on the two tokens via matchMedia) and `NavDrawer.vue` (teleported right-edge panel with scrim, Escape, focus into the panel, body scroll lock, safe-area padding). `MarketplaceLayout`: below 1024px the seven links move to the drawer behind a Menu button, with Create account / Sign in (or My account / Workspace) and the theme toggle; below 640px the brand is the mark only and Sign in / My account / Workspace are icon buttons; the bar is one row (57px at 390). `AccountLayout`: the nine tabs move to the same drawer below 1024px. Route change closes the drawer. Verified in Playwright at 390 and 768. |
 | 2 | Pending | |
 | 3 | Pending | |
 | 4 | Pending | |
