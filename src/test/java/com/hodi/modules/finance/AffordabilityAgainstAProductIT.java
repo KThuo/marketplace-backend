@@ -24,7 +24,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -122,6 +122,35 @@ class AffordabilityAgainstAProductIT {
     }
 
     // ── the calculation ──────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("the platform can open one check and read its working, but not who ran it")
+    void thePlatformReadsTheWorkingWithoutThePerson() {
+        String reference = aPublishedProduct();
+        var saved = affordability.record(new AffordabilityRequest(
+                new BigDecimal("200000"), null, null, new BigDecimal("2000000"),
+                (short) 240, null, null, null, reference));
+
+        var opened = affordability.find(saved.reference());
+
+        assertEquals(saved.reference(), opened.reference());
+        assertFalse(opened.steps().isEmpty(),
+                "a list row says 'in the market for 9.2 million'; the page behind it has to say why");
+        assertEquals(0, opened.maxLoanAmount().compareTo(saved.maxLoanAmount()),
+                "the working shown to the platform is the one shown to the buyer, not a re-run");
+        assertEquals(reference, opened.productReference());
+        // The record type has no user field at all, so identity cannot leak by omission on a later edit.
+        Set<String> namesThatAreNotAPerson = Set.of("productName", "institutionName");
+        for (var component : FinanceDtos.AffordabilityResponse.class.getRecordComponents()) {
+            String name = component.getName();
+            String lower = name.toLowerCase();
+            boolean aPerson = lower.contains("user") || lower.contains("buyer")
+                    || (lower.contains("name") && !namesThatAreNotAPerson.contains(name));
+            assertFalse(aPerson, "the platform reads a calculation, not a household: " + name);
+        }
+        assertThrows(com.hodi.common.exception.ResourceNotFoundException.class,
+                () -> affordability.find("AFNOPE000001"));
+    }
 
     @Test
     @DisplayName("the chosen mortgage's rate is the rate, not the configured default")

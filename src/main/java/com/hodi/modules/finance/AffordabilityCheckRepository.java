@@ -30,4 +30,14 @@ public interface AffordabilityCheckRepository
     Page<AffordabilityCheck> findMine(@Param("userId") Long userId, Pageable pageable);
 
     long countByUserId(Long userId);
+
+    /**
+     * Any person's check, by reference, for the platform's reading of it.
+     *
+     * <p>The identity of who ran it is not in the query and is not on what the caller sends back: the
+     * platform reads how a figure was arrived at, not whose household it is. See
+     * {@link AffordabilityService#find(String)}.
+     */
+    @Query("select c from AffordabilityCheck c where c.reference = :reference and c.status <> 5")
+    Optional<AffordabilityCheck> findLiveByReference(@Param("reference") String reference);
 }

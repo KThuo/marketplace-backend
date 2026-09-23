@@ -267,6 +267,23 @@ public class AffordabilityService {
         return PagedResponse.from(page, this::toSummary);
     }
 
+    /**
+     * One check, in full, for the platform — the working without the person.
+     *
+     * <p>The list shows outcomes only, and that rule stands. This is the page behind one row of it: how the
+     * figure was arrived at, line by line, in the figures the household typed — because "in the market for
+     * 9.2 million" is a number nobody can act on without seeing what produced it, and a platform quoting
+     * numbers it cannot explain is the thing this module exists not to be. What it does not carry is who
+     * ran it: the response has no user id, no name and no contact, and the repository query does not join
+     * to one. Platform staff read a calculation, not a household.
+     */
+    @Transactional(readOnly = true)
+    public AffordabilityResponse find(String reference) {
+        AffordabilityCheck check = repository.findLiveByReference(reference == null ? "" : reference.trim())
+                .orElseThrow(() -> new ResourceNotFoundException("Affordability check", reference));
+        return toFullResponse(check);
+    }
+
     // ── internals ─────────────────────────────────────────────────────────────
 
     private Property resolveProperty(String reference) {

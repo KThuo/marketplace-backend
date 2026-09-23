@@ -19,7 +19,8 @@ import org.springframework.web.bind.annotation.*;
  * them would make that rule easy to lose sight of. The person's endpoints sit under {@code /me}, are scoped
  * by the signed-in identity and carry no permission — there is nothing to grant beyond being yourself. The
  * platform's list sits under {@code /affordability}, requires {@code AFFORDABILITY_VIEW}, and returns
- * summaries: outcomes and derived figures, never anybody's income.
+ * summaries: outcomes and derived figures. One check may be opened in full — the working, line by line —
+ * and that reading carries no identity: the platform sees how a figure was arrived at, not whose it is.
  */
 @RestController
 @RequiredArgsConstructor
@@ -54,5 +55,12 @@ public class AffordabilityController {
     public ApiResponse<PagedResponse<AffordabilitySummary>> list(
             @ModelAttribute AffordabilityListRequest request) {
         return ApiResponse.success(service.list(request));
+    }
+
+    /** One check with its working, and nothing about who ran it. */
+    @GetMapping("/api/v1/affordability/{reference}")
+    @PreAuthorize("hasAuthority('AFFORDABILITY_VIEW')")
+    public ApiResponse<AffordabilityResponse> find(@PathVariable String reference) {
+        return ApiResponse.success(service.find(reference));
     }
 }
