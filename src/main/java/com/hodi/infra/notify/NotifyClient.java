@@ -55,6 +55,17 @@ public class NotifyClient {
     private final ConfigurationService configs;
     private final EmailSender emailSender;
 
+    /**
+     * Nothing leaves the process.
+     *
+     * <p>The integration tests book homes and accept offers against the shared development database, and
+     * every one of those tells a buyer by SMS — a real message, at real cost, to whichever number the fixture
+     * carried. The test run sets this and every send is logged instead. Set from a system property, not the
+     * configuration table, because the table is the same one the running application reads.
+     */
+    @org.springframework.beans.factory.annotation.Value("${hodi.notify.dry-run:false}")
+    private boolean dryRun;
+
     // ── SMS ───────────────────────────────────────────────────────────────────
 
     public NotifyResult sendSms(String phone, String text, String recipientName) {
@@ -76,6 +87,10 @@ public class NotifyClient {
     }
 
     private NotifyResult sendSms(String phone, String text, String recipientName, boolean sensitive) {
+        if (dryRun) {
+            log.info("Dry run — SMS to {} not sent: {}", mask(phone), text);
+            return NotifyResult.skipped("DRY_RUN");
+        }
         if (!sensitive && !configs.getBoolean(ConfigKey.NOTIFY_SMS_ENABLED)) {
             log.debug("SMS is switched off — nothing sent to {}", mask(phone));
             return NotifyResult.skipped("SMS_DISABLED");
@@ -158,6 +173,10 @@ public class NotifyClient {
 
     private NotifyResult sendEmail(String to, String subject, String htmlBody, String recipientName,
                                    List<String> attachments, boolean sensitive) {
+        if (dryRun) {
+            log.info("Dry run — email to {} not sent: {}", to, subject);
+            return NotifyResult.skipped("DRY_RUN");
+        }
         if (!sensitive && !configs.getBoolean(ConfigKey.NOTIFY_EMAIL_ENABLED)) {
             log.debug("Email is switched off — nothing sent to {}", mask(to));
             return NotifyResult.skipped("EMAIL_DISABLED");

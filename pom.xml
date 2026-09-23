@@ -262,6 +262,11 @@
                         <include>**/*Tests.java</include>
                         <include>**/*IT.java</include>
                     </includes>
+                    <!-- The tests book homes and accept offers against real fixtures; without this every
+                         run sent real SMS and email. See NotifyClient.dryRun. -->
+                    <systemPropertyVariables>
+                        <hodi.notify.dry-run>true</hodi.notify.dry-run>
+                    </systemPropertyVariables>
                 </configuration>
             </plugin>
             <plugin>

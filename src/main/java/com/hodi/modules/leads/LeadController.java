@@ -108,6 +108,14 @@ public class LeadController {
         return ApiResponse.success(offers.find(reference));
     }
 
+    @PostMapping("/api/v1/offers/{reference}/messages")
+    @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
+    @RequestAction("MESSAGE ON OFFER")
+    public ApiResponse<OfferResponse> messageOffer(@PathVariable String reference,
+                                                   @Valid @RequestBody ReplyRequest request) {
+        return ApiResponse.success("Sent", offers.message(reference, request));
+    }
+
     @PostMapping("/api/v1/offers/{reference}/decide")
     @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
     @RequestAction("DECIDE OFFER")

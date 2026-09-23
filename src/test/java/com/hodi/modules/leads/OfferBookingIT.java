@@ -127,6 +127,9 @@ class OfferBookingIT {
         OfferResponse booked = offers.book(accepted.getReference(), null);
         assertEquals(booked.bookingReference(), offers.find(accepted.getReference()).bookingReference(),
                 "the detail read shows the same offer, booking and all");
+        HodiException closed = assertThrows(HodiException.class,
+                () -> offers.message(accepted.getReference(), new com.hodi.modules.leads.LeadDtos.ReplyRequest("Still there?")));
+        assertEquals(HttpStatus.CONFLICT, closed.getStatus(), "an accepted offer's conversation is closed");
 
         assertNotNull(booked.bookingId());
         assertTrue(booked.bookingReference().startsWith("BK"), booked.bookingReference());

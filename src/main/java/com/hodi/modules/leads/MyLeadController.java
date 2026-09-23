@@ -54,6 +54,13 @@ public class MyLeadController {
         return ApiResponse.success("Sent", enquiries.addBuyerMessage(reference, request));
     }
 
+    @PostMapping("/offers/{reference}/messages")
+    @RequestAction("MESSAGE ON OFFER")
+    public ApiResponse<OfferResponse> addOfferMessage(@PathVariable String reference,
+                                                      @Valid @RequestBody ReplyRequest request) {
+        return ApiResponse.success("Sent", offers.addBuyerMessage(reference, request));
+    }
+
     // ── viewings ──────────────────────────────────────────────────────────────
 
     @PostMapping("/viewings")

@@ -189,6 +189,50 @@ public class PurchaseRequestService {
                 repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"))));
     }
 
+    /**
+     * A word from the seller on a live offer.
+     *
+     * <p>An offer is a conversation until it is settled: a counter, a question about the deposit, a date.
+     * Once accepted, declined or withdrawn the thread closes — the decision was the last word, and what
+     * follows an acceptance happens on the booking. Same thread the decisions write to, so the whole
+     * exchange reads in order.
+     */
+    @Transactional
+    public OfferResponse message(String reference, ReplyRequest request) {
+        PurchaseRequest offer = loadForSeller(reference);
+        if (!offer.isLive()) {
+            throw new HodiException("This offer is " + offer.getState().toLowerCase(java.util.Locale.ROOT)
+                    + "; the conversation is closed.", HttpStatus.CONFLICT);
+        }
+        thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), request.message(), offer.getState());
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+        notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(),
+                offer.getTenantName() + " has replied about your offer on " + offer.getPropertyTitle() + ".",
+                "/account/conversations?tab=offers&ref=" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    /** A word from the buyer on their own live offer. */
+    @Transactional
+    public OfferResponse addBuyerMessage(String reference, ReplyRequest request) {
+        Long userId = AuthContext.requireUserId();
+        PurchaseRequest offer = repository.findMineByReference(EnquiryService.trim(reference), userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Offer", reference));
+        if (!offer.isLive()) {
+            throw new HodiException("This offer is " + offer.getState().toLowerCase(java.util.Locale.ROOT)
+                    + "; the conversation is closed.", HttpStatus.CONFLICT);
+        }
+        thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), userId, offer.getBuyerName(),
+                request.message(), offer.getState());
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+        notifier.toSeller(offer.getTenantId(), "New message on an offer: " + offer.getPropertyTitle(),
+                offer.getBuyerName() + " has added a message to their offer on " + offer.getPropertyTitle() + ".",
+                "/app/offers/" + offer.getReference());
+        return toResponse(offer);
+    }
+
     /** One offer, with everything said about it, for the seller's detail page. */
     @Transactional(readOnly = true)
     public OfferResponse find(String reference) {
