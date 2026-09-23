@@ -247,6 +247,29 @@ class BookingServiceIT {
     // ── the money ─────────────────────────────────────────────────────────────
 
     @Test
+    @DisplayName("the first payment agrees a reserved booking: the clock stops and the home is reserved, not held")
+    void theFirstPaymentAgreesTheBooking() {
+        BookingResponse saved = service.create(devId(), booking(null));
+        assertEquals(AppConstant.BOOKING_RESERVED, saved.state());
+        assertNotNull(saved.expiresAt());
+
+        paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("100000"),
+                LocalDate.now(), AppConstant.PAY_CASH, null, null, null, "Asha Mwangi", "+254712000111", null));
+
+        BookingResponse after = service.find(devId(), saved.id());
+        assertEquals(AppConstant.BOOKING_AGREED, after.state(), "paying is saying yes");
+        assertNull(after.expiresAt(), "a commitment does not run out");
+        assertNotNull(after.agreedAt());
+        Property home = units.findById(unit.getId()).orElseThrow();
+        assertEquals(AppConstant.UNIT_RESERVED, home.getSaleState(), "reserved, no longer merely held");
+
+        // A second payment changes nothing about the agreement.
+        paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("50000"),
+                LocalDate.now(), AppConstant.PAY_CASH, null, null, null, "Asha Mwangi", "+254712000111", null));
+        assertEquals(after.agreedAt(), service.find(devId(), saved.id()).agreedAt(), "agreed once, when the first money landed");
+    }
+
+    @Test
     @DisplayName("the balance is the schedule less what was paid, from the view")
     void balanceComesOutOfTheView() {
         BookingResponse saved = service.create(devId(), booking(List.of(

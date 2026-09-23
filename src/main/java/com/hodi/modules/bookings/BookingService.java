@@ -378,15 +378,37 @@ public class BookingService {
             throw new HodiException("Only a reserved booking can be agreed; this one is "
                     + booking.getState().toLowerCase() + ".", HttpStatus.CONFLICT);
         }
+        return toResponse(markAgreed(booking, AuthContext.username()));
+    }
+
+    /**
+     * The first payment agrees the booking.
+     *
+     * <p>A hold is a name and a clock; paying against it is the buyer saying yes. So the moment money lands
+     * on a reserved booking it becomes agreed — the clock stops, the home is reserved rather than held — and
+     * nobody has to remember to press Agree after taking the deposit. A booking already agreed, completed or
+     * closed is left as it is: a late payment on a cancelled booking is the queue's problem, not a
+     * reopening. Same transaction as the payment, so the two commit together.
+     */
+    @org.springframework.context.event.EventListener
+    public void onPaymentReceived(com.hodi.modules.payments.PaymentReceived event) {
+        UnitBooking booking = repository.findById(event.bookingId()).orElse(null);
+        if (booking == null || !AppConstant.BOOKING_RESERVED.equals(booking.getState())) return;
+        markAgreed(booking, event.by() == null ? AppConstant.USERNAME_SYSTEM : event.by());
+        log.info("Booking {} agreed by its first payment", booking.getReference());
+    }
+
+    /** Reserved → agreed: the clock stops, the home is reserved rather than held, and the change is audited. */
+    private UnitBooking markAgreed(UnitBooking booking, String by) {
         String before = snapshot(booking);
         booking.setState(AppConstant.BOOKING_AGREED);
         booking.setExpiresAt(null);
         booking.setAgreedAt(OffsetDateTime.now());
-        booking.setUpdatedBy(AuthContext.username());
+        booking.setUpdatedBy(by);
         UnitBooking saved = repository.save(booking);
-        applyToProperty(access.propertyOf(saved), saved);
+        units.findById(saved.getPropertyId()).ifPresent(home -> applyToProperty(home, saved));
         audit.record(AppConstant.ACTION_UPDATE, "UnitBooking", saved.getId(), before, snapshot(saved));
-        return toResponse(saved);
+        return saved;
     }
 
     /**

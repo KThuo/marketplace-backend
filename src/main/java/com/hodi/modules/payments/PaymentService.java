@@ -82,6 +82,7 @@ public class PaymentService {
     private final CoopStatementRepository statements;
     private final AuditService audit;
     private final NotifyClient notify;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     // ── receiving ─────────────────────────────────────────────────────────────
 
@@ -312,6 +313,8 @@ public class PaymentService {
 
         log.info("Payment {} of {} recorded against booking {} via {}", saved.getReference(),
                 saved.getAmount(), booking.getReference(), saved.arrivedAs());
+        // Whatever follows from money arriving — a reserved booking becoming agreed — is the booking's to do.
+        events.publishEvent(new PaymentReceived(booking.getId(), saved.getId(), actor));
         return saved;
     }
 
