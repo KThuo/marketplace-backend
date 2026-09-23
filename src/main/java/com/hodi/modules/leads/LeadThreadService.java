@@ -49,18 +49,33 @@ public class LeadThreadService {
      */
     @Transactional
     public void record(String leadType, Long leadId, String body, String stateAfter) {
-        append(leadType, leadId, callerSide(), AuthContext.userId(), callerName(), body, stateAfter);
+        record(leadType, leadId, body, stateAfter, MESSAGE, null);
+    }
+
+    /** A move in a negotiation, attributed to whoever is calling: the kind says which, the amount the figure. */
+    @Transactional
+    public void record(String leadType, Long leadId, String body, String stateAfter, String kind,
+                       java.math.BigDecimal amount) {
+        append(leadType, leadId, callerSide(), AuthContext.userId(), callerName(), body, stateAfter, kind, amount);
     }
 
     /** Append on the buyer's behalf — used where the buyer's own words arrive with the request. */
     @Transactional
     public void recordAsBuyer(String leadType, Long leadId, Long userId, String name,
                               String body, String stateAfter) {
-        append(leadType, leadId, AppConstant.SIDE_BUYER, userId, name, body, stateAfter);
+        recordAsBuyer(leadType, leadId, userId, name, body, stateAfter, MESSAGE, null);
     }
 
+    @Transactional
+    public void recordAsBuyer(String leadType, Long leadId, Long userId, String name,
+                              String body, String stateAfter, String kind, java.math.BigDecimal amount) {
+        append(leadType, leadId, AppConstant.SIDE_BUYER, userId, name, body, stateAfter, kind, amount);
+    }
+
+    public static final String MESSAGE = "MESSAGE";
+
     private void append(String leadType, Long leadId, String side, Long userId, String name,
-                        String body, String stateAfter) {
+                        String body, String stateAfter, String kind, java.math.BigDecimal amount) {
         if (leadId == null || body == null || body.isBlank()) return;
         messages.save(LeadMessage.builder()
                 .leadType(leadType)
@@ -70,6 +85,8 @@ public class LeadThreadService {
                 .authorName(name)
                 .body(body.trim())
                 .stateAfter(stateAfter)
+                .kind(kind == null ? MESSAGE : kind)
+                .amount(amount)
                 .createdBy(AuthContext.username())
                 .build());
     }
@@ -100,7 +117,8 @@ public class LeadThreadService {
     }
 
     private static MessageResponse toResponse(LeadMessage m) {
-        return new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(), m.getCreatedAt());
+        return new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(), m.getCreatedAt(),
+                m.getKind() == null ? MESSAGE : m.getKind(), m.getAmount());
     }
 
     // ── who is calling ────────────────────────────────────────────────────────

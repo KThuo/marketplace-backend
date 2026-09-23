@@ -333,7 +333,7 @@ public class EnquiryService {
     }
 
     private static MessageResponse asMessage(EnquiryMessage m) {
-        return new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(), m.getCreatedAt());
+        return new MessageResponse(m.getAuthorSide(), m.getAuthorName(), m.getBody(), m.getCreatedAt(), "MESSAGE", null);
     }
 
     /**

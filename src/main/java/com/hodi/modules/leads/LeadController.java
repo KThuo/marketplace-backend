@@ -116,6 +116,14 @@ public class LeadController {
         return ApiResponse.success("Sent", offers.message(reference, request));
     }
 
+    @PostMapping("/api/v1/offers/{reference}/counter")
+    @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
+    @RequestAction("COUNTER OFFER")
+    public ApiResponse<OfferResponse> counterOffer(@PathVariable String reference,
+                                                   @Valid @RequestBody CounterRequest request) {
+        return ApiResponse.success("Counter sent", offers.counter(reference, request));
+    }
+
     @PostMapping("/api/v1/offers/{reference}/decide")
     @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
     @RequestAction("DECIDE OFFER")

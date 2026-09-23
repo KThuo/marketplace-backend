@@ -559,12 +559,10 @@ public class DemoActivitySeeder {
             boolean decided = !("SUBMITTED".equals(state) || "UNDER_REVIEW".equals(state) || "WITHDRAWN".equals(state));
             OffsetDateTime made = at(on, 9 + random.nextInt(10));
             Long id = one("""
-                    insert into purchase_requests (reference, tenant_id, tenant_name, property_id, property_reference, property_title,
-                        asking_price, user_id, buyer_name, buyer_email, buyer_phone, offer_amount, currency, financing, deposit_available,
-                        buyer_message, state, decided_by_user_id, decided_at, decision_note, status, status_flag, created_at, updated_at, created_by)
-                    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'KES', ?, ?, ?, ?, ?, ?, ?, 1, 'Active', ?, ?, ?) returning id""", Long.class,
+                    insert into purchase_requests (reference, tenant_id, tenant_name, property_id, property_reference, property_title, asking_price, user_id, buyer_name, buyer_email, buyer_phone, offer_amount, original_amount, currency, financing, deposit_available, buyer_message, state, decided_by_user_id, decided_at, decision_note, status, status_flag, created_at, updated_at, created_by)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'KES', ?, ?, ?, ?, ?, ?, ?, 1, 'Active', ?, ?, ?) returning id""", Long.class,
                     ref("OF", on), u.tenantId(), tenantName, u.id(), u.reference(), u.developmentName() + " · " + u.label(),
-                    asking, who.id(), who.name(), who.email(), who.phone(), offer, financing[n % financing.length],
+                    asking, who.id(), who.name(), who.email(), who.phone(), offer, offer, financing[n % financing.length],
                     pct(offer, 10 + random.nextInt(15)), n % 2 == 0 ? "Pre-approved with my bank; can complete in 90 days." : null,
                     state, decided ? 1L : null, decided ? made.plusDays(1 + random.nextInt(4)) : null,
                     "DECLINED".equals(state) ? "Too far below asking for this floor." : "ACCEPTED".equals(state) ? "Agreed, subject to the deposit within 14 days." : null,

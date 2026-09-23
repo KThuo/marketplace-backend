@@ -54,6 +54,19 @@ public class MyLeadController {
         return ApiResponse.success("Sent", enquiries.addBuyerMessage(reference, request));
     }
 
+    @PostMapping("/offers/{reference}/counter")
+    @RequestAction("COUNTER OFFER")
+    public ApiResponse<OfferResponse> counterOffer(@PathVariable String reference,
+                                                   @Valid @RequestBody CounterRequest request) {
+        return ApiResponse.success("Sent", offers.buyerCounter(reference, request));
+    }
+
+    @PostMapping("/offers/{reference}/accept-counter")
+    @RequestAction("ACCEPT COUNTER")
+    public ApiResponse<OfferResponse> acceptCounter(@PathVariable String reference) {
+        return ApiResponse.success("Accepted", offers.acceptCounter(reference));
+    }
+
     @PostMapping("/offers/{reference}/messages")
     @RequestAction("MESSAGE ON OFFER")
     public ApiResponse<OfferResponse> addOfferMessage(@PathVariable String reference,

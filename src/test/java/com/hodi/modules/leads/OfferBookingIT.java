@@ -82,6 +82,31 @@ class OfferBookingIT {
                 .saleState(AppConstant.UNIT_AVAILABLE).constructionStatus(AppConstant.BUILD_PLANNED).build());
     }
 
+    @Test
+    @DisplayName("a counter stands until answered, and acceptance records the figure agreed")
+    void aCounterThenAcceptance() {
+        signInAsPlatform();
+        PurchaseRequest fresh = offer(AppConstant.PURCHASE_SUBMITTED);
+
+        OfferResponse countered = offers.counter(fresh.getReference(),
+                new com.hodi.modules.leads.LeadDtos.CounterRequest(new BigDecimal("7000000"), "Meet us here."));
+        assertEquals(AppConstant.PURCHASE_UNDER_REVIEW, countered.state(), "a counter is the seller considering");
+        assertEquals(0, countered.counterAmount().compareTo(new BigDecimal("7000000")));
+        assertEquals(AppConstant.SIDE_SELLER, countered.counterBy());
+        assertNull(countered.agreedAmount());
+        var move = countered.messages().get(countered.messages().size() - 1);
+        assertEquals("COUNTER", move.kind());
+        assertEquals(0, move.amount().compareTo(new BigDecimal("7000000")));
+
+        OfferResponse accepted = offers.decide(fresh.getReference(),
+                new com.hodi.modules.leads.LeadDtos.DecideOfferRequest("ACCEPT", null));
+        assertEquals(0, accepted.agreedAmount().compareTo(accepted.offerAmount()),
+                "what is agreed is the buyer's offer as it stands, not a counter they never took");
+        assertNull(accepted.counterAmount(), "acceptance clears any counter standing");
+        assertEquals("ACCEPTED", accepted.messages().get(accepted.messages().size() - 1).kind());
+        assertEquals(0, accepted.originalAmount().compareTo(fresh.getOfferAmount()), "the first figure is kept");
+    }
+
     @AfterEach
     void signOut() {
         SecurityContextHolder.clearContext();

@@ -3,6 +3,7 @@ package com.hodi.modules.leads;
 import com.hodi.common.dto.PagedDataRequest;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -37,7 +38,16 @@ public final class LeadDtos {
             String authorSide,
             String authorName,
             String body,
-            OffsetDateTime at) {}
+            OffsetDateTime at,
+            /** MESSAGE for words; OFFER, COUNTER, ACCEPTED_COUNTER, REVIEW, ACCEPTED, DECLINED, WITHDRAWN for a move. */
+            String kind,
+            /** The figure a move carries. Null for words. */
+            BigDecimal amount) {}
+
+    /** A counter: a figure, and a word to go with it. */
+    public record CounterRequest(
+            @NotNull(message = "Say the figure") @Positive(message = "The figure must be above zero") BigDecimal amount,
+            String note) {}
 
     public record EnquiryResponse(
             String reference,
@@ -176,7 +186,14 @@ public final class LeadDtos {
             List<MessageResponse> messages,
             /** The booking an accepted offer was converted into, or null while it is still only accepted. */
             String bookingId,
-            String bookingReference) {}
+            String bookingReference,
+            /** What the buyer first offered. Never changes. */
+            BigDecimal originalAmount,
+            /** The seller's counter the buyer has not yet answered, or null. */
+            BigDecimal counterAmount,
+            String counterBy,
+            /** The figure the offer was accepted at, or null until it is. */
+            BigDecimal agreedAmount) {}
 
     /**
      * Turning an accepted offer into a booking. Everything here is optional: the offer already names the

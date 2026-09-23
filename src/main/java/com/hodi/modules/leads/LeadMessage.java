@@ -52,6 +52,10 @@ public class LeadMessage {
      * remarks whose consequence has to be inferred from the timestamps around them.
      */
     @Column(name = "state_after", length = 32) private String stateAfter;
+    /** MESSAGE for words; OFFER, COUNTER, ACCEPTED_COUNTER, REVIEW, ACCEPTED, DECLINED, WITHDRAWN for a move. */
+    @Column(nullable = false, length = 24) @Builder.Default private String kind = "MESSAGE";
+    /** The figure a move carries — what was offered, countered or agreed. Null for words. */
+    @Column(precision = 15, scale = 2) private java.math.BigDecimal amount;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)

@@ -44,6 +44,13 @@ public class PurchaseRequest {
     @Column(name = "buyer_phone", length = 32) private String buyerPhone;
 
     @Column(name = "offer_amount", nullable = false, precision = 15, scale = 2) private BigDecimal offerAmount;
+    /** What the buyer first offered. Never changes; the thread tells the rest. */
+    @Column(name = "original_amount", precision = 15, scale = 2) private BigDecimal originalAmount;
+    /** The seller's counter the buyer has not yet answered, or null. */
+    @Column(name = "counter_amount", precision = 15, scale = 2) private BigDecimal counterAmount;
+    @Column(name = "counter_by", length = 16) private String counterBy;
+    /** The figure the offer was accepted at. Set once, on acceptance. */
+    @Column(name = "agreed_amount", precision = 15, scale = 2) private BigDecimal agreedAmount;
     @Column(nullable = false, length = 3) @Builder.Default private String currency = "KES";
     @Column(nullable = false, length = 16)
     @Builder.Default private String financing = AppConstant.FINANCING_MORTGAGE;
@@ -75,6 +82,12 @@ public class PurchaseRequest {
     private String searchText;
 
     /** Outstanding: nobody has answered it and the buyer has not taken it back. */
+    /** The first figure is whatever the offer was made at, wherever the row is built from. */
+    @jakarta.persistence.PrePersist
+    void keepTheFirstFigure() {
+        if (originalAmount == null) originalAmount = offerAmount;
+    }
+
     public boolean isLive() {
         return AppConstant.PURCHASE_SUBMITTED.equals(state)
                 || AppConstant.PURCHASE_UNDER_REVIEW.equals(state);

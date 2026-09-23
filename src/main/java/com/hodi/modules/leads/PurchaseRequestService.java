@@ -111,6 +111,7 @@ public class PurchaseRequestService {
                 .buyerEmail(buyer.getEmail())
                 .buyerPhone(EnquiryService.blankTo(request.contactPhone(), buyer.getPhone()))
                 .offerAmount(request.offerAmount())
+                .originalAmount(request.offerAmount())
                 .currency(property.getCurrency())
                 .financing(financing(request.financing()))
                 .affordabilityReference(EnquiryService.blankToNull(request.affordabilityReference()))
@@ -124,7 +125,7 @@ public class PurchaseRequestService {
         thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), userId, buyer.fullName(),
                 EnquiryService.blankTo(request.message(),
                         "Offered " + money(request.offerAmount(), property.getCurrency()) + "."),
-                AppConstant.PURCHASE_SUBMITTED);
+                AppConstant.PURCHASE_SUBMITTED, "OFFER", request.offerAmount());
 
         audit.record(AppConstant.AUDIT_OFFER_SUBMITTED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " on " + property.getReference());
@@ -164,7 +165,7 @@ public class PurchaseRequestService {
         repository.save(offer);
 
         thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(),
-                offer.getBuyerName(), "Withdrew the offer.", AppConstant.PURCHASE_WITHDRAWN);
+                offer.getBuyerName(), "Withdrew the offer.", AppConstant.PURCHASE_WITHDRAWN, "WITHDRAWN", null);
 
         notifier.toSeller(offer.getTenantId(),
                 "Offer withdrawn: " + offer.getPropertyTitle(),
@@ -213,6 +214,88 @@ public class PurchaseRequestService {
         return toResponse(offer);
     }
 
+    /**
+     * The seller comes back with a figure.
+     *
+     * <p>A counter is the seller considering the offer, so it also marks it as being considered. It stands
+     * until the buyer accepts it — which makes it their offer — or counters back. Only one counter stands at
+     * a time; a new one replaces it.
+     */
+    @Transactional
+    public OfferResponse counter(String reference, CounterRequest request) {
+        PurchaseRequest offer = loadForSeller(reference);
+        if (!offer.isLive()) {
+            throw new HodiException("This offer is " + offer.getState().toLowerCase(java.util.Locale.ROOT)
+                    + "; the conversation is closed.", HttpStatus.CONFLICT);
+        }
+        offer.setCounterAmount(request.amount());
+        offer.setCounterBy(AppConstant.SIDE_SELLER);
+        offer.setState(AppConstant.PURCHASE_UNDER_REVIEW);
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+        String line = "Countered at " + money(request.amount(), offer.getCurrency()) + ".";
+        thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(),
+                EnquiryService.blankTo(request.note(), line), offer.getState(), "COUNTER", request.amount());
+        notifier.toBuyer(offer.getUserId(), "A counter on your offer for " + offer.getPropertyTitle(),
+                offer.getTenantName() + " has come back at " + money(request.amount(), offer.getCurrency())
+                        + " on " + offer.getPropertyTitle() + ". Accept it or counter from your offers.",
+                "/account/conversations?tab=offers&ref=" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    /** The buyer takes the seller's counter: it becomes their offer, for the seller to accept. */
+    @Transactional
+    public OfferResponse acceptCounter(String reference) {
+        PurchaseRequest offer = loadMine(reference);
+        if (offer.getCounterAmount() == null) {
+            throw new HodiException("There is no counter on this offer to accept.", HttpStatus.CONFLICT);
+        }
+        BigDecimal figure = offer.getCounterAmount();
+        offer.setOfferAmount(figure);
+        offer.setCounterAmount(null);
+        offer.setCounterBy(null);
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+        thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(), offer.getBuyerName(),
+                "Accepted the counter of " + money(figure, offer.getCurrency()) + ".", offer.getState(),
+                "ACCEPTED_COUNTER", figure);
+        notifier.toSeller(offer.getTenantId(), "Counter accepted: " + offer.getPropertyTitle(),
+                offer.getBuyerName() + " has accepted your counter of " + money(figure, offer.getCurrency())
+                        + " on " + offer.getPropertyTitle() + ". Accept the offer to proceed.",
+                "/app/offers/" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    /** The buyer comes back with a figure of their own; any counter standing is answered by it. */
+    @Transactional
+    public OfferResponse buyerCounter(String reference, CounterRequest request) {
+        PurchaseRequest offer = loadMine(reference);
+        offer.setOfferAmount(request.amount());
+        offer.setCounterAmount(null);
+        offer.setCounterBy(null);
+        offer.setUpdatedBy(AuthContext.username());
+        repository.save(offer);
+        String line = "Offered " + money(request.amount(), offer.getCurrency()) + " instead.";
+        thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(), offer.getBuyerName(),
+                EnquiryService.blankTo(request.note(), line), offer.getState(), "COUNTER", request.amount());
+        notifier.toSeller(offer.getTenantId(), "A new figure on an offer: " + offer.getPropertyTitle(),
+                offer.getBuyerName() + " now offers " + money(request.amount(), offer.getCurrency()) + " for "
+                        + offer.getPropertyTitle() + ".",
+                "/app/offers/" + offer.getReference());
+        return toResponse(offer);
+    }
+
+    /** The buyer's own live offer, or a refusal that says why. */
+    private PurchaseRequest loadMine(String reference) {
+        PurchaseRequest offer = repository.findMineByReference(EnquiryService.trim(reference), AuthContext.requireUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("Offer", reference));
+        if (!offer.isLive()) {
+            throw new HodiException("This offer is " + offer.getState().toLowerCase(java.util.Locale.ROOT)
+                    + "; the conversation is closed.", HttpStatus.CONFLICT);
+        }
+        return offer;
+    }
+
     /** A word from the buyer on their own live offer. */
     @Transactional
     public OfferResponse addBuyerMessage(String reference, ReplyRequest request) {
@@ -255,15 +338,24 @@ public class PurchaseRequestService {
 
         String decision = EnquiryService.trim(request.decision()).toUpperCase();
         String line;
+        String kind;
+        BigDecimal figure = null;
         switch (decision) {
             case "REVIEW" -> {
                 offer.setState(AppConstant.PURCHASE_UNDER_REVIEW);
+                kind = "REVIEW";
                 line = offer.getTenantName() + " is considering your offer on " + offer.getPropertyTitle()
                         + ".";
             }
             case "ACCEPT" -> {
                 offer.setState(AppConstant.PURCHASE_ACCEPTED);
                 offer.setDecidedAt(OffsetDateTime.now());
+                // The figure agreed is the buyer's current offer: a counter still standing is not agreed.
+                offer.setAgreedAmount(offer.getOfferAmount());
+                offer.setCounterAmount(null);
+                offer.setCounterBy(null);
+                kind = "ACCEPTED";
+                figure = offer.getOfferAmount();
                 line = offer.getTenantName() + " has accepted your offer of "
                         + money(offer.getOfferAmount(), offer.getCurrency()) + " for "
                         + offer.getPropertyTitle() + ". They will be in touch about what happens next.";
@@ -271,6 +363,7 @@ public class PurchaseRequestService {
             case "DECLINE" -> {
                 offer.setState(AppConstant.PURCHASE_DECLINED);
                 offer.setDecidedAt(OffsetDateTime.now());
+                kind = "DECLINED";
                 line = offer.getTenantName() + " has declined your offer on " + offer.getPropertyTitle()
                         + ".";
             }
@@ -289,7 +382,7 @@ public class PurchaseRequestService {
          * note, which is what "the conversation was not saved" meant.
          */
         thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(),
-                EnquiryService.blankTo(request.note(), line), offer.getState());
+                EnquiryService.blankTo(request.note(), line), offer.getState(), kind, figure);
 
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " " + offer.getState());
@@ -407,7 +500,9 @@ public class PurchaseRequestService {
                 p.getOfferAmount(), p.getCurrency(), p.getFinancing(), p.getAffordabilityReference(),
                 p.getProductReference(), p.getDepositAvailable(), p.getBuyerMessage(), p.getState(),
                 p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt(), messages,
-                HashIdUtil.encodeId(p.getBookingId()), bookingReference);
+                HashIdUtil.encodeId(p.getBookingId()), bookingReference,
+                p.getOriginalAmount() == null ? p.getOfferAmount() : p.getOriginalAmount(),
+                p.getCounterAmount(), p.getCounterBy(), p.getAgreedAmount());
     }
 
     private String nextReference() {
