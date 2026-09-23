@@ -102,6 +102,12 @@ public class LeadController {
         return ApiResponse.success(offers.list(request));
     }
 
+    @GetMapping("/api/v1/offers/{reference}")
+    @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_VIEW')")
+    public ApiResponse<OfferResponse> findOffer(@PathVariable String reference) {
+        return ApiResponse.success(offers.find(reference));
+    }
+
     @PostMapping("/api/v1/offers/{reference}/decide")
     @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
     @RequestAction("DECIDE OFFER")

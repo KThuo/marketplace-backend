@@ -125,6 +125,8 @@ class OfferBookingIT {
         PurchaseRequest accepted = offer(AppConstant.PURCHASE_ACCEPTED);
 
         OfferResponse booked = offers.book(accepted.getReference(), null);
+        assertEquals(booked.bookingReference(), offers.find(accepted.getReference()).bookingReference(),
+                "the detail read shows the same offer, booking and all");
 
         assertNotNull(booked.bookingId());
         assertTrue(booked.bookingReference().startsWith("BK"), booked.bookingReference());

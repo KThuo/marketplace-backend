@@ -189,6 +189,12 @@ public class PurchaseRequestService {
                 repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt"))));
     }
 
+    /** One offer, with everything said about it, for the seller's detail page. */
+    @Transactional(readOnly = true)
+    public OfferResponse find(String reference) {
+        return toResponse(loadForSeller(reference));
+    }
+
     /**
      * Accept, decline, or mark as being looked at.
      *
