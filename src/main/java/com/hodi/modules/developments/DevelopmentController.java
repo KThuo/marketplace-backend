@@ -59,6 +59,7 @@ public class DevelopmentController {
     private final DevelopmentCollaboratorService collaborators;
     private final DevelopmentProgressService progress;
     private final DevelopmentMediaService mediaService;
+    private final DevelopmentTourService tourService;
 
     // ── the development ───────────────────────────────────────────────────────
 
@@ -362,6 +363,65 @@ public class DevelopmentController {
             @RequestParam(required = false) String childId) {
         mediaService.remove(hashId, ownerType, childId, mediaId);
         return ApiResponse.success("Removed", null);
+    }
+
+    // ── virtual tours ─────────────────────────────────────────────────────────
+    //
+    // The project's (ownerType DEVELOPMENT, the default) or one typology's (UNIT_TYPE with childId). Gated
+    // like the photographs, for the same reason: a walkthrough is the project's media.
+
+    @GetMapping("/{hashId}/tours")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_VIEW')")
+    public ApiResponse<List<com.hodi.modules.tours.TourDtos.TourResponse>> tours(
+            @PathVariable String hashId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId) {
+        return ApiResponse.success(tourService.list(hashId, ownerType, childId));
+    }
+
+    @PostMapping("/{hashId}/tours")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("ADD_DEVELOPMENT_TOUR")
+    public ApiResponse<com.hodi.modules.tours.TourDtos.TourResponse> addTour(
+            @PathVariable String hashId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId,
+            @Valid @RequestBody com.hodi.modules.tours.TourDtos.SaveTourRequest request) {
+        return ApiResponse.success("Tour added", tourService.add(hashId, ownerType, childId, request));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("EDIT_DEVELOPMENT_TOUR")
+    public ApiResponse<com.hodi.modules.tours.TourDtos.TourResponse> editTour(
+            @PathVariable String hashId, @PathVariable String tourId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId,
+            @Valid @RequestBody com.hodi.modules.tours.TourDtos.EditTourRequest request) {
+        return ApiResponse.success("Tour saved", tourService.edit(hashId, ownerType, childId, tourId, request));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}/move")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("MOVE_DEVELOPMENT_TOUR")
+    public ApiResponse<List<com.hodi.modules.tours.TourDtos.TourResponse>> moveTour(
+            @PathVariable String hashId, @PathVariable String tourId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId,
+            @RequestBody com.hodi.modules.tours.TourDtos.MoveTourRequest request) {
+        return ApiResponse.success("Order saved",
+                tourService.move(hashId, ownerType, childId, tourId, request.toIndex()));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}/delete")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_MEDIA')")
+    @RequestAction("DELETE_DEVELOPMENT_TOUR")
+    public ApiResponse<Void> removeTour(
+            @PathVariable String hashId, @PathVariable String tourId,
+            @RequestParam(defaultValue = "DEVELOPMENT") String ownerType,
+            @RequestParam(required = false) String childId) {
+        tourService.remove(hashId, ownerType, childId, tourId);
+        return ApiResponse.success("Tour removed", null);
     }
 
     // ── progress ──────────────────────────────────────────────────────────────

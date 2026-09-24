@@ -27,6 +27,7 @@ public class PublicPropertyController {
 
     private final PublicPropertyService service;
     private final ProgressUpdateService progressUpdates;
+    private final PropertyTourService tours;
 
     @GetMapping("/search")
     public ApiResponse<PagedResponse<PublicPropertyResponse>> search(
@@ -60,5 +61,17 @@ public class PublicPropertyController {
     public ApiResponse<java.util.List<ProgressUpdateService.PublicUpdate>> progress(
             @PathVariable String reference) {
         return ApiResponse.success(progressUpdates.publishedForListing(reference));
+    }
+
+    /**
+     * The listing's walkthrough videos — its own, its typology's and its project's.
+     *
+     * <p>Beside the listing rather than inside it, for the timeline's reason: most listings have none, and the
+     * card's {@code hasTour} already says whether asking is worth it.
+     */
+    @GetMapping("/{reference}/tours")
+    public ApiResponse<java.util.List<com.hodi.modules.tours.TourDtos.TourResponse>> tours(
+            @PathVariable String reference) {
+        return ApiResponse.success(tours.publicFor(reference));
     }
 }

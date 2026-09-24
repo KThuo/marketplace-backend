@@ -26,6 +26,7 @@ public class PublicDevelopmentController {
 
     private final PublicDevelopmentService service;
     private final DevelopmentProgressService progress;
+    private final DevelopmentTourService tours;
 
     @GetMapping("/search")
     public ApiResponse<PagedResponse<PublicDevelopmentResponse>> search(
@@ -82,5 +83,11 @@ public class PublicDevelopmentController {
     @GetMapping("/{reference}/posts")
     public ApiResponse<List<PublicPost>> posts(@PathVariable String reference) {
         return ApiResponse.success(progress.publicPosts(reference));
+    }
+
+    /** The project's walkthroughs, then each kind of home's, each named for what it shows. */
+    @GetMapping("/{reference}/tours")
+    public ApiResponse<List<com.hodi.modules.tours.TourDtos.TourResponse>> tours(@PathVariable String reference) {
+        return ApiResponse.success(tours.publicFor(reference));
     }
 }

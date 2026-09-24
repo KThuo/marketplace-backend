@@ -37,6 +37,7 @@ public class PropertyController {
     private final PropertyService service;
     private final ProgressUpdateService progressUpdates;
     private final PropertyMediaService mediaService;
+    private final PropertyTourService tourService;
 
     @GetMapping("/list")
     @PreAuthorize("hasAuthority('PROPERTIES_VIEW')")
@@ -160,6 +161,53 @@ public class PropertyController {
     public ApiResponse<Void> removeMedia(@PathVariable String hashId, @PathVariable String mediaId) {
         mediaService.remove(hashId, mediaId);
         return ApiResponse.success("Photograph removed", null);
+    }
+
+    // ── virtual tours ─────────────────────────────────────────────────────────
+    //
+    // Gated like the photographs: a tour is the listing's media, and whoever may add a picture may add a
+    // walkthrough. On a listing generated from a development these read and write the typology's tours —
+    // PropertyTourService says why.
+
+    @GetMapping("/{hashId}/tours")
+    @PreAuthorize("hasAuthority('PROPERTIES_VIEW')")
+    public ApiResponse<List<com.hodi.modules.tours.TourDtos.TourResponse>> tours(@PathVariable String hashId) {
+        return ApiResponse.success(tourService.list(hashId));
+    }
+
+    @PostMapping("/{hashId}/tours")
+    @PreAuthorize("hasAuthority('PROPERTIES_MEDIA')")
+    @RequestAction("ADD_LISTING_TOUR")
+    public ApiResponse<com.hodi.modules.tours.TourDtos.TourResponse> addTour(
+            @PathVariable String hashId,
+            @Valid @RequestBody com.hodi.modules.tours.TourDtos.SaveTourRequest request) {
+        return ApiResponse.success("Tour added", tourService.add(hashId, request));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}")
+    @PreAuthorize("hasAuthority('PROPERTIES_MEDIA')")
+    @RequestAction("EDIT_LISTING_TOUR")
+    public ApiResponse<com.hodi.modules.tours.TourDtos.TourResponse> editTour(
+            @PathVariable String hashId, @PathVariable String tourId,
+            @Valid @RequestBody com.hodi.modules.tours.TourDtos.EditTourRequest request) {
+        return ApiResponse.success("Tour saved", tourService.edit(hashId, tourId, request));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}/move")
+    @PreAuthorize("hasAuthority('PROPERTIES_MEDIA')")
+    @RequestAction("MOVE_LISTING_TOUR")
+    public ApiResponse<List<com.hodi.modules.tours.TourDtos.TourResponse>> moveTour(
+            @PathVariable String hashId, @PathVariable String tourId,
+            @RequestBody com.hodi.modules.tours.TourDtos.MoveTourRequest request) {
+        return ApiResponse.success("Order saved", tourService.move(hashId, tourId, request.toIndex()));
+    }
+
+    @PostMapping("/{hashId}/tours/{tourId}/delete")
+    @PreAuthorize("hasAuthority('PROPERTIES_MEDIA')")
+    @RequestAction("REMOVE_LISTING_TOUR")
+    public ApiResponse<Void> removeTour(@PathVariable String hashId, @PathVariable String tourId) {
+        tourService.remove(hashId, tourId);
+        return ApiResponse.success("Tour removed", null);
     }
 
     // ── progress updates (M8, BRD FR087–FR089) ────────────────────────────────

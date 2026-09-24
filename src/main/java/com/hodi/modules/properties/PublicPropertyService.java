@@ -55,11 +55,14 @@ public class PublicPropertyService {
     private final com.hodi.modules.developments.UnitFeatureConfigRepository featureConfigs;
     private final com.hodi.modules.developments.AmenityService amenityScopes;
     private final com.hodi.modules.media.MediaAssetService mediaAssets;
+    private final PropertyTourService tours;
 
     @Transactional(readOnly = true)
     public PagedResponse<PublicPropertyResponse> search(PublicSearchRequest request) {
         var page = repository.findAll(criteria(request), request.toPageable(sortOf(request.getSort())));
-        return PagedResponse.from(page, this::toCard);
+        // Asked once for the page, not once per card: search is the hottest read path here.
+        var toured = tours.withTours(page.getContent());
+        return PagedResponse.from(page, p -> toCard(p, toured.contains(p.getId())));
     }
 
     /**
@@ -248,8 +251,8 @@ public class PublicPropertyService {
     // ── mapping ───────────────────────────────────────────────────────────────
 
     /** The card: enough to decide whether to open it, and nothing more. */
-    private PublicPropertyResponse toCard(Property p) {
-        return response(p, List.of(), List.of());
+    private PublicPropertyResponse toCard(Property p, boolean hasTour) {
+        return response(p, List.of(), List.of(), hasTour);
     }
 
     /**
@@ -292,7 +295,8 @@ public class PublicPropertyService {
             plans.addAll(ofKind(project, AppConstant.MEDIA_KIND_SITE_PLAN));
             plans.addAll(ofKind(project, AppConstant.MEDIA_KIND_FLOOR_PLAN));
         }
-        return response(p, photos.stream().distinct().toList(), plans.stream().distinct().toList());
+        return response(p, photos.stream().distinct().toList(), plans.stream().distinct().toList(),
+                !tours.withTours(List.of(p)).isEmpty());
     }
 
     private List<String> urls(List<String> keys) {
@@ -329,7 +333,8 @@ public class PublicPropertyService {
         return null;
     }
 
-    private PublicPropertyResponse response(Property p, List<String> images, List<String> floorPlans) {
+    private PublicPropertyResponse response(Property p, List<String> images, List<String> floorPlans,
+                                            boolean hasTour) {
         return new PublicPropertyResponse(
                 HashIdUtil.encodeId(p.getId()),
                 p.getReference(),
@@ -377,7 +382,8 @@ public class PublicPropertyService {
                 p.isUnitTypeListing() ? p.getUnitsTotal() : null,
                 p.isUnitTypeListing() ? p.getConstructionStatus() : null,
                 p.isUnit() ? publicDevelopments.unitDetail(p) : null,
-                amenitiesFor(p));
+                amenitiesFor(p),
+                hasTour);
     }
 
     /**

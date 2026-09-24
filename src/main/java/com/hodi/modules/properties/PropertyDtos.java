@@ -307,7 +307,14 @@ public final class PropertyDtos {
              * <p>Both levels where there are two: a unit's own and its typology's, because a buyer does not
              * distinguish them and a list showing one and not the other describes half a home.
              */
-            java.util.List<PublicAmenity> amenities) {}
+            java.util.List<PublicAmenity> amenities,
+            /**
+             * Whether there is a walkthrough video to watch — its own, its typology's or its project's.
+             *
+             * <p>A flag on the card rather than the tours themselves: search shows the "Video tour" pill from
+             * it, and the detail page fetches {@code /tours} only when it is true.
+             */
+            boolean hasTour) {}
 
     /**
      * One amenity, as a buyer reads it.

@@ -7,7 +7,6 @@ import com.hodi.infra.storage.StorageService;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.media.MediaAssetService;
 import com.hodi.modules.properties.PropertyDtos.MediaResponse;
-import com.hodi.security.TenantScope;
 import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.security.principal.AuthContext;
 import lombok.RequiredArgsConstructor;
@@ -61,6 +60,7 @@ public class PropertyMediaService {
     private final MediaAssetService assets;
     private final StorageService storage;
     private final AuditService audit;
+    private final ListingAccess access;
 
     /**
      * Everything this listing shows: its own files, its typology's, and its project's.
@@ -77,7 +77,7 @@ public class PropertyMediaService {
      */
     @Transactional(readOnly = true)
     public List<MediaResponse> list(String propertyHashId) {
-        Property property = requireVisible(propertyHashId);
+        Property property = access.requireVisible(propertyHashId);
         List<MediaResponse> own = repository.findForProperty(property.getId()).stream()
                 .map(this::toResponse).toList();
         if (!sharesTypologyMedia(property)) return own;
@@ -94,7 +94,7 @@ public class PropertyMediaService {
 
     @Transactional
     public MediaResponse add(String propertyHashId, MultipartFile file, String mediaKind, String caption) {
-        Property property = requireOwn(propertyHashId);
+        Property property = access.requireOwn(propertyHashId);
         if (sharesTypologyMedia(property)) {
             /*
              * Straight into the typology's gallery, and then the card's cover cache is refreshed from it —
@@ -158,7 +158,7 @@ public class PropertyMediaService {
 
     @Transactional
     public void makePrimary(String propertyHashId, String mediaHashId) {
-        Property property = requireOwn(propertyHashId);
+        Property property = access.requireOwn(propertyHashId);
         if (sharesTypologyMedia(property)) {
             assertNotTheProjects(property, mediaHashId, "make that the cover");
             assets.makePrimary(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId(), mediaHashId);
@@ -182,7 +182,7 @@ public class PropertyMediaService {
 
     @Transactional
     public void remove(String propertyHashId, String mediaHashId) {
-        Property property = requireOwn(propertyHashId);
+        Property property = access.requireOwn(propertyHashId);
         if (sharesTypologyMedia(property)) {
             assertNotTheProjects(property, mediaHashId, "remove that");
             assets.remove(AppConstant.MEDIA_OWNER_UNIT_TYPE, property.getUnitTypeId(), mediaHashId);
@@ -300,48 +300,6 @@ public class PropertyMediaService {
     }
 
     // ── guards ────────────────────────────────────────────────────────────────
-
-    /**
-     * A listing this caller may see — the same rule that let them open it.
-     *
-     * <p>Reading the gallery used to demand a matching tenant id, which the bank's own staff do not have:
-     * they hold no tenant at all. So somebody from the platform could open a listing, see it, watch its
-     * photographs on the marketplace — and be told by this one endpoint that it "belongs to another
-     * organisation", which the screen reported as an empty gallery. Meanwhile the same person could add
-     * photographs to that very album through the development screens, because those have always admitted
-     * them. One album, two doors, and only one of them locked.
-     */
-    private Property requireVisible(String hashId) {
-        Property property = properties.findById(HashIdUtil.decodeId(hashId))
-                .orElseThrow(() -> new ResourceNotFoundException("Listing", hashId));
-        if (TenantScope.unrestricted()) return property;
-        var visible = TenantScope.visibleIds();
-        if (visible == null || !visible.contains(property.getTenantId())) {
-            // Not found rather than forbidden, exactly as PropertyService answers: whether a listing exists
-            // is itself information, and a partnered lender reading a portfolio should learn no more here.
-            throw new ResourceNotFoundException("Listing", hashId);
-        }
-        return property;
-    }
-
-    /**
-     * A listing this caller may change the pictures of: their organisation's, or the platform's oversight.
-     *
-     * <p>Platform staff are admitted for the same reason {@code PropertyService.requireManageable} admits
-     * them to a withdrawal — whoever operates a marketplace has to be able to take down something unlawful
-     * without waiting for the seller to agree, and a photograph is the commonest such thing. A partnered
-     * lender is not: reading a seller's portfolio is not permission to edit it.
-     */
-    private Property requireOwn(String hashId) {
-        Property property = requireVisible(hashId);
-        if (AuthContext.require().isPlatformStaff()) return property;
-        Long tenantId = AuthContext.tenantId();
-        if (tenantId == null || !tenantId.equals(property.getTenantId())) {
-            throw new HodiException("That listing belongs to another organisation.",
-                    HttpStatus.FORBIDDEN);
-        }
-        return property;
-    }
 
     /** The photograph, and it has to be this listing's — an id from another one is not found here. */
     private PropertyMedia requireOf(Property property, String mediaHashId) {
