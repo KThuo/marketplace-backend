@@ -32,6 +32,7 @@ public class DevelopmentFinanceController {
 
     private final DevelopmentFinanceService service;
     private final DevelopmentMoneySettingsService settings;
+    private final com.hodi.modules.payments.PaymentAccountService accounts;
 
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('DEVELOPMENTS_FINANCE_VIEW')")
@@ -55,6 +56,14 @@ public class DevelopmentFinanceController {
             @PathVariable String hashId,
             @Valid @RequestBody DevelopmentMoneySettingsService.SaveMoneySettingsRequest request) {
         return ApiResponse.success("Saved", settings.save(hashId, request));
+    }
+
+    /** The accounts this development may pay from: the owner's that reach it, and the bank's where it manages. */
+    @GetMapping("/debit-accounts")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_FINANCE_VIEW')")
+    public ApiResponse<List<com.hodi.modules.payments.PaymentTypeDtos.OfferedAccount>> debitAccounts(
+            @PathVariable String hashId) {
+        return ApiResponse.success(accounts.debitAccountsFor(hashId));
     }
 
     // ── the ledger ────────────────────────────────────────────────────────────

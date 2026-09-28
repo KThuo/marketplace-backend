@@ -308,3 +308,34 @@ Suite after the review: 489 tests, 0 failures. The screens are still unverified 
 
 **Not verified in a browser**, as with phase 1.
 
+### Phase 3 — done (28 September 2026)
+
+No migration: a debit account is a `payment_accounts` row on a `SEND` method (PesaLink), which the schema
+already held. What changed is who may set one up and what a development may pay from.
+
+**Backend**
+- `DEBIT_ACCOUNTS_MANAGE` (PAYMENTS module, held by owners' staff and the bank's). Setting up a way of
+  *collecting* still needs `PAYMENT_TYPES_MANAGE`; setting up an account to *pay from* needs this one. The
+  account endpoints admit either, and `PaymentAccountService` decides per method which it needs.
+- A paying-out account never answers to the collection setting: an organisation whose buyers pay the bank
+  still pays its contractors from an account of its own. Scoped to a development, it is set up by whichever
+  side manages that development's spending (`assertMayManageSpending`); the form's development list follows
+  the method chosen. The platform's own `SEND` account stays the bank's.
+- `debitAccountsFor(development)`: the owner's live `SEND` accounts that reach it, plus the platform's where
+  the bank manages spending, and never a collecting account. Exposed as
+  `GET /developments/{id}/finance/debit-accounts`; phase 4's payment form picks from it.
+- Maker/Checker and the one-time code are unchanged: the existing account approval covers it.
+- `DebitAccountsIT`: 4 tests. One bug found by them: `Map.of(...).get(null)` threw for an account with no
+  development.
+
+**Frontend**
+- The account form asks "It pays for" or "It collects for" by method, reloads the developments on offer when
+  the method changes, and says what approval means for a paying account. The accounts list says "pays out"
+  or "collects" on each row; either permission opens it.
+- The finance tab gains a **Pays from** card: the accounts this development may pay from, or why there are
+  none and who can fix it.
+
+**Left as it was, worth knowing**
+- A debit-account manager needs `PAYMENT_TYPES_VIEW` to reach the Payment types screen at all; owners' system
+  groups hold it already.
+

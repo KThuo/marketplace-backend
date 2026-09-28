@@ -294,6 +294,12 @@ public enum AppPermissionEnum {
     BENEFICIARIES_MANAGE("Register beneficiaries and change where they are paid", AppModuleEnum.PAYMENTS),
     /** Its own permission: held by the person who registered the payee, it is not a second pair of eyes. */
     BENEFICIARIES_APPROVE("Approve a beneficiary before it can be paid", AppModuleEnum.PAYMENTS),
+    /**
+     * The accounts a development pays from — the owner's own money. Nothing to do with collecting, which the
+     * bank decides per development; an organisation whose buyers pay the bank still pays its contractors from
+     * an account of its own, and this is the permission to set one up.
+     */
+    DEBIT_ACCOUNTS_MANAGE("Set up the accounts a development pays from", AppModuleEnum.PAYMENTS),
     /** The kinds of payee — a platform list, like cost categories. */
     BENEFICIARY_TYPES_MANAGE("Add, rename and suspend beneficiary types", AppModuleEnum.PAYMENTS, true),
 

@@ -33,13 +33,13 @@ public class PaymentTypeController {
     // ── the accounts ──────────────────────────────────────────────────────────
 
     @GetMapping("/list")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_VIEW')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_VIEW\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<PagedResponse<AccountResponse>> list(@ModelAttribute AccountListRequest request) {
         return ApiResponse.success(accounts.list(request));
     }
 
     @GetMapping("/find/{hashId}")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_VIEW')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_VIEW\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<AccountResponse> find(@PathVariable String hashId) {
         return ApiResponse.success(accounts.find(hashId));
     }
@@ -72,13 +72,13 @@ public class PaymentTypeController {
      * what is absent from it.
      */
     @GetMapping("/accounts/setup")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<PaymentTypeDtos.AccountSetupContext> setupContext() {
         return ApiResponse.success(accounts.setupContext());
     }
 
     @GetMapping("/assignable")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<List<AssignableChannel>> assignable(
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String institutionId) {
@@ -87,11 +87,12 @@ public class PaymentTypeController {
 
     /** The developments an account may be narrowed to, for the form. */
     @GetMapping("/developments")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<List<DevelopmentOption>> developments(
             @RequestParam(required = false) String tenantId,
-            @RequestParam(required = false) String institutionId) {
-        return ApiResponse.success(accounts.developmentOptions(tenantId, institutionId));
+            @RequestParam(required = false) String institutionId,
+            @RequestParam(required = false) String paymentTypeId) {
+        return ApiResponse.success(accounts.developmentOptions(tenantId, institutionId, paymentTypeId));
     }
 
     /**
@@ -107,7 +108,7 @@ public class PaymentTypeController {
 
     /** The duplicate check the form runs before a code is spent. */
     @GetMapping("/check-account")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     public ApiResponse<AccountCheck> checkAccount(@RequestParam String accountNo,
                                                   @RequestParam(required = false) String excluding) {
         return ApiResponse.success(accounts.checkAccount(accountNo, excluding));
@@ -121,7 +122,7 @@ public class PaymentTypeController {
      * was typed.
      */
     @PostMapping("/otp")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     @RequestAction("REQUEST_PAYMENT_ACCOUNT_CODE")
     public ApiResponse<OtpIssued> requestCode(@RequestBody(required = false) OtpRequest request) {
         OtpIssued issued = accounts.requestCode(request == null ? new OtpRequest(null, null) : request);
@@ -129,7 +130,7 @@ public class PaymentTypeController {
     }
 
     @PostMapping("/create")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     @RequestAction("SET_UP_PAYMENT_ACCOUNT")
     public ApiResponse<AccountResponse> assign(@Valid @RequestBody SaveAccountRequest request) {
         AccountResponse saved = accounts.assign(request);
@@ -137,7 +138,7 @@ public class PaymentTypeController {
     }
 
     @PostMapping("/update/{hashId}")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     @RequestAction("UPDATE_PAYMENT_ACCOUNT")
     public ApiResponse<AccountResponse> update(@PathVariable String hashId,
                                                @Valid @RequestBody SaveAccountRequest request) {
@@ -145,7 +146,7 @@ public class PaymentTypeController {
     }
 
     @PostMapping("/{hashId}/status")
-    @PreAuthorize("hasAuthority('PAYMENT_TYPES_MANAGE')")
+    @PreAuthorize("hasAnyAuthority(\'PAYMENT_TYPES_MANAGE\',\'DEBIT_ACCOUNTS_MANAGE\')")
     @RequestAction("SET_PAYMENT_ACCOUNT_STATUS")
     public ApiResponse<Void> setStatus(@PathVariable String hashId, @RequestParam boolean active) {
         return ApiResponse.success(accounts.setStatus(hashId, active), null);

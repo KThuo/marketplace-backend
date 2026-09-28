@@ -104,7 +104,9 @@ public final class PaymentTypeDtos {
             /** The bank set it up, rather than the organisation it belongs to. */
             boolean configuredByBank,
             /** Whether this caller may edit or withdraw it — false for an owner on the bank's accounts. */
-            boolean mayChange) {}
+            boolean mayChange,
+            /** Pays out rather than collects. */
+            boolean sends) {}
 
     /**
      * Assign or edit an account.
@@ -151,7 +153,9 @@ public final class PaymentTypeDtos {
             /** What an account of this channel asks for — rendered by the form, empty when it asks nothing. */
             java.util.List<ChannelConfig.Field> accountFields,
             /** What one of them is called: "Biller" on a Co-op biller, "Account" everywhere else. */
-            String accountsLabel) {}
+            String accountsLabel,
+            /** A way of paying out rather than collecting: set up under the debit-accounts permission. */
+            boolean sends) {}
 
     /**
      * An account the receive form may name for a booking.
@@ -196,7 +200,11 @@ public final class PaymentTypeDtos {
     public record AccountSetupContext(
             boolean organisationsMayCollect,
             boolean platformStaff,
-            int ownCollectingDevelopments) {}
+            int ownCollectingDevelopments,
+            /** Holds the permission to set up ways of collecting. */
+            boolean mayCollect,
+            /** Holds the permission to set up accounts to pay from. */
+            boolean mayDebit) {}
 
     public record OfferedAccount(
             String id,

@@ -54,6 +54,9 @@ public class PaymentAccountService {
 
     /** What {@code payments.collection.scope} reads when an organisation may collect its own money. */
     static final String SCOPE_ORGANISATION = "ORGANISATION";
+    /** Setting up a way of collecting, and setting up an account to pay from, are two permissions. */
+    static final String PERM_COLLECT = "PAYMENT_TYPES_MANAGE";
+    static final String PERM_DEBIT = "DEBIT_ACCOUNTS_MANAGE";
 
     private final org.springframework.context.ApplicationEventPublisher events;
     private final PaymentAccountRepository accounts;
@@ -117,12 +120,16 @@ public class PaymentAccountService {
          * of their developments is set to OWNER collection; and in the second case only ways of collecting are
          * offered, because a money-out method still answers to the platform-wide setting.
          */
-        boolean onlyCollecting = false;
-        if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect()) {
-            if (!collectsSomewhere(owner)) return List.of();
-            onlyCollecting = true;
-        }
-        final boolean collectingOnly = onlyCollecting;
+        /*
+         * And a second question for the second kind of method. May this caller set up a way of *paying out*
+         * for this owner: anybody holding DEBIT_ACCOUNTS_MANAGE for their own organisation, or the bank's staff
+         * for anybody. It never answers to the collection setting — an organisation whose buyers pay the bank
+         * still pays its own contractors from an account of its own. Each method is offered by its own answer.
+         */
+        boolean mayCollect = AuthContext.hasAuthority(PERM_COLLECT)
+                && (owner.platform() || caller.isPlatformStaff() || organisationsMayCollect() || collectsSomewhere(owner));
+        boolean mayDebit = AuthContext.hasAuthority(PERM_DEBIT) && (!owner.platform() || caller.isPlatformStaff());
+        if (!mayCollect && !mayDebit) return List.of();
         /*
          * The same allow-list the catalogue screen applies, for the reason it applies it: this deployment
          * banks with one of the four providers the reference gateway fronts, and a form offering the other three is a form
@@ -140,13 +147,14 @@ public class PaymentAccountService {
                  * transfer method is configured here even though no payer is ever offered it.
                  */
                 .filter(PaymentType::configurable)
-                .filter(t -> !collectingOnly || t.selectable())
+                .filter(t -> t.selectable() ? mayCollect : mayDebit)
                 .filter(t -> !(t.isManual() && alreadyHeld(owner, t.getId(), null)))
                 .map(t -> new AssignableChannel(HashIdUtil.encodeId(t.getId()), t.getName(),
                         t.getDescription(), t.getProviderName(), t.getCategory(), t.getMethod(),
                         t.needsAccount(), t.isRequiresShortCode(),
                         declaredFields(t, null),
-                        ChannelConfig.accountsLabel(t.getAccountConfigFields())))
+                        ChannelConfig.accountsLabel(t.getAccountConfigFields()),
+                        !t.selectable()))
                 .toList();
     }
 
@@ -328,21 +336,83 @@ public class PaymentAccountService {
                 ? "Account " + value + " is already registered on the platform." : null);
     }
 
-    /** The developments an owner's account may be narrowed to. */
     @Transactional(readOnly = true)
     public List<DevelopmentOption> developmentOptions(String tenantHash, String institutionHash) {
+        return developmentOptions(tenantHash, institutionHash, null);
+    }
+
+    /**
+     * The developments an owner's account may be narrowed to, which depends on what the account is for.
+     *
+     * <p>A collecting account: only the developments the owner collects for themselves; the bank's staff are
+     * offered all of them, because the bank configures the accounts that collect for the rest. An account to
+     * pay from: the developments whose spending this caller manages — the same rule that decides who records a
+     * cost there. Asked with the method, because the form does not know which question to ask until one is
+     * chosen.
+     */
+    @Transactional(readOnly = true)
+    public List<DevelopmentOption> developmentOptions(String tenantHash, String institutionHash,
+                                                      String paymentTypeHash) {
         UserPrincipal caller = AuthContext.require();
         Owner owner = ownerFor(caller, tenantHash, institutionHash);
         if (owner.platform()) return List.of();
+        Long typeId = HashIdUtil.decodeId(paymentTypeHash);
+        boolean sends = typeId != null && types.findById(typeId).map(t -> !t.selectable()).orElse(false);
         Specification<Development> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
                 SearchSpecs.eq("tenantId", owner.tenantId()),
                 SearchSpecs.eq("institutionId", owner.institutionId()),
-                // An owner is offered only the developments they collect for themselves. The bank's staff are
-                // offered all of them, because the bank configures the accounts that collect for the rest.
-                caller.isPlatformStaff() ? null : SearchSpecs.eq("collectionMode", Development.COLLECTED_BY_OWNER));
+                sends || caller.isPlatformStaff() ? null
+                        : SearchSpecs.eq("collectionMode", Development.COLLECTED_BY_OWNER));
         return developments.findAll(spec, Sort.by("name")).stream()
+                .filter(d -> !sends || visibility.mayManageSpending(d, caller))
                 .map(d -> new DevelopmentOption(HashIdUtil.encodeId(d.getId()), d.getName()))
+                .toList();
+    }
+
+    /**
+     * The accounts a development may pay from.
+     *
+     * <p>The owner's live paying-out accounts that reach it — one scoped to it, or one for every development of
+     * theirs — and, where the bank manages its spending, the platform's own, because that is what the bank
+     * pays from. Never a collecting account: money does not go out of a till.
+     */
+    @Transactional(readOnly = true)
+    public List<OfferedAccount> debitAccountsFor(String developmentHash) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = developments.findById(HashIdUtil.decodeId(developmentHash))
+                .orElseThrow(() -> new ResourceNotFoundException("Development", developmentHash));
+        if (!visibility.mayRead(development, caller)) {
+            throw new ResourceNotFoundException("Development", developmentHash);
+        }
+        return debitAccountsFor(development);
+    }
+
+    /** The same list, for a caller already holding the development — the payment engine's question. */
+    @Transactional(readOnly = true)
+    public List<OfferedAccount> debitAccountsFor(Development development) {
+        Owner owner = new Owner(development.getTenantId(), development.getInstitutionId());
+        Map<Long, PaymentType> catalogue = types.findAllLive().stream()
+                .collect(Collectors.toMap(PaymentType::getId, Function.identity()));
+        List<PaymentAccount> own = owner.institutionId() != null ? accounts.findLiveForInstitution(owner.institutionId())
+                : owner.tenantId() != null ? accounts.findLiveForTenant(owner.tenantId()) : List.of();
+        List<PaymentAccount> rows = new java.util.ArrayList<>(
+                own.stream().filter(a -> a.reaches(development.getId())).toList());
+        if (development.bankManagesSpending()) rows.addAll(accounts.findLiveForPlatform());
+        // A HashMap, not Map.of: an account for every development has no development, and Map.of refuses a
+        // null key on get() as well as on put().
+        Map<Long, String> devNames = new java.util.HashMap<>();
+        devNames.put(development.getId(), development.getName());
+        return rows.stream()
+                .filter(a -> catalogue.containsKey(a.getPaymentTypeId())
+                        && !catalogue.get(a.getPaymentTypeId()).selectable())
+                .map(a -> {
+                    PaymentType type = catalogue.get(a.getPaymentTypeId());
+                    return new OfferedAccount(HashIdUtil.encodeId(a.getId()), type.getName(),
+                            type.getProviderName(), a.getCategory(), a.channelCategory().renderAs(),
+                            type.getMethod(), a.getPayBillNo(), a.getAccountNo(),
+                            PaymentTypeDtos.developmentLabel(a, devNames.get(a.getDevelopmentId())));
+                })
                 .toList();
     }
 
@@ -362,7 +432,8 @@ public class PaymentAccountService {
         Owner owner = ownerFor(caller, request.tenantId(), request.institutionId());
         // Which account and which development are not known yet, so this asks only whether there is anything
         // this caller could set up. The save makes the real decision, and a refusal here costs no text.
-        if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect() && !collectsSomewhere(owner)) {
+        if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect() && !collectsSomewhere(owner)
+                && !AuthContext.hasAuthority(PERM_DEBIT)) {
             throw new HodiException("The bank collects buyers' payments for every one of your developments, so the "
                     + "bank sets up the accounts that collect for them. Ask the bank if one of them should "
                     + "collect into an account of your own.", HttpStatus.CONFLICT);
@@ -404,7 +475,8 @@ public class PaymentAccountService {
                     caller.getTenantId() != null ? null : caller.getInstitutionId())).size();
         }
         return new PaymentTypeDtos.AccountSetupContext(
-                organisationsMayCollect(), caller.isPlatformStaff(), ownCollecting);
+                organisationsMayCollect(), caller.isPlatformStaff(), ownCollecting,
+                AuthContext.hasAuthority(PERM_COLLECT), AuthContext.hasAuthority(PERM_DEBIT));
     }
 
     // ── writing ───────────────────────────────────────────────────────────────
@@ -607,7 +679,7 @@ public class PaymentAccountService {
     private ChangeSet.Snapshot describe(PaymentAccount account, PaymentType type) {
         ChangeSet.Snapshot snapshot = ChangeSet.of()
                 .put("method", "Payment method", type == null ? null : type.getName())
-                .put("developmentId", "Collects for",
+                .put("developmentId", type != null && !type.selectable() ? "Pays for" : "Collects for",
                         account.getDevelopmentId() == null ? "Every development" : "One development")
                 // A checker deciding on an organisation's account should know whether the organisation or the
                 // bank is proposing it: on a bank-collected development only the bank's may collect.
@@ -707,8 +779,12 @@ public class PaymentAccountService {
      */
     private void requireMayConfigure(Owner owner, PaymentType type, Long developmentId, UserPrincipal caller) {
         if (!type.selectable()) {
-            requireMayCollect(owner);
+            requireMayDebit(owner, developmentId, caller);
             return;
+        }
+        if (!AuthContext.hasAuthority(PERM_COLLECT)) {
+            throw new HodiException("Setting up a way of collecting needs the payment-types permission.",
+                    HttpStatus.FORBIDDEN);
         }
         if (owner.platform() || caller.isPlatformStaff()) return;
         if (developmentId != null) {
@@ -724,6 +800,31 @@ public class PaymentAccountService {
     }
 
     /**
+     * An account to pay from: the owner's own money, so the owner's staff holding DEBIT_ACCOUNTS_MANAGE set it
+     * up, or the bank's staff on their behalf. Nothing here answers to the platform-wide collection setting.
+     *
+     * <p>Scoped to one development, it is set up by whichever side manages that development's spending — the
+     * same rule that decides who records a cost there. The platform's own is the bank's, as it always was.
+     */
+    private void requireMayDebit(Owner owner, Long developmentId, UserPrincipal caller) {
+        if (owner.platform()) {
+            if (!caller.isPlatformStaff()) {
+                throw new HodiException("The platform's own account is the bank's to set up.", HttpStatus.FORBIDDEN);
+            }
+            return;
+        }
+        if (!AuthContext.hasAuthority(PERM_DEBIT)) {
+            throw new HodiException("Setting up an account to pay from needs the debit-accounts permission.",
+                    HttpStatus.FORBIDDEN);
+        }
+        if (developmentId != null) {
+            Development development = developments.findById(developmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Development", HashIdUtil.encodeId(developmentId)));
+            visibility.assertMayManageSpending(development, caller);
+        }
+    }
+
+    /**
      * Whether this caller may change or switch an existing account.
      *
      * <p>An owner may not touch one the bank configured, nor one collecting for a development the bank collects
@@ -731,7 +832,18 @@ public class PaymentAccountService {
      * to pay, and an owner withdrawing it would stop the bank collecting without the bank deciding to.
      */
     private void requireMayChange(PaymentAccount account, PaymentType type, UserPrincipal caller) {
-        if (caller.isPlatformStaff() || !type.selectable()) return;
+        if (caller.isPlatformStaff()) return;
+        if (!type.selectable()) {
+            if (!AuthContext.hasAuthority(PERM_DEBIT)) {
+                throw new HodiException("Changing an account money is paid from needs the debit-accounts permission.",
+                        HttpStatus.FORBIDDEN);
+            }
+            return;
+        }
+        if (!AuthContext.hasAuthority(PERM_COLLECT)) {
+            throw new HodiException("Changing a way of collecting needs the payment-types permission.",
+                    HttpStatus.FORBIDDEN);
+        }
         if (account.isConfiguredByBank()) {
             throw new HodiException("The bank set this account up, so only the bank can change it.",
                     HttpStatus.FORBIDDEN);
@@ -1150,7 +1262,8 @@ public class PaymentAccountService {
                 a.getStatus(), a.getStatusFlag(), a.getCreatedAt(), a.getCreatedBy(),
                 a.getUpdatedAt(), a.getUpdatedBy(),
                 a.isConfiguredByBank(),
-                mayChange(a, type, names.bankCollected().contains(a.getDevelopmentId()), AuthContext.require()));
+                mayChange(a, type, names.bankCollected().contains(a.getDevelopmentId()), AuthContext.require()),
+                type != null && !type.selectable());
     }
 
     /**
@@ -1158,8 +1271,9 @@ public class PaymentAccountService {
      * save would refuse them. The two must agree; a change to one is a change to the other.
      */
     private static boolean mayChange(PaymentAccount a, PaymentType type, boolean bankCollected, UserPrincipal caller) {
-        if (caller.isPlatformStaff() || type == null || !type.selectable()) return true;
-        return !a.isConfiguredByBank() && !bankCollected;
+        if (caller.isPlatformStaff() || type == null) return true;
+        if (!type.selectable()) return AuthContext.hasAuthority(PERM_DEBIT);
+        return AuthContext.hasAuthority(PERM_COLLECT) && !a.isConfiguredByBank() && !bankCollected;
     }
 
     private static String snapshot(PaymentAccount a, PaymentType type) {
