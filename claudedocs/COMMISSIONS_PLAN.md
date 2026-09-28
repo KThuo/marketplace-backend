@@ -385,9 +385,19 @@ while it changes nothing in that flow (28 September 2026).
 approved); marking an owner-collected sale's agent line paid from the owner's side (today the bank marks it
 by hand under `COMMISSIONS_SETTLE`); tiered rates; M-Pesa payouts to agents; splitting one agent commission.
 
-**To verify:** a browser walk-through of the four phases as the bank, an owner and an agent; a live Co-op
-settlement end to end (the dev server's Co-op credentials do not authenticate, so the confirmation path has
-only been exercised by test).
+**Verified in the browser as the bank (28 September 2026):** the reports page (tabs, a 16-column statement
+scrolling sideways, state badges, the deep link from a finance tab); the "who earns" card on Highrise (rates
+saved, card reads "Bank 2% · Agent 1%"); an agent's payout account added from the register (Not confirmed:
+the dev server's Co-op credentials do not authenticate); a unit booked with "Introduced by" the agent, shown
+on the booking; the settlements queue (eight legacy Highrise sales, zero fees, awaiting), the settle wizard
+through to the bank check, which refused with Co-op's reason and wrote nothing; the Settlement panel on a
+completed booking; the commission page's tiles, filters and legacy lines; the owner's Sales settlements card.
+
+**Still to verify:** a booking completed *after* rates were set, so the two lines are raised and the
+settlement carries an agent's fee — the walk-through booking BK260928TMSR (B-2-05, Highrise, introduced by
+the agent) is reserved and unpaid, because the platform has no cash or cheque account on Highrise to record
+its payment by hand; a seller user with PAYMENTS_RECEIVE can record the cheque and complete it. And a live
+Co-op settlement end to end: the confirmation path has only been exercised by test.
 
 ## 9. Decisions taken (28 September 2026)
 
