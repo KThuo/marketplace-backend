@@ -44,10 +44,15 @@ import java.util.stream.Collectors;
  *
  * <h2>Who may write</h2>
  *
- * <p>Anyone holding {@code DEVELOPMENTS_FINANCE_RECORD} who can see the development — the owner's finance
- * staff, the bank's officer, the developer as a collaborator. The permission is the gate; visibility is the
- * scope. There is no separate ownership check, because the people who record a project's costs are exactly
- * the people the owner has let onto the project.
+ * <p><b>Costs:</b> whoever manages spending on the development, holding {@code DEVELOPMENTS_FINANCE_RECORD}.
+ * The development says which side that is ({@code spending_managed_by}): the owning organisation, or the
+ * bank for a project it finances or runs. The other side reads every line and records none —
+ * {@link DevelopmentVisibility#assertMayManageSpending}. This replaced "anyone who can see the development",
+ * which let a bank officer write costs into a developer's own books and a developer write them into a
+ * bank's.
+ *
+ * <p><b>Drawdowns:</b> unchanged — anyone with the permission who can see the development. A drawdown is the
+ * lender's facility money arriving, not spending, and who records it is a question for the facility work.
  *
  * <h2>Never edited, only voided</h2>
  *
@@ -157,6 +162,7 @@ public class DevelopmentFinanceService {
     @Transactional
     public ExpenditureResponse recordExpenditure(String developmentHashId, RecordExpenditureRequest request) {
         Development development = requireVisible(developmentHashId);
+        visibility.assertMayManageSpending(development, AuthContext.require());
         DevelopmentCostCategory category = categories.findById(HashIdUtil.decodeId(request.categoryId()))
                 .filter(DevelopmentCostCategory::isLive)
                 .orElseThrow(() -> new HodiException("Choose a cost category that is available.",
@@ -198,6 +204,7 @@ public class DevelopmentFinanceService {
     public ExpenditureResponse voidExpenditure(String developmentHashId, String expenditureHashId,
                                                VoidRequest request) {
         Development development = requireVisible(developmentHashId);
+        visibility.assertMayManageSpending(development, AuthContext.require());
         DevelopmentExpenditure line = requireExpenditure(development, expenditureHashId);
         if (line.isVoided()) {
             throw new HodiException("Line " + line.getReference() + " is already voided.", HttpStatus.CONFLICT);
@@ -222,6 +229,7 @@ public class DevelopmentFinanceService {
     public ExpenditureResponse attachEvidence(String developmentHashId, String expenditureHashId,
                                               MultipartFile file) {
         Development development = requireVisible(developmentHashId);
+        visibility.assertMayManageSpending(development, AuthContext.require());
         DevelopmentExpenditure line = requireExpenditure(development, expenditureHashId);
         VaultDocument stored = store(file, development, "COST_EVIDENCE",
                 "Evidence for " + line.getReference());

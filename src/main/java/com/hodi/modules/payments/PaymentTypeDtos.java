@@ -181,9 +181,18 @@ public final class PaymentTypeDtos {
      * the owner question has one answer, and a select offering two where one is refusable is a question the
      * form already knows the answer to.
      */
+    /**
+     * What the account form needs before its first question.
+     *
+     * @param organisationsMayCollect the platform-wide setting, which still decides for a house with no
+     *                                development and for an account collecting for every development
+     * @param ownCollectingDevelopments for an owner, how many of their developments they collect for
+     *                                  themselves; each development's own setting decides that
+     */
     public record AccountSetupContext(
             boolean organisationsMayCollect,
-            boolean platformStaff) {}
+            boolean platformStaff,
+            int ownCollectingDevelopments) {}
 
     public record OfferedAccount(
             String id,

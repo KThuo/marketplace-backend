@@ -31,11 +31,30 @@ import java.util.List;
 public class DevelopmentFinanceController {
 
     private final DevelopmentFinanceService service;
+    private final DevelopmentMoneySettingsService settings;
 
     @GetMapping("/summary")
     @PreAuthorize("hasAuthority('DEVELOPMENTS_FINANCE_VIEW')")
     public ApiResponse<FinanceSummary> summary(@PathVariable String hashId) {
         return ApiResponse.success(service.summary(hashId));
+    }
+
+    // ── who collects, who spends ──────────────────────────────────────────────
+
+    /** Readable by everybody who may see the money: both sides need to know which of them manages it. */
+    @GetMapping("/settings")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_FINANCE_VIEW')")
+    public ApiResponse<DevelopmentMoneySettingsService.MoneySettings> settings(@PathVariable String hashId) {
+        return ApiResponse.success(settings.find(hashId));
+    }
+
+    @PostMapping("/settings")
+    @PreAuthorize("hasAuthority('DEVELOPMENT_FINANCE_SETTINGS')")
+    @RequestAction("SET_DEVELOPMENT_MONEY_SETTINGS")
+    public ApiResponse<DevelopmentMoneySettingsService.MoneySettings> saveSettings(
+            @PathVariable String hashId,
+            @Valid @RequestBody DevelopmentMoneySettingsService.SaveMoneySettingsRequest request) {
+        return ApiResponse.success("Saved", settings.save(hashId, request));
     }
 
     // ── the ledger ────────────────────────────────────────────────────────────

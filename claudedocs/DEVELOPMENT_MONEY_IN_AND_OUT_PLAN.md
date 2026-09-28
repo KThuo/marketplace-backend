@@ -41,7 +41,7 @@ Checked in the code on 25 September 2026.
 | Setting | Values | Default | Who can change it |
 |---|---|---|---|
 | `collection_mode` | `BANK`: collected into bank-configured accounts. `OWNER`: the owner may configure the collection accounts. | `BANK` | Platform (bank) staff only |
-| `spending_managed_by` | `OWNER`: the developer's makers and checkers. `BANK`: the bank's. | `OWNER`. `BANK` for an institution-owned development. | Platform (bank) staff only |
+| `spending_managed_by` | `OWNER`: the owning organisation's makers and checkers. `BANK`: the bank's. | `OWNER` everywhere. For an institution-owned development the owner already is the bank. | Platform (bank) staff only |
 
 - The side that doesn't manage spending still **reads** everything: the statements, the beneficiaries, and
   every payment with its approvals. The bank lending on a developer-managed project sees every shilling,
@@ -187,3 +187,47 @@ combined on screen:
   it for a customer account is a banking arrangement, not code.
 - **Approval limits.** Whether any amount needs a second checker, or a bank checker on a developer-managed
   development.
+
+## 7. Progress
+
+### Phase 1 — done (28 September 2026)
+
+**Backend**
+- Migration `V20260928090000`: `developments.collection_mode` and `spending_managed_by`, each with a check
+  constraint. Existing developments take their collection mode from the platform-wide setting.
+  `payment_accounts.configured_by_bank` is added, true for the platform's own accounts.
+- `DevelopmentMoneySettingsService` with `GET`/`POST /developments/{id}/finance/settings`. Saving needs the
+  new platform-only `DEVELOPMENT_FINANCE_SETTINGS` permission and is audited. A new development takes the
+  platform-wide setting as its collection default.
+- `PaymentAccountService`:
+  - Under `BANK`, only bank-configured accounts collect for a development. An owner can't set one up for it,
+    and can't edit or withdraw one the bank configured.
+  - The bank's staff can set up collecting accounts for any owner and any development.
+  - An owner can set one up for an `OWNER` development even while the platform collects everything else.
+  - Money-out methods are unchanged until phase 3.
+- `DevelopmentVisibility.assertMayManageSpending` gates recording, voiding and attaching evidence to costs.
+  Platform staff are not let through automatically: the side that doesn't manage spending reads only.
+  Drawdowns are unchanged.
+
+**Tests**
+- `DevelopmentMoneySettingsIT` has 8 tests covering the collection and spending rules.
+- `PaymentTypeServiceIT.platformStaffCannotStepAroundIt` became `theBankConfiguresForOwners`. It asserted the
+  old rule, that the bank could not set up an organisation's account while the platform collected.
+- Full suite: 486 tests, 0 failures.
+
+**Frontend**
+- `MoneySettingsCard` on the finance tab: both sides read it and the bank's staff can change it.
+- The cost controls follow `mayManageSpending`, with a note explaining why they are missing.
+- `PaymentAccountModal` always asks the bank's staff "whose account". An owner can choose "every development"
+  only when the platform-wide setting allows it, and is told when the bank collects for all of their
+  developments.
+- `vue-tsc` and `npm run build` pass.
+
+**Not verified in a browser.** The screens need a signed-in bank user and a signed-in owner, and the dev
+bootstrap login is stale.
+
+**Behaviour changes to know about**
+- A bank officer can no longer record costs on a developer-managed project unless it is switched to `BANK`.
+- A developer who is a collaborator on a bank-owned project can no longer record its costs, because the owner
+  (the bank) manages spending there.
+

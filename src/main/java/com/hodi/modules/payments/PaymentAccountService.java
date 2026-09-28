@@ -106,10 +106,23 @@ public class PaymentAccountService {
      */
     @Transactional(readOnly = true)
     public List<AssignableChannel> assignable(String tenantHash, String institutionHash) {
-        Owner owner = ownerFor(AuthContext.require(), tenantHash, institutionHash);
-        // Nothing to attach while the platform collects everything: a form that offers channels and then
-        // refuses the save has told somebody the answer only after they did the work.
-        if (!owner.platform() && !organisationsMayCollect()) return List.of();
+        UserPrincipal caller = AuthContext.require();
+        Owner owner = ownerFor(caller, tenantHash, institutionHash);
+        /*
+         * Nothing to attach when there is nowhere this owner may collect: a form that offers channels and then
+         * refuses the save has told somebody the answer only after they did the work.
+         *
+         * The bank's staff always have somewhere — they configure collection accounts for owners, on any
+         * development. An owner has somewhere when organisations collect platform-wide, or when at least one
+         * of their developments is set to OWNER collection; and in the second case only ways of collecting are
+         * offered, because a money-out method still answers to the platform-wide setting.
+         */
+        boolean onlyCollecting = false;
+        if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect()) {
+            if (!collectsSomewhere(owner)) return List.of();
+            onlyCollecting = true;
+        }
+        final boolean collectingOnly = onlyCollecting;
         /*
          * The same allow-list the catalogue screen applies, for the reason it applies it: this deployment
          * banks with one of the four providers the reference gateway fronts, and a form offering the other three is a form
@@ -127,6 +140,7 @@ public class PaymentAccountService {
                  * transfer method is configured here even though no payer is ever offered it.
                  */
                 .filter(PaymentType::configurable)
+                .filter(t -> !collectingOnly || t.selectable())
                 .filter(t -> !(t.isManual() && alreadyHeld(owner, t.getId(), null)))
                 .map(t -> new AssignableChannel(HashIdUtil.encodeId(t.getId()), t.getName(),
                         t.getDescription(), t.getProviderName(), t.getCategory(), t.getMethod(),
@@ -263,7 +277,7 @@ public class PaymentAccountService {
         Map<Long, String> devNames = new HashMap<>();
         devNames.put(development.getId(), development.getName());
 
-        return liveFor(owner).stream()
+        return liveFor(owner, development).stream()
                 .filter(a -> a.reaches(development.getId()))
                 // Switching a channel off stops new set-ups, not money already banking — so an account on an
                 // off channel is still offered, exactly as the catalogue's status message promises.
@@ -317,12 +331,16 @@ public class PaymentAccountService {
     /** The developments an owner's account may be narrowed to. */
     @Transactional(readOnly = true)
     public List<DevelopmentOption> developmentOptions(String tenantHash, String institutionHash) {
-        Owner owner = ownerFor(AuthContext.require(), tenantHash, institutionHash);
+        UserPrincipal caller = AuthContext.require();
+        Owner owner = ownerFor(caller, tenantHash, institutionHash);
         if (owner.platform()) return List.of();
         Specification<Development> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
                 SearchSpecs.eq("tenantId", owner.tenantId()),
-                SearchSpecs.eq("institutionId", owner.institutionId()));
+                SearchSpecs.eq("institutionId", owner.institutionId()),
+                // An owner is offered only the developments they collect for themselves. The bank's staff are
+                // offered all of them, because the bank configures the accounts that collect for the rest.
+                caller.isPlatformStaff() ? null : SearchSpecs.eq("collectionMode", Development.COLLECTED_BY_OWNER));
         return developments.findAll(spec, Sort.by("name")).stream()
                 .map(d -> new DevelopmentOption(HashIdUtil.encodeId(d.getId()), d.getName()))
                 .toList();
@@ -342,7 +360,11 @@ public class PaymentAccountService {
     public OtpIssued requestCode(OtpRequest request) {
         UserPrincipal caller = AuthContext.require();
         Owner owner = ownerFor(caller, request.tenantId(), request.institutionId());
-        requireMayCollect(owner);
+        // Which account and which development are not known yet, so this asks only whether there is anything
+        // this caller could set up. The save makes the real decision.
+        if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect() && !collectsSomewhere(owner)) {
+            requireMayCollect(owner);
+        }
         /*
          * To the person doing it, not to the organisation.
          *
@@ -373,8 +395,14 @@ public class PaymentAccountService {
      */
     @Transactional(readOnly = true)
     public PaymentTypeDtos.AccountSetupContext setupContext() {
+        UserPrincipal caller = AuthContext.require();
+        int ownCollecting = 0;
+        if (!caller.isPlatformStaff() && (caller.getTenantId() != null || caller.getInstitutionId() != null)) {
+            ownCollecting = collectingDevelopments(new Owner(caller.getTenantId(),
+                    caller.getTenantId() != null ? null : caller.getInstitutionId())).size();
+        }
         return new PaymentTypeDtos.AccountSetupContext(
-                organisationsMayCollect(), AuthContext.require().isPlatformStaff());
+                organisationsMayCollect(), caller.isPlatformStaff(), ownCollecting);
     }
 
     // ── writing ───────────────────────────────────────────────────────────────
@@ -383,7 +411,6 @@ public class PaymentAccountService {
     public AccountResponse assign(SaveAccountRequest request) {
         UserPrincipal caller = AuthContext.require();
         Owner owner = ownerFor(caller, request.tenantId(), request.institutionId());
-        requireMayCollect(owner);
         PaymentType type = requireType(request.paymentTypeId());
         if (!type.isAvailable()) {
             throw new HodiException(type.getName() + " is not available.", HttpStatus.BAD_REQUEST);
@@ -399,6 +426,7 @@ public class PaymentAccountService {
                     HttpStatus.BAD_REQUEST);
         }
         Long developmentId = requireDevelopment(request.developmentId(), owner, caller);
+        requireMayConfigure(owner, type, developmentId, caller);
 
         // A channel that describes its own account is read through the descriptor; one that does not —
         // every channel predating it — keeps the four fixed columns, so live rows need no migration.
@@ -419,6 +447,8 @@ public class PaymentAccountService {
         account.setTenantId(owner.tenantId());
         account.setInstitutionId(owner.institutionId());
         account.setDevelopmentId(developmentId);
+        // Who set it up, which whose it is does not say: the bank configures collection accounts for owners.
+        account.setConfiguredByBank(caller.isPlatformStaff());
         account.setPayBillNo(blankToNull(request.payBillNo()));
         account.setAccountNo(accountNo);
         account.setAccountName(type.needsAccount() ? blankToNull(request.accountName()) : null);
@@ -450,6 +480,7 @@ public class PaymentAccountService {
         PaymentType type = types.findById(account.getPaymentTypeId())
                 .orElseThrow(() -> new HodiException("That payment method no longer exists.",
                         HttpStatus.CONFLICT));
+        requireMayChange(account, type, caller);
 
         Configured configured = describesItsAccount(type) ? configure(type, account, request) : null;
         String accountNo = configured != null ? configured.code() : requireAccountFields(request, type);
@@ -467,6 +498,8 @@ public class PaymentAccountService {
         account.setAccountName(type.needsAccount() ? blankToNull(request.accountName()) : null);
         account.setShortCode(shortCode);
         if (configured != null) account.setConfig(configured.values());
+        // Edited by the bank, it is the bank's configuration from now on; edited by its owner, it never was.
+        if (caller.isPlatformStaff()) account.setConfiguredByBank(true);
         /*
          * An edited account stops collecting until somebody approves it.
          *
@@ -505,12 +538,19 @@ public class PaymentAccountService {
     @Transactional
     public String setStatus(String hashId, boolean active) {
         PaymentAccount account = requireOwn(hashId);
-        // Bringing a withdrawn organisation account back is the same act as attaching one, so it answers
-        // to the same setting. Withdrawing one is always allowed: stopping collection needs no permission.
-        if (active) {
-            requireMayCollect(new Owner(account.getTenantId(), account.getInstitutionId()));
-        }
         PaymentType type = types.findById(account.getPaymentTypeId()).orElse(null);
+        UserPrincipal caller = AuthContext.require();
+        /*
+         * An account the bank configured, or one collecting for a development the bank collects for, is the
+         * bank's to switch off and on. Otherwise withdrawing one is always allowed — stopping collection needs
+         * no permission — and bringing one back is the same act as attaching it, so it answers to the same rule.
+         */
+        if (type != null) requireMayChange(account, type, caller);
+        if (active) {
+            Owner owner = new Owner(account.getTenantId(), account.getInstitutionId());
+            if (type != null) requireMayConfigure(owner, type, account.getDevelopmentId(), caller);
+            else requireMayCollect(owner);
+        }
         String name = type == null ? "That account" : type.getName();
         String before = snapshot(account, type);
 
@@ -639,6 +679,83 @@ public class PaymentAccountService {
                 "Payments are collected to the platform's own account, so an organisation cannot be given "
                         + "one. Change \"Who collects payments\" in platform settings first.",
                 HttpStatus.CONFLICT);
+    }
+
+    /**
+     * Whether this caller may set up an account of this kind, for this owner, collecting where it says.
+     *
+     * <h3>Collection is decided per development, and it is the bank's</h3>
+     *
+     * <p>Each development says who collects for it ({@code collection_mode}). Under BANK the bank sells on
+     * the owner's behalf and holds the buyers' money until every party is satisfied, so it alone configures
+     * the accounts that collect for it; the owner may not. Under OWNER the owner may.
+     *
+     * <ul>
+     *   <li>The bank's staff may set up a collecting account for any owner, on any development — that is how
+     *       the bank "sets collection accounts for specific developers". Where it is used is still decided
+     *       elsewhere: {@link #liveFor(Owner, Development)} and, for a house with no development, the
+     *       platform-wide setting.</li>
+     *   <li>An owner may set one up for a single development only if that development is OWNER; and one for
+     *       every development only if the platform-wide setting lets organisations collect. Such an account
+     *       then collects only on their OWNER developments and their standalone listings.</li>
+     *   <li>A way of sending money out is not collection, and answers to the platform-wide setting exactly as
+     *       before, until owner debit accounts arrive.</li>
+     * </ul>
+     */
+    private void requireMayConfigure(Owner owner, PaymentType type, Long developmentId, UserPrincipal caller) {
+        if (!type.selectable()) {
+            requireMayCollect(owner);
+            return;
+        }
+        if (owner.platform() || caller.isPlatformStaff()) return;
+        if (developmentId != null) {
+            Development development = developments.findById(developmentId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Development", HashIdUtil.encodeId(developmentId)));
+            if (development.bankCollects()) {
+                throw new HodiException("The bank collects the money for " + development.getName()
+                        + ", so only the bank can set up the accounts that collect for it.", HttpStatus.FORBIDDEN);
+            }
+            return;
+        }
+        requireMayCollect(owner);
+    }
+
+    /**
+     * Whether this caller may change or switch an existing account.
+     *
+     * <p>An owner may not touch one the bank configured, nor one collecting for a development the bank collects
+     * for — including switching it off. On a bank-collected development the account is where buyers are told
+     * to pay, and an owner withdrawing it would stop the bank collecting without the bank deciding to.
+     */
+    private void requireMayChange(PaymentAccount account, PaymentType type, UserPrincipal caller) {
+        if (caller.isPlatformStaff() || !type.selectable()) return;
+        if (account.isConfiguredByBank()) {
+            throw new HodiException("The bank set this account up, so only the bank can change it.",
+                    HttpStatus.FORBIDDEN);
+        }
+        if (account.getDevelopmentId() != null) {
+            developments.findById(account.getDevelopmentId())
+                    .filter(Development::bankCollects)
+                    .ifPresent(d -> {
+                        throw new HodiException("The bank collects the money for " + d.getName()
+                                + ", so only the bank can change the accounts that collect for it.",
+                                HttpStatus.FORBIDDEN);
+                    });
+        }
+    }
+
+    /** The owner's developments that they collect for themselves. */
+    private List<Development> collectingDevelopments(Owner owner) {
+        if (owner.platform()) return List.of();
+        return developments.findAll(SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                SearchSpecs.eq("tenantId", owner.tenantId()),
+                SearchSpecs.eq("institutionId", owner.institutionId()),
+                SearchSpecs.eq("collectionMode", Development.COLLECTED_BY_OWNER)));
+    }
+
+    private boolean collectsSomewhere(Owner owner) {
+        return !collectingDevelopments(owner).isEmpty();
     }
 
     private Owner ownerFor(UserPrincipal caller, String tenantHash, String institutionHash) {
@@ -909,6 +1026,33 @@ public class PaymentAccountService {
      * <p>Under ORGANISATION an organisation's own accounts come first and the platform's stand behind
      * them, which is the fallback that setting promises: turning it on cannot leave somebody unable to
      * take money.
+     */
+    /**
+     * The accounts that may collect for one development, which says itself who collects.
+     *
+     * <p>Under BANK, only accounts the bank configured — the owner's that the bank set up for them first, then
+     * the platform's own. An account the owner configured never collects for a development the bank collects
+     * for, whatever the platform-wide setting says. Under OWNER, every account of the owner's that reaches it,
+     * with the platform's standing behind them so that nobody is left unable to take money.
+     */
+    private List<PaymentAccount> liveFor(Owner owner, Development development) {
+        List<PaymentAccount> platform = accounts.findLiveForPlatform();
+        if (owner.platform()) return platform;
+
+        List<PaymentAccount> own = (owner.institutionId() != null
+                ? accounts.findLiveForInstitution(owner.institutionId())
+                : accounts.findLiveForTenant(owner.tenantId())).stream()
+                .filter(a -> !development.bankCollects() || a.isConfiguredByBank())
+                .toList();
+        if (own.isEmpty()) return platform;
+
+        List<PaymentAccount> both = new java.util.ArrayList<>(own);
+        both.addAll(platform);
+        return both;
+    }
+
+    /**
+     * For a listing with no development — a house, a plot — the platform-wide setting still decides.
      */
     private List<PaymentAccount> liveFor(Owner owner) {
         List<PaymentAccount> platform = accounts.findLiveForPlatform();

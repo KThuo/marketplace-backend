@@ -192,6 +192,12 @@ public enum AppPermissionEnum {
     /** Writing a cost line or a drawdown. Anyone with this and access to the development may record. */
     DEVELOPMENTS_FINANCE_RECORD("Record costs and facility drawdowns on a development",
             AppModuleEnum.DEVELOPMENTS),
+    /**
+     * Who collects a development's money and who manages its spending. The bank's decision alone: it sells on
+     * the owner's behalf and holds the buyers' money, and it may finance or run the project.
+     */
+    DEVELOPMENT_FINANCE_SETTINGS("Set who collects and who manages spending on a development",
+            AppModuleEnum.DEVELOPMENTS, true),
     /** The cost categories every development's ledger is filed under — a platform taxonomy. */
     COST_CATEGORIES_MANAGE("Add, rename and suspend development cost categories",
             AppModuleEnum.DEVELOPMENTS, true),

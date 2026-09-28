@@ -113,6 +113,34 @@ public class Development {
     @Column(name = "facility_reference", length = 32) private String facilityReference;
     @Column(name = "facility_amount", precision = 15, scale = 2) private BigDecimal facilityAmount;
 
+    /**
+     * Who collects a buyer's money on this development: {@link #COLLECTED_BY_BANK} or {@link #COLLECTED_BY_OWNER}.
+     *
+     * <p>The bank's decision, and per development rather than platform-wide, so that a change of model is a
+     * reconfiguration. Under BANK only an account the bank configured collects for it — see
+     * {@code PaymentAccountService} — because the bank sells on the owner's behalf and holds the money until
+     * every party is satisfied.
+     */
+    @Column(name = "collection_mode", nullable = false, length = 8)
+    @Builder.Default private String collectionMode = COLLECTED_BY_BANK;
+
+    /**
+     * Who records and pays this development's costs: {@link #MANAGED_BY_OWNER} or {@link #MANAGED_BY_BANK}.
+     *
+     * <p>The side that does not manage still reads every figure. See
+     * {@code DevelopmentVisibility.assertMayManageSpending}.
+     */
+    @Column(name = "spending_managed_by", nullable = false, length = 8)
+    @Builder.Default private String spendingManagedBy = MANAGED_BY_OWNER;
+
+    public static final String COLLECTED_BY_BANK = "BANK";
+    public static final String COLLECTED_BY_OWNER = "OWNER";
+    public static final String MANAGED_BY_OWNER = "OWNER";
+    public static final String MANAGED_BY_BANK = "BANK";
+
+    public boolean bankCollects() { return !COLLECTED_BY_OWNER.equals(collectionMode); }
+    public boolean bankManagesSpending() { return MANAGED_BY_BANK.equals(spendingManagedBy); }
+
     @Column(name = "listing_state", nullable = false, length = 16)
     @Builder.Default private String listingState = AppConstant.LISTING_DRAFT;
     @Column(name = "published_at") private OffsetDateTime publishedAt;

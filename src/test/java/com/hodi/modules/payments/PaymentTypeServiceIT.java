@@ -414,9 +414,17 @@ class PaymentTypeServiceIT {
                 "a channel offered is a channel somebody will fill a form in for");
     }
 
+    /*
+     * This used to assert the opposite — that platform staff could not attach an account for an organisation
+     * while the platform collected — on the reasoning that a control the operator can step around only
+     * documents an intention. The model changed underneath it: the bank *is* the operator, and it sets up the
+     * accounts that collect for an owner's developments, which the owner may not. What the platform-wide
+     * setting still controls is whether such an account collects for a house with no development; each
+     * development now says for itself who collects (see DevelopmentMoneySettingsIT).
+     */
     @Test
-    @DisplayName("platform staff cannot attach one on the organisation's behalf either")
-    void platformStaffCannotStepAroundIt() {
+    @DisplayName("the bank may set an account up for an organisation, and it is marked as the bank's")
+    void theBankConfiguresForOwners() {
         organisationsMayCollect(false);
         String[] code = code();
         signInAs(AppConstant.ACTOR_PLATFORM, "SUPER_ADMIN", null, "PAYMENT_TYPES_VIEW",
@@ -427,8 +435,9 @@ class PaymentTypeServiceIT {
                 "T" + RrnGenerator.generate("A").substring(0, 9), "Test Seller Ltd", null,
                 null, code[0], code[1]);
 
-        assertThrows(HodiException.class, () -> service.assign(forTheTenant),
-                "a control the operator can step around only documents an intention");
+        AccountResponse saved = service.assign(forTheTenant);
+        assertEquals("TENANT", saved.ownerKind());
+        assertTrue(accounts.findById(HashIdUtil.decodeId(saved.id())).orElseThrow().isConfiguredByBank());
     }
 
     @Test

@@ -115,6 +115,47 @@ public class DevelopmentVisibility {
     }
 
     /**
+     * Refuses unless this caller may record or pay this development's costs.
+     *
+     * <p>One side manages spending and the other reads it, and the development says which. Under OWNER it is
+     * the owning organisation — which, for a development a bank owns, is that bank. Under BANK it is the
+     * platform's staff: the bank financing or running the project decides what is paid and to whom.
+     *
+     * <p>Unlike every other rule in this class, platform staff are <em>not</em> admitted unconditionally. On a
+     * development whose owner manages its own money, the bank recording a cost against it would be the bank
+     * writing figures into somebody else's books; it reads them instead. Both sides can always see everything,
+     * which is {@link #mayRead}'s business, not this method's.
+     */
+    public void assertMayManageSpending(Development development, UserPrincipal caller) {
+        if (development.bankManagesSpending()) {
+            if (caller.isPlatformStaff()) return;
+            throw new HodiException("The bank manages spending on " + development.getName()
+                    + ". You can see every cost, but only the bank records and pays them.",
+                    HttpStatus.FORBIDDEN);
+        }
+        boolean owns = (caller.getInstitutionId() != null
+                        && caller.getInstitutionId().equals(development.getInstitutionId()))
+                || (caller.getTenantId() != null
+                        && caller.getTenantId().equals(development.getTenantId()));
+        if (owns) return;
+        throw new HodiException(caller.isPlatformStaff()
+                ? "The owner manages spending on " + development.getName()
+                        + ". The bank can see every cost, but only the owner records and pays them."
+                : "That development belongs to another organisation.",
+                HttpStatus.FORBIDDEN);
+    }
+
+    /** Whether this caller manages spending here — for a screen deciding whether to offer the controls. */
+    public boolean mayManageSpending(Development development, UserPrincipal caller) {
+        try {
+            assertMayManageSpending(development, caller);
+            return true;
+        } catch (HodiException e) {
+            return false;
+        }
+    }
+
+    /**
      * Refuses unless this caller may post progress: the owner, the platform, or a collaborator granted it.
      *
      * <p>This is the whole point of the collaborator table. A bank owns the record because the exposure is

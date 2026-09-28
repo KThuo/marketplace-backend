@@ -68,6 +68,7 @@ public class DevelopmentService {
     private final AmenityService amenities;
     private final AuditService audit;
     private final StorageService storage;
+    private final DevelopmentMoneySettingsService moneySettings;
 
     // ── reads ─────────────────────────────────────────────────────────────────
 
@@ -119,6 +120,8 @@ public class DevelopmentService {
         Development development = Development.builder()
                 .reference(nextReference())
                 .listingState(AppConstant.LISTING_DRAFT)
+                // Until the bank says otherwise for this project, whatever the platform-wide setting said.
+                .collectionMode(moneySettings.defaultCollectionMode())
                 .build();
 
         applyOwner(development, request, caller);

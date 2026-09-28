@@ -74,6 +74,16 @@ public class PaymentAccount {
     @Column(name = "provider_code", length = 50) private String providerCode;
     @Column(nullable = false, length = 16) private String category;
 
+    /**
+     * Whether the bank set this account up, rather than the organisation it belongs to.
+     *
+     * <p>Whose account it is ({@link #tenantId}, {@link #institutionId}) does not say who configured it: the bank
+     * configures collection accounts <em>for</em> owners. On a development whose {@code collection_mode} is
+     * BANK only a bank-configured account collects, and an owner may not change one.
+     */
+    @Column(name = "configured_by_bank", nullable = false)
+    @Builder.Default private boolean configuredByBank = false;
+
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
     @Builder.Default private String statusFlag = AppConstant.FLAG_ACTIVE;
