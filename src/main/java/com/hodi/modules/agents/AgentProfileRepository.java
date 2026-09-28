@@ -11,6 +11,11 @@ public interface AgentProfileRepository
 
     Optional<AgentProfile> findByReference(String reference);
 
+    /** Everybody who may be named as having brought a buyer. */
+    @org.springframework.data.jpa.repository.Query(
+            "select a from AgentProfile a where a.state = 'APPROVED' and a.status <> 5 order by a.fullName")
+    java.util.List<AgentProfile> findApproved();
+
     Optional<AgentProfile> findByProfileId(Long profileId);
 
     Optional<AgentProfile> findByTenantId(Long tenantId);

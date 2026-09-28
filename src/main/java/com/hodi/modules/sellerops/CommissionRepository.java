@@ -18,6 +18,10 @@ public interface CommissionRepository
 
     java.util.List<CommissionRecord> findByBookingIdAndStatusNotOrderByPayeeKind(Long bookingId, Integer status);
 
+    /** An agent's own lines, wherever the sale was. */
+    java.util.List<CommissionRecord> findByAgentProfileIdAndPayeeKindAndStatusNot(Long agentProfileId,
+                                                                                 String payeeKind, Integer status);
+
     /** What is still owed, in one figure. Null when nothing is. */
     @Query("select sum(c.amount) from CommissionRecord c "
             + "where c.state in ('DUE', 'INVOICED') and c.status <> 5 "

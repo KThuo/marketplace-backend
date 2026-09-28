@@ -70,6 +70,8 @@ public class PurchaseRequestService {
     private final LeadThreadService thread;
     private final BookingService bookings;
     private final UnitBookingRepository bookingRows;
+    private final com.hodi.modules.agents.IntroducerService introducers;
+    private final EnquiryTicketRepository enquiries;
 
     // ── the buyer's side ──────────────────────────────────────────────────────
 
@@ -118,6 +120,9 @@ public class PurchaseRequestService {
                 .productReference(EnquiryService.blankToNull(request.productReference()))
                 .depositAvailable(request.depositAvailable())
                 .buyerMessage(EnquiryService.blankToNull(request.message()))
+                // Carried from this buyer's enquiry on this home, when one named who brought them.
+                .introducedByAgentId(enquiries.findIntroducedFor(userId, property.getId()).stream()
+                        .findFirst().map(EnquiryTicket::getIntroducedByAgentId).orElse(null))
                 .createdBy(buyer.getUsername())
                 .updatedBy(buyer.getUsername())
                 .build());
@@ -428,7 +433,10 @@ public class PurchaseRequestService {
                 terms.paymentPlan(), terms.holdDays(),
                 EnquiryService.blankTo(terms.notes(), "From offer " + offer.getReference()
                         + (offer.getBuyerMessage() == null ? "" : " — \"" + offer.getBuyerMessage() + "\"")),
-                terms.instalments());
+                terms.instalments(),
+                // Who brought the buyer travels with them onto the booking.
+                introducers.byId(offer.getIntroducedByAgentId())
+                        .map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null));
         BookingResponse booked = bookings.createForProperty(HashIdUtil.encodeId(home.getId()), asBooking);
 
         UnitBooking booking = bookingRows.findById(HashIdUtil.decodeId(booked.id())).orElseThrow();
@@ -459,6 +467,25 @@ public class PurchaseRequestService {
     }
 
     // ── internals ─────────────────────────────────────────────────────────────
+
+    /**
+     * Names, or clears, the agent who brought this buyer. Until the offer becomes a booking: after that the
+     * booking is the sale, and is where the name lives.
+     */
+    @Transactional
+    public OfferResponse setIntroducer(String reference, com.hodi.modules.bookings.BookingDtos.IntroducerRequest request) {
+        introducers.assertAllowedAt(com.hodi.modules.agents.IntroducerService.FROM_OFFER);
+        PurchaseRequest offer = loadForSeller(reference);
+        if (offer.getBookingId() != null) {
+            throw new HodiException("This offer is already a booking; name who brought the buyer on the booking.",
+                    HttpStatus.CONFLICT);
+        }
+        Long agentId = introducers.resolve(request == null ? null : request.agentRef())
+                .map(com.hodi.modules.agents.AgentProfile::getId).orElse(null);
+        offer.setIntroducedByAgentId(agentId);
+        offer.setUpdatedBy(AuthContext.username());
+        return toResponse(repository.save(offer));
+    }
 
     private PurchaseRequest loadForSeller(String reference) {
         PurchaseRequest offer = repository.findByReference(EnquiryService.trim(reference))
@@ -494,6 +521,7 @@ public class PurchaseRequestService {
         // Only an accepted-and-converted offer has one, so the lookup runs for those rows alone.
         String bookingReference = p.getBookingId() == null ? null
                 : bookingRows.findById(p.getBookingId()).map(UnitBooking::getReference).orElse(null);
+        var introducer = introducers.byId(p.getIntroducedByAgentId());
         return new OfferResponse(
                 p.getReference(), p.getPropertyReference(), p.getPropertyTitle(), p.getTenantName(),
                 p.getAskingPrice(), p.getBuyerName(), p.getBuyerEmail(), p.getBuyerPhone(),
@@ -502,7 +530,9 @@ public class PurchaseRequestService {
                 p.getDecisionNote(), p.getDecidedAt(), p.getCreatedAt(), messages,
                 HashIdUtil.encodeId(p.getBookingId()), bookingReference,
                 p.getOriginalAmount() == null ? p.getOfferAmount() : p.getOriginalAmount(),
-                p.getCounterAmount(), p.getCounterBy(), p.getAgreedAmount());
+                p.getCounterAmount(), p.getCounterBy(), p.getAgreedAmount(),
+                introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
+                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null));
     }
 
     private String nextReference() {

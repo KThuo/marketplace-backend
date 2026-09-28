@@ -53,6 +53,7 @@ public class EnquiryService {
     private static final String REFERENCE_PREFIX = "EQ";
 
     private final EnquiryTicketRepository repository;
+    private final com.hodi.modules.agents.IntroducerService introducers;
     private final AssignmentService assignment;
     private final EnquiryMessageRepository messages;
     private final PropertyRepository properties;
@@ -212,6 +213,22 @@ public class EnquiryService {
         return toResponse(ticket, true);
     }
 
+    /**
+     * Names, or clears, the agent who brought this buyer — the earliest place it can be said, when the
+     * bank's setting allows it this early. Carried onto the buyer's offer on this home, and from there onto
+     * the booking.
+     */
+    @Transactional
+    public EnquiryResponse setIntroducer(String reference, com.hodi.modules.bookings.BookingDtos.IntroducerRequest request) {
+        introducers.assertAllowedAt(com.hodi.modules.agents.IntroducerService.FROM_ENQUIRY);
+        EnquiryTicket ticket = loadForSeller(reference);
+        Long agentId = introducers.resolve(request == null ? null : request.agentRef())
+                .map(com.hodi.modules.agents.AgentProfile::getId).orElse(null);
+        ticket.setIntroducedByAgentId(agentId);
+        ticket.setUpdatedBy(AuthContext.username());
+        return toResponse(repository.save(ticket), true);
+    }
+
     @Transactional
     public EnquiryResponse assign(String reference, AssignRequest request) {
         EnquiryTicket ticket = loadForSeller(reference);
@@ -323,13 +340,15 @@ public class EnquiryService {
         return toResponse(t, thread, last);
     }
 
-    private static EnquiryResponse toResponse(EnquiryTicket t, List<MessageResponse> thread,
-                                              MessageResponse last) {
+    private EnquiryResponse toResponse(EnquiryTicket t, List<MessageResponse> thread, MessageResponse last) {
+        var introducer = introducers.byId(t.getIntroducedByAgentId());
         return new EnquiryResponse(
                 t.getReference(), t.getPropertyReference(), t.getPropertyTitle(), t.getTenantName(),
                 t.getBuyerName(), t.getBuyerEmail(), t.getBuyerPhone(), t.getSubject(), t.getState(),
                 t.getAssignedToName(), t.getMessageCount(), t.getLastMessageAt(), t.getLastMessageSide(),
-                t.isAwaitingSeller(), t.getCloseReason(), t.getCreatedAt(), thread, last);
+                t.isAwaitingSeller(), t.getCloseReason(), t.getCreatedAt(), thread, last,
+                introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
+                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null));
     }
 
     private static MessageResponse asMessage(EnquiryMessage m) {

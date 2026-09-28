@@ -294,6 +294,38 @@ Each phase leaves the app working; phase 1 alone already makes units raise the b
   corrected: it assumed a stranger's list is empty, which a beneficiary shared with every organisation
   rightly makes false.
 
+### Phase 2 — done (28 September 2026)
+
+- `V20260928230000__who_brought_the_buyer_is_known_from_the_first_enquiry_and_an_agent_says_where_to_be_paid.sql`:
+  `introduced_by_agent_id` on `enquiry_tickets` and `purchase_requests`; `agent_payout_accounts` (several per
+  agent, one default, VERIFIED/UNVERIFIED with the bank's confirmed name).
+- `ConfigKey.AGENT_ATTRIBUTION_FROM` (ENQUIRY | OFFER | BOOKING, default ENQUIRY).
+- `IntroducerService` (agents): the one rule for who may be named (approved agents), how early
+  (`allowedAt(stage, from)`; later stages always open), and the picker's options. Bookings, enquiries and
+  offers all resolve through it.
+- Carrying: an offer inherits the introducer from the buyer's enquiry on the same home (offers are not
+  raised *from* enquiries in this app, so the same buyer on the same home is the link); a booking made from
+  an offer inherits the offer's. `POST /enquiries/{ref}/introducer` (`ENQUIRIES_ASSIGN`),
+  `POST /offers/{ref}/introducer` (`PURCHASE_REQUESTS_DECIDE`, until it is a booking);
+  `GET /agents/options` for the picker (anybody who may set one).
+- `AgentPayoutAccountService`: add (asks the bank, first one is the default), ask again, make default,
+  remove (the next one along becomes the default); the agent's own under `/me/agent/accounts…`
+  (`AGENT_SELF_UPDATE`), the bank's under `/agents/{ref}/accounts…` (`AGENTS_DECIDE`); `payableDefault()`
+  for phase 3 to propose from.
+- `AgentEarningsService`: `/me/agent/introductions` (every booking the agent brought, from the day it is
+  made, with the line once the sale completes), `/me/agent/commissions` (their own lines, by agent id rather
+  than tenant), `/me/agent/totals`.
+- Frontend: `IntroducerSelect` (booking forms: unit inventory, book-a-home; hides itself below the
+  configured stage), `IntroducerLine` (booking detail, offer detail, enquiry thread; shows any carried name,
+  edits from the configured stage on), the offer-to-booking modal says who is carried,
+  `PayoutAccountsCard` (agent's profile once approved; the register's "Where they are paid" row action),
+  `/app/my-commissions` under Mine.
+- Deliberately left: naming a payout account on the public application form. It matters once the agent is
+  approved, which is when their profile offers it.
+- Tests: `AgentAttributionIT` (4). The stage rule is tested with the setting passed in, not written to the
+  configuration table — the cache is shared with the dev server and a test that depended on evicting it has
+  been flaky before.
+
 ## 8. Decisions taken (28 September 2026)
 
 - (a) Attribution is carried from enquiry → offer → booking, and how early it may be named is a setting

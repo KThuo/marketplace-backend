@@ -59,6 +59,14 @@ public class LeadController {
         return ApiResponse.success("Assigned", enquiries.assign(reference, request));
     }
 
+    @PostMapping("/api/v1/enquiries/{reference}/introducer")
+    @PreAuthorize("hasAuthority('ENQUIRIES_ASSIGN')")
+    @RequestAction("NAME WHO BROUGHT THE BUYER")
+    public ApiResponse<EnquiryResponse> enquiryIntroducer(@PathVariable String reference,
+            @Valid @RequestBody com.hodi.modules.bookings.BookingDtos.IntroducerRequest request) {
+        return ApiResponse.success("Saved", enquiries.setIntroducer(reference, request));
+    }
+
     @PostMapping("/api/v1/enquiries/{reference}/close")
     @PreAuthorize("hasAuthority('ENQUIRIES_CLOSE')")
     @RequestAction("CLOSE ENQUIRY")
@@ -130,6 +138,14 @@ public class LeadController {
     public ApiResponse<OfferResponse> decideOffer(@PathVariable String reference,
                                                   @Valid @RequestBody DecideOfferRequest request) {
         return ApiResponse.success("Recorded", offers.decide(reference, request));
+    }
+
+    @PostMapping("/api/v1/offers/{reference}/introducer")
+    @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
+    @RequestAction("NAME WHO BROUGHT THE BUYER")
+    public ApiResponse<OfferResponse> offerIntroducer(@PathVariable String reference,
+            @Valid @RequestBody com.hodi.modules.bookings.BookingDtos.IntroducerRequest request) {
+        return ApiResponse.success("Saved", offers.setIntroducer(reference, request));
     }
 
     /**

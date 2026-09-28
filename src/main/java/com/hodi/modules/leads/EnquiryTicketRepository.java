@@ -31,6 +31,11 @@ public interface EnquiryTicketRepository
     /** Evidence that this person and this listing have met on the platform (M7). */
     boolean existsByUserIdAndPropertyId(Long userId, Long propertyId);
 
+    /** The buyer's most recent enquiry on a home that names who brought them — what an offer inherits. */
+    @Query("select t from EnquiryTicket t where t.userId = :userId and t.propertyId = :propertyId "
+            + "and t.introducedByAgentId is not null and t.status <> 5 order by t.createdAt desc")
+    List<EnquiryTicket> findIntroducedFor(@Param("userId") Long userId, @Param("propertyId") Long propertyId);
+
     /** The same, one level up: this person has dealt with this organisation about something. */
     boolean existsByUserIdAndTenantId(Long userId, Long tenantId);
 

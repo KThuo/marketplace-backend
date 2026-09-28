@@ -24,6 +24,119 @@ import org.springframework.web.bind.annotation.*;
 public class AgentController {
 
     private final AgentService agents;
+    private final IntroducerService introducers;
+    private final AgentPayoutAccountService accounts;
+    private final AgentEarningsService earnings;
+
+    // ── who may be named as having brought a buyer ────────────────────────────
+
+    /** For the "Introduced by" picker on an enquiry, an offer or a booking — whoever may set those. */
+    @GetMapping("/api/v1/agents/options")
+    @PreAuthorize("hasAnyAuthority('BOOKINGS_MANAGE', 'ENQUIRIES_ASSIGN', 'PURCHASE_REQUESTS_DECIDE')")
+    public ApiResponse<IntroducerService.IntroducerOptions> options() {
+        return ApiResponse.success(introducers.options());
+    }
+
+    // ── where an agent is paid: the bank, on the register ─────────────────────
+
+    @GetMapping("/api/v1/agents/{reference}/accounts")
+    @PreAuthorize("hasAuthority('AGENTS_VIEW')")
+    public ApiResponse<java.util.List<AgentPayoutAccountService.PayoutAccountResponse>> accountsOf(
+            @PathVariable String reference) {
+        return ApiResponse.success(accounts.forAgent(reference));
+    }
+
+    @PostMapping("/api/v1/agents/{reference}/accounts")
+    @PreAuthorize("hasAuthority('AGENTS_DECIDE')")
+    @RequestAction("ADD AN AGENT'S PAYOUT ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> addAccountFor(
+            @PathVariable String reference,
+            @Valid @RequestBody AgentPayoutAccountService.SavePayoutAccountRequest request) {
+        return ApiResponse.success("Added", accounts.addFor(reference, request));
+    }
+
+    @PostMapping("/api/v1/agents/{reference}/accounts/{accountId}/verify")
+    @PreAuthorize("hasAuthority('AGENTS_DECIDE')")
+    @RequestAction("ASK THE BANK WHO HOLDS AN AGENT'S ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> verifyAccountFor(
+            @PathVariable String reference, @PathVariable String accountId) {
+        return ApiResponse.success("Asked", accounts.verifyFor(reference, accountId));
+    }
+
+    @PostMapping("/api/v1/agents/{reference}/accounts/{accountId}/default")
+    @PreAuthorize("hasAuthority('AGENTS_DECIDE')")
+    @RequestAction("SET AN AGENT'S DEFAULT PAYOUT ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> defaultAccountFor(
+            @PathVariable String reference, @PathVariable String accountId) {
+        return ApiResponse.success("Saved", accounts.makeDefaultFor(reference, accountId));
+    }
+
+    @PostMapping("/api/v1/agents/{reference}/accounts/{accountId}/remove")
+    @PreAuthorize("hasAuthority('AGENTS_DECIDE')")
+    @RequestAction("REMOVE AN AGENT'S PAYOUT ACCOUNT")
+    public ApiResponse<Void> removeAccountFor(@PathVariable String reference, @PathVariable String accountId) {
+        accounts.removeFor(reference, accountId);
+        return ApiResponse.success("Removed", null);
+    }
+
+    // ── where an agent is paid: their own ─────────────────────────────────────
+
+    @GetMapping("/api/v1/me/agent/accounts")
+    @PreAuthorize("hasAuthority('AGENT_SELF_VIEW')")
+    public ApiResponse<java.util.List<AgentPayoutAccountService.PayoutAccountResponse>> myAccounts() {
+        return ApiResponse.success(accounts.mine());
+    }
+
+    @PostMapping("/api/v1/me/agent/accounts")
+    @PreAuthorize("hasAuthority('AGENT_SELF_UPDATE')")
+    @RequestAction("ADD MY PAYOUT ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> addMyAccount(
+            @Valid @RequestBody AgentPayoutAccountService.SavePayoutAccountRequest request) {
+        return ApiResponse.success("Added", accounts.addMine(request));
+    }
+
+    @PostMapping("/api/v1/me/agent/accounts/{accountId}/verify")
+    @PreAuthorize("hasAuthority('AGENT_SELF_UPDATE')")
+    @RequestAction("ASK THE BANK WHO HOLDS MY ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> verifyMyAccount(@PathVariable String accountId) {
+        return ApiResponse.success("Asked", accounts.verifyMine(accountId));
+    }
+
+    @PostMapping("/api/v1/me/agent/accounts/{accountId}/default")
+    @PreAuthorize("hasAuthority('AGENT_SELF_UPDATE')")
+    @RequestAction("SET MY DEFAULT PAYOUT ACCOUNT")
+    public ApiResponse<AgentPayoutAccountService.PayoutAccountResponse> defaultMyAccount(@PathVariable String accountId) {
+        return ApiResponse.success("Saved", accounts.makeMineDefault(accountId));
+    }
+
+    @PostMapping("/api/v1/me/agent/accounts/{accountId}/remove")
+    @PreAuthorize("hasAuthority('AGENT_SELF_UPDATE')")
+    @RequestAction("REMOVE MY PAYOUT ACCOUNT")
+    public ApiResponse<Void> removeMyAccount(@PathVariable String accountId) {
+        accounts.removeMine(accountId);
+        return ApiResponse.success("Removed", null);
+    }
+
+    // ── what an agent brought in, and earned ──────────────────────────────────
+
+    @GetMapping("/api/v1/me/agent/introductions")
+    @PreAuthorize("hasAuthority('AGENT_SELF_VIEW')")
+    public ApiResponse<java.util.List<AgentEarningsService.IntroductionResponse>> myIntroductions() {
+        return ApiResponse.success(earnings.myIntroductions());
+    }
+
+    @GetMapping("/api/v1/me/agent/commissions")
+    @PreAuthorize("hasAuthority('AGENT_SELF_VIEW')")
+    public ApiResponse<PagedResponse<com.hodi.modules.sellerops.CommissionService.CommissionResponse>> myCommissions(
+            @ModelAttribute com.hodi.common.dto.PagedDataRequest request) {
+        return ApiResponse.success(earnings.myCommissions(request));
+    }
+
+    @GetMapping("/api/v1/me/agent/totals")
+    @PreAuthorize("hasAuthority('AGENT_SELF_VIEW')")
+    public ApiResponse<AgentEarningsService.AgentTotals> myTotals() {
+        return ApiResponse.success(earnings.myTotals());
+    }
 
     // ── the register ──────────────────────────────────────────────────────────
 

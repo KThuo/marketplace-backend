@@ -25,6 +25,11 @@ public interface UnitBookingRepository
      */
     Optional<UnitBooking> findByPayReference(String payReference);
 
+    /** Every booking an agent brought the buyer of, newest first — in every state, not only the paid ones. */
+    @Query("select b from UnitBooking b where b.introducedByAgentId = :agentId and b.status <> 5 "
+            + "order by b.createdAt desc")
+    List<UnitBooking> findIntroducedBy(@Param("agentId") Long agentId);
+
     /** A buyer's own bookings, by identity: the ones they can pay and read receipts for. */
     @Query("select b from UnitBooking b where b.buyerUserId = :userId and b.status <> 5 "
             + "order by b.bookedOn desc, b.id desc")

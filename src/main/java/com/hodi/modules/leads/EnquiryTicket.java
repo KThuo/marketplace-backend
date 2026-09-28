@@ -45,6 +45,9 @@ public class EnquiryTicket {
     @Column(nullable = false, length = 16)
     @Builder.Default private String state = AppConstant.ENQUIRY_OPEN;
 
+    /** The agent who brought this buyer, when one is named this early. Carried onto their offer and booking. */
+    @Column(name = "introduced_by_agent_id") private Long introducedByAgentId;
+
     @Column(name = "assigned_to_user_id") private Long assignedToUserId;
     @Column(name = "assigned_to_name", length = 160) private String assignedToName;
 

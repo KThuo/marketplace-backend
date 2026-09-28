@@ -474,6 +474,18 @@ public enum ConfigKey {
                     + "development has no rate of its own. Copied onto each line when raised. Zero raises "
                     + "nothing.", false, true),
 
+    /**
+     * How early the agent who brought a buyer may be named: ENQUIRY (from the first enquiry, carried onto
+     * the offer and the booking), OFFER, or BOOKING (only on the booking itself). Later stages are always
+     * open; this decides the earliest.
+     */
+    AGENT_ATTRIBUTION_FROM(
+            "commission.agent.attribution.from", "STRING", "GENERAL", "ENQUIRY",
+            "Name the introducing agent from",
+            "ENQUIRY, OFFER or BOOKING: the earliest stage at which the agent who brought a buyer may be "
+                    + "named. A name given early is carried forward onto the offer and the booking.",
+            false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

@@ -90,6 +90,7 @@ public class BookingService {
     private final com.hodi.modules.payments.PaymentScope scope;
     private final CommissionService commissions;
     private final com.hodi.modules.agents.AgentProfileRepository agents;
+    private final com.hodi.modules.agents.IntroducerService introducers;
     private final AuditService audit;
 
     // ── reading ───────────────────────────────────────────────────────────────
@@ -387,17 +388,9 @@ public class BookingService {
         return toResponse(saved);
     }
 
-    /** The agent a reference names, if it names an approved one. Blank means nobody. */
+    /** The agent a reference names, if it names an approved one. Blank means nobody. One rule for everybody. */
     private Optional<com.hodi.modules.agents.AgentProfile> introducer(String agentRef) {
-        if (agentRef == null || agentRef.isBlank()) return Optional.empty();
-        com.hodi.modules.agents.AgentProfile agent = agents.findByReference(agentRef.trim())
-                .filter(a -> a.getStatus() != AppConstant.STATUS_DELETED)
-                .orElseThrow(() -> new ResourceNotFoundException("Agent", agentRef));
-        if (!com.hodi.modules.agents.AgentState.APPROVED.equals(agent.getState())) {
-            throw new HodiException("Only an approved agent can be named as having brought the buyer; "
-                    + agent.getFullName() + " is " + agent.getState().toLowerCase() + ".", HttpStatus.CONFLICT);
-        }
-        return Optional.of(agent);
+        return introducers.resolve(agentRef);
     }
 
     /**

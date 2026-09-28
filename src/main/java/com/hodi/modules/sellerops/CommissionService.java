@@ -220,6 +220,20 @@ public class CommissionService {
         }
     }
 
+    /**
+     * An agent's own lines, by their id rather than by tenant: an agent's line sits on the seller's tenant,
+     * which is not theirs, and this is how they see it anyway.
+     */
+    @Transactional(readOnly = true)
+    public PagedResponse<CommissionResponse> forAgent(Long agentProfileId, PagedDataRequest request) {
+        Specification<CommissionRecord> spec = SearchSpecs.allOf(
+                SearchSpecs.notArchived(),
+                SearchSpecs.eq("agentProfileId", agentProfileId),
+                SearchSpecs.eq("payeeKind", SellerOpsConstants.PAYEE_AGENT));
+        var page = repository.findAll(spec, request.toPageable(Sort.by(Sort.Direction.DESC, "soldAt")));
+        return PagedResponse.from(page, this::toResponse);
+    }
+
     /** Every line on one sale, for the booking's own screen. */
     @Transactional(readOnly = true)
     public java.util.List<CommissionResponse> forBooking(Long bookingId) {

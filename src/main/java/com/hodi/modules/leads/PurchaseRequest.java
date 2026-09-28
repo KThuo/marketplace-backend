@@ -66,6 +66,8 @@ public class PurchaseRequest {
     @Column(name = "decision_note", columnDefinition = "TEXT") private String decisionNote;
     /** The booking this offer became, once accepted and converted. The reservation and the money live there. */
     @Column(name = "booking_id") private Long bookingId;
+    /** The agent who brought this buyer: carried from their enquiry on the same home, or named here. */
+    @Column(name = "introduced_by_agent_id") private Long introducedByAgentId;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)

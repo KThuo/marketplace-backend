@@ -78,7 +78,10 @@ public final class LeadDtos {
              * of the reply, and the answer they had come back for was behind a button that did not say it
              * had arrived.
              */
-            MessageResponse lastMessage) {}
+            MessageResponse lastMessage,
+            /** The agent who brought this buyer, when one is named. */
+            String introducedByAgentRef,
+            String introducedByAgentName) {}
 
     public record RaiseEnquiryRequest(
             @NotBlank(message = "Which listing is this about?") String propertyReference,
@@ -193,7 +196,10 @@ public final class LeadDtos {
             BigDecimal counterAmount,
             String counterBy,
             /** The figure the offer was accepted at, or null until it is. */
-            BigDecimal agreedAmount) {}
+            BigDecimal agreedAmount,
+            /** The agent who brought this buyer, when one is named — carried onto the booking. */
+            String introducedByAgentRef,
+            String introducedByAgentName) {}
 
     /**
      * Turning an accepted offer into a booking. Everything here is optional: the offer already names the
