@@ -410,12 +410,43 @@ totals and audit on export.
 - "How placed" says *bank notification* or *by hand*; the platform does not record whether a matched
   notification was matched automatically or by slip, so the finer split §3.5 mentioned is not shown.
 
-## 8. Where this leaves the plan
+## 8. What is pending on this plan
 
 Phases 1–5 are built, tested (511 backend tests at the last full run) and committed on
-`feature/development-money-in-and-out`. Still open, and all named above: confirming the bank's debit mandate on
-owners' accounts before phase 4 goes live; whether the two development settings should themselves need a
-second bank user; whether a partner lender's staff should count as the bank; a form for the bank to register
-a beneficiary owned by an institution; and a browser walk-through of the screens with a signed-in bank user
-and a signed-in owner. Commissions (§5) are the next piece.
+`feature/development-money-in-and-out`, in both repositories. Nothing is pushed yet. What remains, by who
+resolves it:
 
+**For the client or the bank to decide**
+1. **The debit mandate.** Whether the platform's Co-op credentials may debit an *owner's* account. Phase 4
+   passes the chosen account as the source of a transfer; whether Co-op honours it is a banking arrangement.
+   Until it is confirmed, a development's payment reaches "approved" and the bank's answer decides the rest.
+2. **Approval limits.** Whether any amount needs a second checker, or a bank checker on a developer-managed
+   development. Today one checker in the managing organisation releases any amount.
+3. **Should the two development settings need a second bank user?** Switching a development to owner
+   collection lets the owner's already-approved accounts start collecting there. Today it is one bank user,
+   audited.
+4. **Should a partner lender's staff count as "the bank"?** Every institution's staff are platform staff, so
+   these rules treat any lender as the bank. If a partner lender should manage only its own projects, the
+   actor model needs a distinction it does not have.
+5. **Private copies of a shared supplier.** An owner registering an account the bank already shares is
+   refused, so a statement never shows one supplier under two records. If owners need their own contact
+   details or notes on a shared supplier, that is a per-organisation note on the shared record.
+
+**To build, small**
+6. A form for the bank to register a beneficiary owned by an *institution* (a bank-owned development). The
+   API accepts it; the modal offers seller organisations only, because the auth store does not expose the
+   caller's institution.
+7. "How placed" on the money-in statement says *bank notification* or *by hand*; recording whether a
+   matched notification was matched automatically or by slip would give the finer split §3.5 named.
+8. Tour analytics were noted against a different plan; not this one.
+
+**To verify**
+9. A browser walk-through with a signed-in bank user and a signed-in owner: the two settings, registering and
+   approving a beneficiary, setting up a debit account, paying a beneficiary through to the checker, and the
+   statements. Everything above was verified by tests, not on screen.
+10. A live send-and-settle against the Co-op sandbox once item 1 is answered, to see the cost write itself.
+
+**Deliberately out of scope (§5), unchanged**
+- Commissions — the bank's on a sale, and agents' for bringing buyers — are the next piece; this plan
+  reserved a payee type and `managed_by` for them.
+- M-Pesa (B2C) payouts, retention on contractor payments, budget approvals and variation orders.
