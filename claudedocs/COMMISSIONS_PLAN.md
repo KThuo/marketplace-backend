@@ -357,7 +357,35 @@ Each phase leaves the app working; phase 1 alone already makes units raise the b
   confirmations settle the sale and pay the lines in the right order; TRANSFER adds the fee leg (guarded
   against the shared config cache).
 
-## 8. Decisions taken (28 September 2026)
+### Phase 4 — done (28 September 2026)
+
+- `V20260929030000__commissions_and_settlements_have_statements.sql`: `v_report_commission` rebuilt on the
+  new shape (earned by, agent, sale, development, borne by, paid-by transfer; owner columns for scoping);
+  `v_report_sale_settlements` (one row per completed bank-collected sale, the same arithmetic as
+  `SettlementService.figures`, state from the booking and its legs); `v_report_agent_sales` (every buyer an
+  agent brought, from the day of booking, with the line once sold).
+- `ReportCatalogue`: `COMMISSION` extended and owner-scoped, `SALE_SETTLEMENTS` (owner-scoped),
+  `AGENT_SALES` (platform only).
+- `/api/v1/commissions/totals` now says whose the money is (bank / agents, outstanding / paid); the list
+  filters by the period the sale completed in; each line names the transfer that paid it.
+- `/app/commission` rebuilt: four tiles, payee and period filters, the sale links to its booking, a paid line
+  links to its transfer or says "by hand", and "Open as a report" carries the same filters to the report.
+- Tests: `CommissionReportsIT` (3). Full suite green.
+
+## 8. What is pending on this plan
+
+**Waiting on the client or the bank (§6):** basis (price agreed is assumed), VAT on commission, whether any
+approved agent may be named or only a list the bank keeps per development.
+
+**Left out on purpose:** a payout account on the public agent application form (the profile offers it once
+approved); marking an owner-collected sale's agent line paid from the owner's side (today the bank marks it
+by hand under `COMMISSIONS_SETTLE`); tiered rates; M-Pesa payouts to agents; splitting one agent commission.
+
+**To verify:** a browser walk-through of the four phases as the bank, an owner and an agent; a live Co-op
+settlement end to end (the dev server's Co-op credentials do not authenticate, so the confirmation path has
+only been exercised by test).
+
+## 9. Decisions taken (28 September 2026)
 
 - (a) Attribution is carried from enquiry → offer → booking, and how early it may be named is a setting
   (`AGENT_ATTRIBUTION_FROM`, §3.2) — the client may want it on the booking only.

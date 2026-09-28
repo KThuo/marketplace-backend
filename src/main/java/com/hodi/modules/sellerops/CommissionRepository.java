@@ -31,4 +31,15 @@ public interface CommissionRepository
     @Query("select sum(c.amount) from CommissionRecord c where c.state = 'PAID' and c.status <> 5 "
             + "and (:tenantId is null or c.tenantId = :tenantId)")
     BigDecimal paidTotal(@Param("tenantId") Long tenantId);
+
+    /** The same two figures for one kind of payee: the bank's lines, or the agents'. */
+    @Query("select sum(c.amount) from CommissionRecord c "
+            + "where c.payeeKind = :payeeKind and c.state in ('DUE', 'INVOICED') and c.status <> 5 "
+            + "and (:tenantId is null or c.tenantId = :tenantId)")
+    BigDecimal outstandingTotalFor(@Param("payeeKind") String payeeKind, @Param("tenantId") Long tenantId);
+
+    @Query("select sum(c.amount) from CommissionRecord c "
+            + "where c.payeeKind = :payeeKind and c.state = 'PAID' and c.status <> 5 "
+            + "and (:tenantId is null or c.tenantId = :tenantId)")
+    BigDecimal paidTotalFor(@Param("payeeKind") String payeeKind, @Param("tenantId") Long tenantId);
 }

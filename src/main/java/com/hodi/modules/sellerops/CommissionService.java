@@ -64,6 +64,7 @@ import java.util.Locale;
 public class CommissionService {
 
     private final CommissionRepository repository;
+    private final com.hodi.modules.disbursements.DisbursementRepository disbursements;
     private final AgentProfileRepository agents;
     private final ConfigurationService configs;
     private final AuditService audit;
@@ -93,14 +94,20 @@ public class CommissionService {
             OffsetDateTime invoicedAt,
             OffsetDateTime paidAt,
             String waivedReason,
-            String note) {}
+            String note,
+            /** The transfer that paid it, when the bank paid it through a settlement. */
+            String disbursementId,
+            String disbursementReference) {}
 
     public record SettleRequest(
             @NotBlank(message = "Say what you are doing") String action,
             @Size(max = 64) String invoiceRef,
             String note) {}
 
-    public record CommissionTotals(BigDecimal outstanding, BigDecimal paid, String currency) {}
+    /** What is owed and what has been paid, in all and by whom it is earned. */
+    public record CommissionTotals(BigDecimal outstanding, BigDecimal paid, String currency,
+                                   BigDecimal bankOutstanding, BigDecimal bankPaid,
+                                   BigDecimal agentOutstanding, BigDecimal agentPaid) {}
 
     @Getter
     @Setter
@@ -108,6 +115,9 @@ public class CommissionService {
         private String state;
         /** PLATFORM or AGENT. */
         private String payeeKind;
+        /** The period the sale completed in, inclusive, as dates. */
+        private java.time.LocalDate from;
+        private java.time.LocalDate to;
     }
 
     /** The rates a sale is raised at, resolved once. */
@@ -250,6 +260,7 @@ public class CommissionService {
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("state", blankToNull(request.getState())),
                 SearchSpecs.eq("payeeKind", blankToNull(request.getPayeeKind())),
+                SearchSpecs.betweenDays("soldAt", request.getFrom(), request.getTo()),
                 // A seller sees what they owe; the platform sees everybody's.
                 TenantScope.restrict("tenantId"));
         var page = repository.findAll(spec,
@@ -260,12 +271,14 @@ public class CommissionService {
     @Transactional(readOnly = true)
     public CommissionTotals totals() {
         Long tenantId = TenantScope.ownTenantId();
-        BigDecimal outstanding = repository.outstandingTotal(tenantId);
-        BigDecimal paid = repository.paidTotal(tenantId);
         return new CommissionTotals(
-                outstanding == null ? BigDecimal.ZERO : outstanding,
-                paid == null ? BigDecimal.ZERO : paid,
-                "KES");
+                zero(repository.outstandingTotal(tenantId)),
+                zero(repository.paidTotal(tenantId)),
+                "KES",
+                zero(repository.outstandingTotalFor(SellerOpsConstants.PAYEE_PLATFORM, tenantId)),
+                zero(repository.paidTotalFor(SellerOpsConstants.PAYEE_PLATFORM, tenantId)),
+                zero(repository.outstandingTotalFor(SellerOpsConstants.PAYEE_AGENT, tenantId)),
+                zero(repository.paidTotalFor(SellerOpsConstants.PAYEE_AGENT, tenantId)));
     }
 
     /**
@@ -317,6 +330,8 @@ public class CommissionService {
         return toResponse(saved);
     }
 
+    private static BigDecimal zero(BigDecimal v) { return v == null ? BigDecimal.ZERO : v; }
+
     private CommissionResponse toResponse(CommissionRecord c) {
         return new CommissionResponse(c.getReference(), c.getPayeeKind(), c.getAgentName(),
                 c.getBookingId() == null ? null : HashIdUtil.encodeId(c.getBookingId()), c.getBookingRef(),
@@ -324,7 +339,10 @@ public class CommissionService {
                 c.getPropertyRef(), c.getPropertyTitle(),
                 c.getTenantName(), c.getSalePrice(), c.getRatePercent(), c.getAmount(), c.getCurrency(),
                 c.getSoldAt(), c.getState(), c.getInvoiceRef(), c.getInvoicedAt(), c.getPaidAt(),
-                c.getWaivedReason(), c.getNote());
+                c.getWaivedReason(), c.getNote(),
+                c.getDisbursementId() == null ? null : HashIdUtil.encodeId(c.getDisbursementId()),
+                c.getDisbursementId() == null ? null : disbursements.findById(c.getDisbursementId())
+                        .map(com.hodi.modules.disbursements.Disbursement::getReference).orElse(null));
     }
 
     private static String blankToNull(String value) {
