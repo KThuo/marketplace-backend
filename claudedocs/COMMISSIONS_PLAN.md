@@ -375,7 +375,11 @@ Each phase leaves the app working; phase 1 alone already makes units raise the b
 ## 8. What is pending on this plan
 
 **Waiting on the client or the bank (§6):** basis (price agreed is assumed), VAT on commission, whether any
-approved agent may be named or only a list the bank keeps per development.
+approved agent may be named or only a list the bank keeps per development; and whether `INVOICED` is wanted
+at all. It is the by-hand path for a sale the bank did not collect (owner-collected developments, houses):
+the bank bills the owner and marks the line paid when they pay. A bank-collected sale never passes through
+it — its lines go `DUE` → `PAID` by the settlement's transfers — and the client has said to keep it as is
+while it changes nothing in that flow (28 September 2026).
 
 **Left out on purpose:** a payout account on the public agent application form (the profile offers it once
 approved); marking an owner-collected sale's agent line paid from the owner's side (today the bank marks it
