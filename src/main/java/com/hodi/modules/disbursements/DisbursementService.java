@@ -100,6 +100,8 @@ public class DisbursementService {
     private final com.hodi.modules.developments.DevelopmentPhaseRepository phases;
     private final com.hodi.modules.developments.DevelopmentCostCategoryRepository categories;
     private final com.hodi.modules.developments.PaidCostRecorder costs;
+    private final com.hodi.modules.settlements.SettlementRecorder settlements;
+    private final com.hodi.modules.bookings.UnitBookingRepository bookingRows;
     private final com.hodi.modules.beneficiaries.BeneficiaryRepository beneficiaries;
     private final com.hodi.modules.beneficiaries.BeneficiaryTypeRepository beneficiaryTypes;
     private final com.hodi.modules.beneficiaries.PayoutAccountCheck payoutCheck;
@@ -213,6 +215,77 @@ public class DisbursementService {
         log.info("Disbursement {} proposed by {}: {} {} to {} ({})", row.getReference(), by, row.getCurrency(),
                 row.getAmount(), row.getValidatedName(), row.getAccountNo());
         return toResponse(row);
+    }
+
+    /**
+     * One transfer of a sale's settlement, written and sent for approval like any other of the bank's.
+     *
+     * <p>The settlement service has already computed the figure and confirmed the account; this is the
+     * engine's part — the row, the checker's snapshot, the approval scoped to the bank's own staff. The row
+     * carries the booking and what it settles, so the bank's confirmation can write the sale settled and the
+     * commission line paid without anybody marking either by hand.
+     */
+    @Transactional
+    public DisbursementResponse proposeSettlementLeg(SettlementLeg leg) {
+        String by = AuthContext.username();
+        PaymentAccount source = sourceAccount();
+        PaymentType channel = types.findById(source.getPaymentTypeId()).orElseThrow();
+        Disbursement row = rows.saveAndFlush(Disbursement.builder()
+                .reference(RrnGenerator.generate("DB"))
+                .payeeKind(leg.payeeKind())
+                .tenantId(leg.tenantId())
+                .payeeName(leg.payeeName())
+                .bankCode(leg.bankCode())
+                .accountNo(leg.accountNo())
+                .validatedName(leg.holderName())
+                .validatedAt(OffsetDateTime.now())
+                .amount(leg.amount().setScale(2, RoundingMode.HALF_UP))
+                .currency(leg.currency() == null ? "KES" : leg.currency())
+                .purpose(clip(leg.purpose(), 240))
+                .narration(leg.narration() == null || leg.narration().isBlank() ? clip(leg.purpose(), 160) : clip(leg.narration(), 160))
+                .sourceAccountId(source.getId())
+                .developmentId(leg.developmentId())
+                .ownerTenantId(leg.ownerTenantId())
+                .ownerInstitutionId(leg.ownerInstitutionId())
+                .managedBy(Disbursement.MANAGED_BY_BANK)
+                .bookingId(leg.bookingId())
+                .settlementKind(leg.settlementKind())
+                .state(Disbursement.AWAITING_APPROVAL)
+                .callbackTimeoutSeconds(Math.max(300, configs.getInt(ConfigKey.COOP_CALLBACK_TIMEOUT_SECONDS)))
+                .madeBy(by).createdBy(by).updatedBy(by)
+                .build());
+
+        ChangeSet.Snapshot what = ChangeSet.of()
+                .put("amount", "Amount", row.getCurrency() + " " + MONEY.format(row.getAmount()))
+                .put("payee", "Paid to", row.getPayeeName())
+                .put("account", "Account", row.getAccountNo() + " at bank " + row.getBankCode())
+                .put("validatedName", "Account held by (Co-op)", row.getValidatedName())
+                .put("settles", "Settles", settlementLabel(leg.settlementKind()) + " of sale " + leg.bookingReference()
+                        + (leg.developmentName() == null ? "" : ", " + leg.developmentName()))
+                .put("purpose", "Purpose", row.getPurpose())
+                .put("source", "Sent from", label(source, channel))
+                .put("madeBy", "Proposed by", by);
+        // The bank's own money movement, so the bank's own checker: scoped to nobody's organisation.
+        approvals.submit(AppConstant.APPROVAL_ENTITY_DISBURSEMENT, row.getId(), AppConstant.APPROVAL_ACTION_SEND,
+                null, null,
+                row.getCurrency() + " " + MONEY.format(row.getAmount()) + " to " + row.getValidatedName()
+                        + " — " + settlementLabel(leg.settlementKind()) + ", " + leg.bookingReference(),
+                "Settlement of a sale the bank collected. Check the name Co-op resolved the account to "
+                        + "against who is meant to be paid.",
+                null, what);
+        audit.record(AppConstant.AUDIT_DISBURSEMENT_PROPOSED, "Disbursement", row.getId(), null, snapshot(row));
+        log.info("Settlement leg {} ({}) of {} proposed by {}: {} {} to {}", row.getReference(),
+                leg.settlementKind(), leg.bookingReference(), by, row.getCurrency(), row.getAmount(), row.getValidatedName());
+        return toResponse(row);
+    }
+
+    private static String settlementLabel(String kind) {
+        return switch (kind == null ? "" : kind) {
+            case Disbursement.SETTLEMENT_PROCEEDS -> "the proceeds";
+            case Disbursement.SETTLEMENT_AGENT_FEE -> "the agent's fee";
+            case Disbursement.SETTLEMENT_BANK_FEE -> "the bank's fee";
+            default -> "a part";
+        };
     }
 
     /** The platform's own account the money leaves: its live PesaLink account. */
@@ -617,6 +690,8 @@ public class DisbursementService {
                     row.setProcessingReason("Confirmed by Co-op: " + reading.description());
                     // The money has gone, so the cost exists — in this transaction, once (the recorder checks).
                     costs.record(row);
+                    // And a settlement's transfer writes what it settled: the sale, the line, the fee.
+                    settlements.onPaid(row);
                 }
                 case FAILED -> {
                     row.setState(Disbursement.FAILED);
@@ -712,7 +787,11 @@ public class DisbursementService {
                 d.getCostCategoryId() == null ? null : categories.findById(d.getCostCategoryId()).map(DevelopmentCostCategory::getName).orElse(null),
                 HashIdUtil.encodeId(d.getBeneficiaryId()), d.getBeneficiaryType(), d.getInvoiceReference(), d.getManagedBy(),
                 d.getDocumentId() == null ? null : vaultDocuments.findById(d.getDocumentId()).map(v -> v.getReference()).orElse(null),
-                d.getDocumentId() == null ? null : vaultDocuments.findById(d.getDocumentId()).map(v -> v.getOriginalName()).orElse(null));
+                d.getDocumentId() == null ? null : vaultDocuments.findById(d.getDocumentId()).map(v -> v.getOriginalName()).orElse(null),
+                d.getBookingId() == null ? null : HashIdUtil.encodeId(d.getBookingId()),
+                d.getBookingId() == null ? null : bookingRows.findById(d.getBookingId())
+                        .map(com.hodi.modules.bookings.UnitBooking::getReference).orElse(null),
+                d.getSettlementKind());
     }
 
     static String stateLabel(String state) {

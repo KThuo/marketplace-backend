@@ -326,6 +326,37 @@ Each phase leaves the app working; phase 1 alone already makes units raise the b
   configuration table — the cache is shared with the dev server and a test that depended on evicting it has
   been flaky before.
 
+### Phase 3 — done (28 September 2026)
+
+- `V20260929010000__a_sale_the_bank_collected_is_settled.sql`: `disbursements.booking_id` and
+  `settlement_kind` (PROCEEDS | AGENT_FEE | BANK_FEE, CHECKed together); `unit_bookings.settled_at`.
+- `ConfigKey.PLATFORM_COMMISSION_SETTLEMENT` (RETAIN | TRANSFER, default RETAIN) and
+  `PLATFORM_COMMISSION_FEE_ACCOUNT` ("0011/account", blank refuses TRANSFER). Read at proposal; the legs are
+  the record.
+- Permissions `SETTLEMENTS_VIEW` (module COMMISSIONS; granted to the seller groups that read development
+  finance, and to the platform's read-only groups) and `SETTLEMENTS_MAKE` (platform only). The decision on
+  each transfer stays `DISBURSEMENTS_APPROVE`, so the checker is a different person by the existing rule.
+- `SettlementService` (new module `settlements`): `figures()` computed from the booking's money in and its
+  live lines — gross, bank fee, agent fee, who bears it, what the bank keeps, net to owner; `forBooking`
+  (owner reads, bank reads and is offered the owner's known accounts and the agent's confirmed ones),
+  `queue(settled)` (bank sees all, owner their own), `forDevelopment` (the owner's card), `settle` (bank only;
+  refuses unless AWAITING with no blockers; confirms every account with the bank on the way through; proposes
+  the legs). Houses are not settled here — a house's seller is paid by its buyer.
+- `DisbursementService.proposeSettlementLeg(SettlementLeg)`: the engine's part — row, checker's snapshot
+  ("Settles: the proceeds of sale BK…"), approval scoped to the bank's own staff. `SettlementRecorder`,
+  called beside the cost recorder when the bank confirms SUCCEEDED: an agent-fee leg pays the agent's line;
+  the proceeds leg settles the booking and, unless a fee leg exists, pays the platform's line (retained); a
+  fee leg pays the platform's line on its own arrival.
+- Frontend: `/app/settlements` (queue with Awaiting / Settled tabs; "Settle" opens `SettleSaleModal`, a
+  two- or three-step wizard: owner's account from the bank's known ones or typed, the agent's confirmed
+  account, confirm); `SettlementPanel` on the booking page (figures, legs with links, blockers, the button
+  for the bank); `SalesSettlementsCard` on the finance tab of a bank-collected development ("Paid to the
+  owner … still with the bank"); nav under Money.
+- Tests: `SettlementIT` (5): the figures both ways the agent's fee can be borne; owner-collected sales stay
+  out; proposing writes two legs with the bank's names and maker-checker, refuses a second proposal, and the
+  confirmations settle the sale and pay the lines in the right order; TRANSFER adds the fee leg (guarded
+  against the shared config cache).
+
 ## 8. Decisions taken (28 September 2026)
 
 - (a) Attribution is carried from enquiry → offer → booking, and how early it may be named is a setting

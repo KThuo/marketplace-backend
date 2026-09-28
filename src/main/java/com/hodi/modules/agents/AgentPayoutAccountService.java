@@ -86,6 +86,14 @@ public class AgentPayoutAccountService {
                 .or(() -> accounts.findLiveFor(agentId).stream().filter(AgentPayoutAccount::isVerified).findFirst());
     }
 
+    /** A particular account of this agent's, if the bank has confirmed it. Not found otherwise. */
+    @Transactional(readOnly = true)
+    public AgentPayoutAccount payableById(Long agentId, String accountHashId) {
+        return accounts.findById(HashIdUtil.decodeId(accountHashId))
+                .filter(a -> a.isLive() && a.getAgentProfileId().equals(agentId))
+                .orElseThrow(() -> new ResourceNotFoundException("Payout account", accountHashId));
+    }
+
     // ── writing: the agent's own ──────────────────────────────────────────────
 
     public PayoutAccountResponse addMine(SavePayoutAccountRequest request) {

@@ -484,6 +484,9 @@ public enum AppPermissionEnum {
     // ── COMMISSIONS ───────────────────────────────────────────────────────────
     COMMISSIONS_VIEW("See what is owed", AppModuleEnum.COMMISSIONS),
     COMMISSIONS_SETTLE("Invoice, mark paid or write off", AppModuleEnum.COMMISSIONS, true),
+    SETTLEMENTS_VIEW("See how a sale the bank collected is settled", AppModuleEnum.COMMISSIONS),
+    SETTLEMENTS_MAKE("Propose the settlement of a sale: proceeds to the owner, fees to whom they are due",
+            AppModuleEnum.COMMISSIONS, true),
 
     // ── REPORTS ───────────────────────────────────────────────────────────────
     REPORTS_VIEW("Run reports", AppModuleEnum.REPORTS),

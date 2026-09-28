@@ -18,6 +18,9 @@ public interface DisbursementRepository extends JpaRepository<Disbursement, Long
 
     Optional<Disbursement> findByBankReference(String bankReference);
 
+    /** Every transfer of one sale's settlement. */
+    List<Disbursement> findByBookingIdAndStatusNot(Long bookingId, Integer status);
+
     /** Held for update: the claim before a send, and every settlement, go through this. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select d from Disbursement d where d.id = :id and d.status <> 5")

@@ -480,7 +480,7 @@ public class SeederService {
                 // Reading payments, not recording them: a manager checks what a buyer has paid; who may
                 // write it down is the organisation's decision, made by granting PAYMENTS_RECEIVE on
                 // purpose.
-                "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW"));
+                "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW", "SETTLEMENTS_VIEW"));
         /*
          * An agent answers questions and shows people round — so they read the stock and write nothing about
          * it. The listings, projects and units are view-only here, which is the difference between this
@@ -538,7 +538,7 @@ public class SeederService {
                 "PROPERTIES_VIEW", "DEVELOPMENTS_VIEW", "UNITS_VIEW", "BOOKINGS_VIEW",
                 "ENQUIRIES_VIEW", "SITE_VISITS_VIEW", "PURCHASE_REQUESTS_VIEW",
                 "APPROVALS_VIEW", "RATINGS_VIEW", "AGENTS_VIEW", "VENDORS_VIEW",
-                "AUCTIONS_VIEW", "AUCTIONEERS_VIEW", "COMMISSIONS_VIEW",
+                "AUCTIONS_VIEW", "AUCTIONEERS_VIEW", "COMMISSIONS_VIEW", "SETTLEMENTS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUER_PANEL_VIEW",
                 "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW");
 

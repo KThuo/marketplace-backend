@@ -120,7 +120,34 @@ public final class DisbursementDtos {
             String invoiceReference,
             String managedBy,
             String documentReference,
-            String documentName) {}
+            String documentName,
+            /* The sale this settles, when it is a settlement's transfer. */
+            String bookingId,
+            String bookingReference,
+            String settlementKind) {}
+
+    /**
+     * One transfer of a sale's settlement, as the settlement service hands it to the engine: everything the
+     * row needs, already confirmed with the bank. The engine writes it, sends it for approval and sends it.
+     */
+    public record SettlementLeg(
+            String settlementKind,
+            Long bookingId,
+            String bookingReference,
+            String payeeKind,
+            Long tenantId,
+            String payeeName,
+            String bankCode,
+            String accountNo,
+            String holderName,
+            BigDecimal amount,
+            String currency,
+            String purpose,
+            String narration,
+            Long developmentId,
+            String developmentName,
+            Long ownerTenantId,
+            Long ownerInstitutionId) {}
 
     /** One disbursement with the bank's last answer verbatim. */
     public record DisbursementDetail(DisbursementResponse disbursement, String rawResponse) {}

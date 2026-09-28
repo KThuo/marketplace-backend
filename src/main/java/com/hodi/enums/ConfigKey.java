@@ -486,6 +486,26 @@ public enum ConfigKey {
                     + "named. A name given early is carried forward onto the offer and the booking.",
             false, false),
 
+    /**
+     * What the bank does with its own commission when it settles a sale it collected: RETAIN (keep it in
+     * the collection account; the platform's line is paid when the proceeds go out) or TRANSFER (move it
+     * to the fee account named below, as a third transfer). Read when a settlement is proposed; the legs
+     * it creates are the record, so changing this never restates a settled sale.
+     */
+    PLATFORM_COMMISSION_SETTLEMENT(
+            "commission.platform.settlement", "STRING", "GENERAL", "RETAIN",
+            "The bank's commission, on settlement",
+            "RETAIN keeps the bank's fee where the buyers' money was collected; TRANSFER moves it to the fee "
+                    + "account as its own transfer when a sale is settled.", false, false),
+
+    /** The bank's fee account, as bank code and account number, for TRANSFER: "0011/0110001122334455". */
+    PLATFORM_COMMISSION_FEE_ACCOUNT(
+            "commission.platform.fee.account", "STRING", "GENERAL", "",
+            "The bank's fee account",
+            "Where the bank's commission is moved to under TRANSFER, as bank code / account number, for "
+                    + "example 0011/0110001122334455. Confirmed with the bank each time a settlement is "
+                    + "proposed. Blank refuses TRANSFER settlements until it is set.", false, false),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

@@ -88,6 +88,8 @@ public class UnitBooking {
     @Column(name = "expires_at") private OffsetDateTime expiresAt;
     @Column(name = "agreed_at") private OffsetDateTime agreedAt;
     @Column(name = "completed_at") private OffsetDateTime completedAt;
+    /** The proceeds reached the owner: set by the bank's confirmation of that transfer, never by hand. */
+    @Column(name = "settled_at") private OffsetDateTime settledAt;
     @Column(name = "closed_at") private OffsetDateTime closedAt;
     @Column(name = "close_reason", columnDefinition = "TEXT") private String closeReason;
 

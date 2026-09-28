@@ -48,6 +48,10 @@ public class Disbursement {
     public static final String PAYEE_OTHER = "OTHER";
     /** A development paying somebody it registered. Only ever from a development, out of the owner's money. */
     public static final String PAYEE_BENEFICIARY = "BENEFICIARY";
+    /** What a transfer settles of a sale the bank collected, when it does. */
+    public static final String SETTLEMENT_PROCEEDS = "PROCEEDS";
+    public static final String SETTLEMENT_AGENT_FEE = "AGENT_FEE";
+    public static final String SETTLEMENT_BANK_FEE = "BANK_FEE";
     public static final String MANAGED_BY_OWNER = "OWNER";
     public static final String MANAGED_BY_BANK = "BANK";
 
@@ -87,6 +91,10 @@ public class Disbursement {
     @Column(name = "managed_by", nullable = false, length = 8) @Builder.Default private String managedBy = MANAGED_BY_BANK;
     /** The invoice or certificate behind it, in the vault. Copied onto the cost once paid. */
     @Column(name = "document_id") private Long documentId;
+
+    /** The sale this transfer settles, and which part of it: proceeds, the agent's fee, or the bank's. */
+    @Column(name = "booking_id") private Long bookingId;
+    @Column(name = "settlement_kind", length = 16) private String settlementKind;
 
     @Column(nullable = false, length = 24) @Builder.Default private String state = AWAITING_APPROVAL;
     @Column(name = "bank_reference", length = 64) private String bankReference;

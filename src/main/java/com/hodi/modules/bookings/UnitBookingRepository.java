@@ -25,6 +25,24 @@ public interface UnitBookingRepository
      */
     Optional<UnitBooking> findByPayReference(String payReference);
 
+    /**
+     * Completed sales on developments the bank collects for, not yet settled (or settled, when
+     * {@code settled} is true), scoped to an owner where one is given. What the settlements queue reads.
+     */
+    @Query("select b from UnitBooking b where b.state = 'COMPLETED' and b.status <> 5 "
+            + "and ((:settled = true and b.settledAt is not null) or (:settled = false and b.settledAt is null)) "
+            + "and b.developmentId in (select d.id from Development d where d.collectionMode = 'BANK' and d.status <> 5) "
+            + "and (:tenantId is null or b.tenantId = :tenantId) "
+            + "and (:institutionId is null or b.institutionId = :institutionId) "
+            + "order by b.completedAt desc")
+    org.springframework.data.domain.Page<UnitBooking> findForSettlement(@Param("settled") boolean settled,
+            @Param("tenantId") Long tenantId, @Param("institutionId") Long institutionId,
+            org.springframework.data.domain.Pageable pageable);
+
+    /** A development's completed sales, for the owner's settlements card. */
+    @Query("select b from UnitBooking b where b.developmentId = :developmentId and b.state = 'COMPLETED' and b.status <> 5")
+    List<UnitBooking> findCompletedFor(@Param("developmentId") Long developmentId);
+
     /** Every booking an agent brought the buyer of, newest first — in every state, not only the paid ones. */
     @Query("select b from UnitBooking b where b.introducedByAgentId = :agentId and b.status <> 5 "
             + "order by b.createdAt desc")
