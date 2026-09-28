@@ -10,7 +10,10 @@ import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 
 /**
- * What the platform earned on one completed sale (M13).
+ * One commission line on one completed sale (M13): the platform's, or an agent's for bringing the buyer.
+ *
+ * <p>Against the booking, which is the sale. {@code propertyId} and the copied names are for reading, not
+ * identity: two lines on one sale share them and differ in {@code payeeKind}.
  *
  * <p>The rate is <strong>copied onto the row</strong> rather than referenced. A rate change next quarter must
  * not silently restate what was owed last quarter, and a report that reads a live setting to explain a
@@ -31,6 +34,23 @@ public class CommissionRecord {
     @Column(name = "property_title", length = 255) private String propertyTitle;
     @Column(name = "tenant_id", nullable = false) private Long tenantId;
     @Column(name = "tenant_name", length = 255) private String tenantName;
+
+    /** Null only on rows raised before commissions were lines against a booking. */
+    @Column(name = "booking_id") private Long bookingId;
+    @Column(name = "booking_ref", length = 16) private String bookingRef;
+    @Column(name = "development_id") private Long developmentId;
+    @Column(name = "development_name", length = 255) private String developmentName;
+
+    /** {@link SellerOpsConstants#PAYEE_PLATFORM} or {@link SellerOpsConstants#PAYEE_AGENT}. */
+    @Column(name = "payee_kind", nullable = false, length = 16)
+    @Builder.Default private String payeeKind = SellerOpsConstants.PAYEE_PLATFORM;
+    @Column(name = "agent_profile_id") private Long agentProfileId;
+    @Column(name = "agent_name", length = 160) private String agentName;
+    /** Whose money it comes out of when the bank settles the sale: SELLER or BANK. */
+    @Column(name = "paid_by", nullable = false, length = 8)
+    @Builder.Default private String paidBy = com.hodi.modules.developments.Development.AGENT_PAID_BY_SELLER;
+    /** The transfer that paid it, when the bank paid it. */
+    @Column(name = "disbursement_id") private Long disbursementId;
 
     @Column(name = "sale_price", nullable = false, precision = 15, scale = 2) private BigDecimal salePrice;
     @Column(name = "rate_percent", nullable = false, precision = 6, scale = 3)
@@ -58,6 +78,8 @@ public class CommissionRecord {
     @Column(name = "updated_by", length = 64) private String updatedBy;
 
     @Column(name = "search_text", insertable = false, updatable = false) private String searchText;
+
+    public boolean isAgentLine() { return SellerOpsConstants.PAYEE_AGENT.equals(payeeKind); }
 
     /** Still owed: neither settled nor written off. */
     public boolean isOutstanding() {

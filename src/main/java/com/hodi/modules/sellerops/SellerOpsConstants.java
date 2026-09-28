@@ -24,4 +24,8 @@ public final class SellerOpsConstants {
     public static final String COMMISSION_INVOICED = "INVOICED";
     public static final String COMMISSION_PAID     = "PAID";
     public static final String COMMISSION_WAIVED   = "WAIVED";
+
+    /** Who a commission line is for. */
+    public static final String PAYEE_PLATFORM = "PLATFORM";
+    public static final String PAYEE_AGENT    = "AGENT";
 }

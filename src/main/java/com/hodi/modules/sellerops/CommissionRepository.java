@@ -13,7 +13,10 @@ public interface CommissionRepository
 
     Optional<CommissionRecord> findByReference(String reference);
 
-    boolean existsByPropertyIdAndSoldAt(Long propertyId, java.time.OffsetDateTime soldAt);
+    /** One line per payee per sale: the unique index says so too. */
+    boolean existsByBookingIdAndPayeeKindAndStatusNot(Long bookingId, String payeeKind, Integer status);
+
+    java.util.List<CommissionRecord> findByBookingIdAndStatusNotOrderByPayeeKind(Long bookingId, Integer status);
 
     /** What is still owed, in one figure. Null when nothing is. */
     @Query("select sum(c.amount) from CommissionRecord c "

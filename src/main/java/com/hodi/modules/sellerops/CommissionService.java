@@ -8,10 +8,16 @@ import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.enums.ConfigKey;
+import com.hodi.modules.agents.AgentProfile;
+import com.hodi.modules.agents.AgentProfileRepository;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.configurations.ConfigurationService;
+import com.hodi.modules.developments.Development;
 import com.hodi.modules.properties.Property;
 import com.hodi.security.TenantScope;
+import com.hodi.security.hashid.HashIdUtil;
+import com.hodi.tenant.TenantContext;
 import com.hodi.security.principal.AuthContext;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -31,22 +37,26 @@ import java.time.OffsetDateTime;
 import java.util.Locale;
 
 /**
- * What the platform earned, and where it stands (M13).
+ * What a sale pays the bank, and the agent who brought the buyer (M13, extended by the commissions plan).
+ *
+ * <h2>One line per payee, against the booking</h2>
+ *
+ * <p>A completed booking raises up to two lines: the platform's, at the development's bank rate, and an
+ * agent's, when the booking names who introduced the buyer and the agent rate is above zero. A house has no
+ * development and takes the platform default — resolved for the <em>seller's</em> tenant, so a seller with
+ * an agreed rate carries it as an override without a table of their own.
  *
  * <h2>The rate is copied, not referenced</h2>
  *
- * <p>A commission is raised from the rate in force at the moment a listing is marked sold, and that rate is
- * written onto the row. A rate change next quarter must not silently restate what was owed last quarter —
- * and a report that reads a live setting to explain a historical figure is a report nobody can reconcile.
- *
- * <p>The rate itself comes from the configuration layer, so a tenant can carry an agreed rate of their own
- * as a by-exception override without a second table to hold it.
+ * <p>The rate in force at the moment the sale completes is written onto the line, as is who bears the
+ * agent's fee. A rate change next quarter must not silently restate what was owed last quarter — and a
+ * report that reads a live setting to explain a historical figure is a report nobody can reconcile.
  *
  * <h2>Raising never fails the sale</h2>
  *
- * <p>{@link #raiseFor} swallows its own failures. Marking a listing sold is the seller recording a fact
- * about their business; the platform's invoice is a consequence of it. A commission that could not be
- * written is recoverable — a sale that could not be recorded because of it is not.
+ * <p>{@link #raiseFor} swallows its own failures. Completing a booking is the seller recording a fact about
+ * their business; what it pays is a consequence of it. A line that could not be written is recoverable — a
+ * sale that could not be recorded because of it is not.
  */
 @Slf4j
 @Service
@@ -54,6 +64,7 @@ import java.util.Locale;
 public class CommissionService {
 
     private final CommissionRepository repository;
+    private final AgentProfileRepository agents;
     private final ConfigurationService configs;
     private final AuditService audit;
 
@@ -61,6 +72,14 @@ public class CommissionService {
 
     public record CommissionResponse(
             String reference,
+            /** PLATFORM or AGENT. */
+            String payeeKind,
+            String agentName,
+            String bookingId,
+            String bookingRef,
+            String developmentName,
+            /** SELLER or BANK: whose money it comes out of when the bank settles the sale. */
+            String paidBy,
             String propertyRef,
             String propertyTitle,
             String tenantName,
@@ -87,75 +106,125 @@ public class CommissionService {
     @Setter
     public static class CommissionListRequest extends PagedDataRequest {
         private String state;
+        /** PLATFORM or AGENT. */
+        private String payeeKind;
     }
+
+    /** The rates a sale is raised at, resolved once. */
+    record Schedule(BigDecimal bankRate, BigDecimal agentRate, String agentPaidBy) {}
 
     // ── raising ───────────────────────────────────────────────────────────────
 
     /**
-     * Raises the commission for a completed sale.
+     * Raises what a completed sale pays: the platform's line, and the agent's where the booking names one.
      *
-     * <p>Idempotent on (listing, sold-at) by unique index: marking the same sale twice is one commission,
-     * because it is one sale.
+     * <p>Idempotent per (booking, payee) by unique index: completing the same sale twice is one sale.
+     *
+     * @param booking     the sale, COMPLETED
+     * @param home        the unit or house it sold — for the names that are copied onto the line
+     * @param development the project above a unit, whose schedule applies; null for a house
      */
     @Transactional
-    public void raiseFor(Property property) {
+    public void raiseFor(UnitBooking booking, Property home, Development development) {
         try {
-            if (property.getSoldAt() == null || property.getPrice() == null) return;
-            if (repository.existsByPropertyIdAndSoldAt(property.getId(), property.getSoldAt())) return;
+            if (!AppConstant.BOOKING_COMPLETED.equals(booking.getState()) || booking.getPriceAgreed() == null) return;
+            Schedule schedule = scheduleFor(development, booking.getTenantId(),
+                    development != null ? development.getTenantName() : home.getTenantName());
+            OffsetDateTime soldAt = booking.getCompletedAt() != null ? booking.getCompletedAt() : OffsetDateTime.now();
 
-            BigDecimal rate = rateFor(property.getTenantId());
-            if (rate.compareTo(BigDecimal.ZERO) <= 0) {
-                // A platform charging nothing is a valid configuration, and a row of zero would be noise
-                // in every list that exists to show what is owed.
-                log.debug("Commission rate is zero — nothing raised for {}", property.getReference());
-                return;
+            raiseLine(booking, home, development, SellerOpsConstants.PAYEE_PLATFORM, null,
+                    schedule.bankRate(), Development.AGENT_PAID_BY_SELLER, soldAt);
+
+            if (booking.getIntroducedByAgentId() != null) {
+                AgentProfile agent = agents.findById(booking.getIntroducedByAgentId()).orElse(null);
+                if (agent == null) {
+                    log.warn("Booking {} names agent {} who does not exist — no agent line",
+                            booking.getReference(), booking.getIntroducedByAgentId());
+                } else {
+                    raiseLine(booking, home, development, SellerOpsConstants.PAYEE_AGENT, agent,
+                            schedule.agentRate(), schedule.agentPaidBy(), soldAt);
+                }
             }
-
-            BigDecimal amount = property.getPrice()
-                    .multiply(rate)
-                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
-
-            CommissionRecord record = repository.save(CommissionRecord.builder()
-                    .reference(RrnGenerator.generate("CM"))
-                    .propertyId(property.getId())
-                    .propertyRef(property.getReference())
-                    .propertyTitle(property.getTitle())
-                    .tenantId(property.getTenantId())
-                    .tenantName(property.getTenantName())
-                    .salePrice(property.getPrice())
-                    .ratePercent(rate)
-                    .amount(amount)
-                    .currency(property.getCurrency())
-                    .soldAt(property.getSoldAt())
-                    .state(SellerOpsConstants.COMMISSION_DUE)
-                    .createdBy(AuthContext.username())
-                    .build());
-
-            audit.record(AppConstant.ACTION_CREATE, "CommissionRecord", record.getId(), null,
-                    "%s at %s%% of %s = %s".formatted(record.getPropertyRef(), rate,
-                            record.getSalePrice(), amount));
-            log.info("Commission {} raised: {} on {}", record.getReference(), amount,
-                    record.getPropertyRef());
         } catch (RuntimeException e) {
-            // See the class comment: the sale is the fact, the invoice is a consequence of it.
-            log.warn("Could not raise a commission for {}: {}", property.getReference(), e.getMessage());
+            // See the class comment: the sale is the fact, what it pays is a consequence of it.
+            log.warn("Could not raise commission for {}: {}", booking.getReference(), e.getMessage());
         }
     }
 
+    private void raiseLine(UnitBooking booking, Property home, Development development, String payeeKind,
+                           AgentProfile agent, BigDecimal rate, String paidBy, OffsetDateTime soldAt) {
+        if (repository.existsByBookingIdAndPayeeKindAndStatusNot(booking.getId(), payeeKind,
+                AppConstant.STATUS_DELETED)) return;
+        if (rate == null || rate.compareTo(BigDecimal.ZERO) <= 0) {
+            // A rate of nothing is a valid arrangement, and a row of zero would be noise in every list that
+            // exists to show what is owed.
+            log.debug("{} rate is zero — nothing raised for {}", payeeKind, booking.getReference());
+            return;
+        }
+        BigDecimal amount = booking.getPriceAgreed().multiply(rate)
+                .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+
+        CommissionRecord record = repository.save(CommissionRecord.builder()
+                .reference(RrnGenerator.generate("CM"))
+                .bookingId(booking.getId())
+                .bookingRef(booking.getReference())
+                .developmentId(development == null ? null : development.getId())
+                .developmentName(development == null ? null : development.getName())
+                .payeeKind(payeeKind)
+                .agentProfileId(agent == null ? null : agent.getId())
+                .agentName(agent == null ? null : agent.getFullName())
+                .paidBy(paidBy)
+                .propertyId(home.getId())
+                .propertyRef(home.getReference())
+                .propertyTitle(home.getUnitLabel() != null ? home.getUnitLabel() : home.getTitle())
+                .tenantId(booking.getTenantId())
+                .tenantName(development != null ? development.getTenantName() : home.getTenantName())
+                .salePrice(booking.getPriceAgreed())
+                .ratePercent(rate)
+                .amount(amount)
+                .currency(booking.getCurrency() == null ? "KES" : booking.getCurrency())
+                .soldAt(soldAt)
+                .state(SellerOpsConstants.COMMISSION_DUE)
+                .createdBy(AuthContext.username())
+                .build());
+
+        audit.record(AppConstant.ACTION_CREATE, "CommissionRecord", record.getId(), null,
+                "%s %s at %s%% of %s = %s%s".formatted(payeeKind, booking.getReference(), rate,
+                        record.getSalePrice(), amount, agent == null ? "" : " to " + agent.getFullName()));
+        log.info("Commission {} raised: {} {} on {}", record.getReference(), payeeKind, amount,
+                booking.getReference());
+    }
+
     /**
-     * The rate in force for one organisation.
-     *
-     * <p>Through {@code ConfigurationService}, so a seller with an agreed rate carries it as a by-exception
-     * override rather than needing a table of their own.
+     * The rates a sale is raised at: the development's own where it names them, the platform's defaults
+     * otherwise — resolved for the seller's tenant, so a seller's agreed override is theirs and not the
+     * caller's.
      */
-    private BigDecimal rateFor(Long tenantId) {
-        String raw = configs.getString(ConfigKey.COMMISSION_RATE_PERCENT);
+    Schedule scheduleFor(Development development, Long sellerTenantId, String sellerTenantName) {
+        BigDecimal bank = development == null ? null : development.getBankCommissionPercent();
+        BigDecimal agent = development == null ? null : development.getAgentCommissionPercent();
+        if (bank == null) bank = defaultRate(ConfigKey.COMMISSION_RATE_PERCENT, sellerTenantId, sellerTenantName);
+        if (agent == null) agent = defaultRate(ConfigKey.AGENT_COMMISSION_RATE_PERCENT, sellerTenantId, sellerTenantName);
+        return new Schedule(bank, agent,
+                development == null ? Development.AGENT_PAID_BY_SELLER : development.agentFeeBorneBy());
+    }
+
+    private BigDecimal defaultRate(ConfigKey key, Long tenantId, String tenantName) {
+        String raw = tenantId == null ? configs.getString(key)
+                : TenantContext.runAs(tenantId, tenantName, () -> configs.getString(key));
         try {
             return new BigDecimal(raw == null || raw.isBlank() ? "0" : raw.trim());
         } catch (NumberFormatException e) {
-            log.warn("Commission rate \"{}\" is not a number — nothing raised", raw);
+            log.warn("{} \"{}\" is not a number — nothing raised", key.getKey(), raw);
             return BigDecimal.ZERO;
         }
+    }
+
+    /** Every line on one sale, for the booking's own screen. */
+    @Transactional(readOnly = true)
+    public java.util.List<CommissionResponse> forBooking(Long bookingId) {
+        return repository.findByBookingIdAndStatusNotOrderByPayeeKind(bookingId, AppConstant.STATUS_DELETED)
+                .stream().map(this::toResponse).toList();
     }
 
     // ── reading and settling ──────────────────────────────────────────────────
@@ -166,6 +235,7 @@ public class CommissionService {
                 SearchSpecs.notArchived(),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("state", blankToNull(request.getState())),
+                SearchSpecs.eq("payeeKind", blankToNull(request.getPayeeKind())),
                 // A seller sees what they owe; the platform sees everybody's.
                 TenantScope.restrict("tenantId"));
         var page = repository.findAll(spec,
@@ -234,7 +304,10 @@ public class CommissionService {
     }
 
     private CommissionResponse toResponse(CommissionRecord c) {
-        return new CommissionResponse(c.getReference(), c.getPropertyRef(), c.getPropertyTitle(),
+        return new CommissionResponse(c.getReference(), c.getPayeeKind(), c.getAgentName(),
+                c.getBookingId() == null ? null : HashIdUtil.encodeId(c.getBookingId()), c.getBookingRef(),
+                c.getDevelopmentName(), c.getPaidBy(),
+                c.getPropertyRef(), c.getPropertyTitle(),
                 c.getTenantName(), c.getSalePrice(), c.getRatePercent(), c.getAmount(), c.getCurrency(),
                 c.getSoldAt(), c.getState(), c.getInvoiceRef(), c.getInvoicedAt(), c.getPaidAt(),
                 c.getWaivedReason(), c.getNote());

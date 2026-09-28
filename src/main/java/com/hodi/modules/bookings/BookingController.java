@@ -87,6 +87,14 @@ public class BookingController {
         return ApiResponse.success("Booking agreed", service.agree(bookingId));
     }
 
+    @PostMapping("/bookings/{bookingId}/introducer")
+    @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
+    @RequestAction("NAME WHO BROUGHT THE BUYER")
+    public ApiResponse<BookingResponse> setIntroducer(@PathVariable String bookingId,
+                                                      @Valid @RequestBody IntroducerRequest request) {
+        return ApiResponse.success("Saved", service.setIntroducer(bookingId, request));
+    }
+
     @PostMapping("/bookings/{bookingId}/complete")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("COMPLETE_BOOKING")

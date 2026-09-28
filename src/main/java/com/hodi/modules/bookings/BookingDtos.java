@@ -49,7 +49,20 @@ public final class BookingDtos {
             @Min(1) @Max(365) Integer holdDays,
             String notes,
             /** The schedule, where it is known at booking. Can be set later instead. */
-            @Valid List<InstalmentLine> instalments) {}
+            @Valid List<InstalmentLine> instalments,
+            /** The agent who brought this buyer, by reference. Optional; can be named later while live. */
+            @Size(max = 16) String introducedByAgentRef) {
+        public CreateBookingRequest(String unitHashId, String buyerName, String buyerPhone, String buyerEmail,
+                                    String buyerIdNumber, BigDecimal priceAgreed, BigDecimal depositDue,
+                                    String paymentPlan, Integer holdDays, String notes,
+                                    List<InstalmentLine> instalments) {
+            this(unitHashId, buyerName, buyerPhone, buyerEmail, buyerIdNumber, priceAgreed, depositDue,
+                    paymentPlan, holdDays, notes, instalments, null);
+        }
+    }
+
+    /** Who brought the buyer. A blank reference clears it. */
+    public record IntroducerRequest(@Size(max = 16) String agentRef) {}
 
     public record InstalmentLine(
             @Size(max = 120) String label,
@@ -122,7 +135,10 @@ public final class BookingDtos {
             /** The home. A UNIT of a development or a HOUSE; the title reads right for either. */
             String propertyId,
             String propertyTitle,
-            String listingKind) {}
+            String listingKind,
+            /** The agent who brought the buyer, when one is named. */
+            String introducedByAgentRef,
+            String introducedByAgentName) {}
 
     /**
      * A sale made off the platform, or a booking completed by hand.

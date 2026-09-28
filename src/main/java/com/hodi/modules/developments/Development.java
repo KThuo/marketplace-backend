@@ -133,6 +133,27 @@ public class Development {
     @Column(name = "spending_managed_by", nullable = false, length = 8)
     @Builder.Default private String spendingManagedBy = MANAGED_BY_OWNER;
 
+    /**
+     * What the bank earns on a sale here, and what an agent earns for bringing the buyer, as percentages of
+     * the price. Null means the platform's default at the moment a sale completes; zero raises nothing.
+     * Copied onto every commission line when it is raised, so a change here never restates a past sale.
+     */
+    @Column(name = "bank_commission_percent", precision = 6, scale = 3) private BigDecimal bankCommissionPercent;
+    @Column(name = "agent_commission_percent", precision = 6, scale = 3) private BigDecimal agentCommissionPercent;
+    /**
+     * Whose money the agent's fee comes out of when the bank settles a sale it collected:
+     * {@link #AGENT_PAID_BY_SELLER} (the owner's proceeds, the usual arrangement) or {@link #AGENT_PAID_BY_BANK}
+     * (the bank's own fee). Null means the seller. Changes who bears it, never the amount.
+     */
+    @Column(name = "agent_commission_paid_by", length = 8) private String agentCommissionPaidBy;
+
+    public static final String AGENT_PAID_BY_SELLER = "SELLER";
+    public static final String AGENT_PAID_BY_BANK = "BANK";
+
+    public String agentFeeBorneBy() {
+        return AGENT_PAID_BY_BANK.equals(agentCommissionPaidBy) ? AGENT_PAID_BY_BANK : AGENT_PAID_BY_SELLER;
+    }
+
     public static final String COLLECTED_BY_BANK = "BANK";
     public static final String COLLECTED_BY_OWNER = "OWNER";
     public static final String MANAGED_BY_OWNER = "OWNER";

@@ -462,6 +462,18 @@ public enum ConfigKey {
             "Charged on the sale price when a listing is marked sold. Copied onto each commission, so "
                     + "changing it never restates what was already owed. Zero raises nothing.", false, true),
 
+    /**
+     * What an agent earns for bringing the buyer of a completed sale, as a percentage of the price, where a
+     * development does not name its own rate. Zero — the default — means no agent line is raised unless a
+     * development says otherwise. Copied onto the line when raised, like the platform's.
+     */
+    AGENT_COMMISSION_RATE_PERCENT(
+            "commission.agent.rate.percent", "STRING", "GENERAL", "0",
+            "Agent commission rate (%)",
+            "Earned by the agent named as having introduced the buyer, on the sale price, where the "
+                    + "development has no rate of its own. Copied onto each line when raised. Zero raises "
+                    + "nothing.", false, true),
+
     // ── DOCUMENT VAULT (plan §3.9) ───────────────────────────────────────────
     /**
      * A separate bucket for documents nobody but Compliance should see.

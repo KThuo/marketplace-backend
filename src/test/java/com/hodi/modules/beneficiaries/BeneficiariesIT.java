@@ -254,7 +254,9 @@ class BeneficiariesIT {
         asStranger(anotherTenant());
         // Their own encoding of the same row: the salt is theirs, the row is still not theirs.
         assertThrows(ResourceNotFoundException.class, () -> service.find(HashIdUtil.encodeId(id)));
-        assertTrue(service.list(new BeneficiaryListRequest()).getContent().isEmpty());
+        // Not "empty": a beneficiary the bank registered for everybody is rightly theirs to see too.
+        assertTrue(service.list(new BeneficiaryListRequest()).getContent().stream()
+                .noneMatch(b -> "Mwangi Hardware".equals(b.name())));
         assertThrows(HodiException.class, () -> approvals.decideFor(AppConstant.APPROVAL_ENTITY_BENEFICIARY, id,
                 AppConstant.APPROVAL_ACTION_CREATE, new DecisionRequest("APPROVED", "not mine")));
 

@@ -65,6 +65,12 @@ public class UnitBooking {
     @Column(name = "buyer_email", length = 128) private String buyerEmail;
     @Column(name = "buyer_id_number", length = 32) private String buyerIdNumber;
 
+    /**
+     * The agent who brought this buyer, when one did. Set while the booking is live; frozen once it
+     * completes, because a commission line has been raised against it by then.
+     */
+    @Column(name = "introduced_by_agent_id") private Long introducedByAgentId;
+
     @Column(nullable = false, length = 24)
     @Builder.Default private String state = AppConstant.BOOKING_RESERVED;
 

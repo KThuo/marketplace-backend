@@ -89,6 +89,7 @@ public class BookingService {
     private final BookingAccess access;
     private final com.hodi.modules.payments.PaymentScope scope;
     private final CommissionService commissions;
+    private final com.hodi.modules.agents.AgentProfileRepository agents;
     private final AuditService audit;
 
     // ── reading ───────────────────────────────────────────────────────────────
@@ -346,6 +347,7 @@ public class BookingService {
                 .agreedAt(completed ? now : null)
                 .completedAt(completed ? now : null)
                 .notes(blankToNull(request.notes()))
+                .introducedByAgentId(introducer(request.introducedByAgentRef()).map(a -> a.getId()).orElse(null))
                 .createdBy(AuthContext.username())
                 .updatedBy(AuthContext.username())
                 .build();
@@ -358,6 +360,44 @@ public class BookingService {
         log.info("{} booked for {} as {} ({})", labelOf(property), saved.getBuyerName(), saved.getReference(),
                 state.toLowerCase());
         return saved;
+    }
+
+    /**
+     * Names, or clears, the agent who brought this buyer.
+     *
+     * <p>While the booking is live only. Once it has completed a commission line has been raised against
+     * whoever was named, and changing the name would leave the line saying one thing and the booking another;
+     * a correction after that voids the line and raises another, which is a decision, not an edit.
+     */
+    @Transactional
+    public BookingResponse setIntroducer(String bookingHashId, IntroducerRequest request) {
+        UnitBooking booking = requireWritable(bookingHashId);
+        if (!booking.isLive()) {
+            throw new HodiException("Who brought the buyer is set while the booking is live; this one is "
+                    + booking.getState().toLowerCase() + ".", HttpStatus.CONFLICT);
+        }
+        Long agentId = introducer(request == null ? null : request.agentRef())
+                .map(com.hodi.modules.agents.AgentProfile::getId).orElse(null);
+        String before = snapshot(booking) + " introducer=" + booking.getIntroducedByAgentId();
+        booking.setIntroducedByAgentId(agentId);
+        booking.setUpdatedBy(AuthContext.username());
+        UnitBooking saved = repository.save(booking);
+        audit.record(AppConstant.ACTION_UPDATE, "UnitBooking", saved.getId(), before,
+                snapshot(saved) + " introducer=" + agentId);
+        return toResponse(saved);
+    }
+
+    /** The agent a reference names, if it names an approved one. Blank means nobody. */
+    private Optional<com.hodi.modules.agents.AgentProfile> introducer(String agentRef) {
+        if (agentRef == null || agentRef.isBlank()) return Optional.empty();
+        com.hodi.modules.agents.AgentProfile agent = agents.findByReference(agentRef.trim())
+                .filter(a -> a.getStatus() != AppConstant.STATUS_DELETED)
+                .orElseThrow(() -> new ResourceNotFoundException("Agent", agentRef));
+        if (!com.hodi.modules.agents.AgentState.APPROVED.equals(agent.getState())) {
+            throw new HodiException("Only an approved agent can be named as having brought the buyer; "
+                    + agent.getFullName() + " is " + agent.getState().toLowerCase() + ".", HttpStatus.CONFLICT);
+        }
+        return Optional.of(agent);
     }
 
     /**
@@ -598,17 +638,17 @@ public class BookingService {
                 home.setBuyerUserId(null);
             }
         }
-        if (home.isUnit()) {
-            developments.findById(home.getDevelopmentId())
-                    .ifPresent(d -> DevelopmentInventoryService.applyListingState(home, d));
-        }
+        Development development = home.isUnit() && home.getDevelopmentId() != null
+                ? developments.findById(home.getDevelopmentId()).orElse(null) : null;
+        if (development != null) DevelopmentInventoryService.applyListingState(home, development);
         home.setUpdatedBy(AuthContext.username());
         Property saved = units.save(home);
         if (saved.getUnitTypeId() != null) inventory.recountUnitType(saved.getUnitTypeId());
-        // What the platform earned on a house. Raised from the rate in force and copied onto the row; never
-        // thrown back into here, because the sale is the fact and the invoice is a consequence.
-        if (saved.isHouse() && AppConstant.BOOKING_COMPLETED.equals(booking.getState())) {
-            commissions.raiseFor(saved);
+        // What the sale pays the bank, and the agent who brought the buyer — a unit or a house alike. Raised
+        // from the rates in force and copied onto the lines; never thrown back into here, because the sale is
+        // the fact and what it pays is a consequence.
+        if (AppConstant.BOOKING_COMPLETED.equals(booking.getState())) {
+            commissions.raiseFor(booking, saved, development);
         }
     }
 
@@ -716,6 +756,8 @@ public class BookingService {
                 : unitTypes.findById(b.getUnitTypeId()).map(DevelopmentUnitType::getName).orElse(null);
         String developmentName = b.getDevelopmentId() == null ? null
                 : developments.findById(b.getDevelopmentId()).map(Development::getName).orElse(null);
+        Optional<com.hodi.modules.agents.AgentProfile> introducer = b.getIntroducedByAgentId() == null
+                ? Optional.empty() : agents.findById(b.getIntroducedByAgentId());
         return new BookingResponse(
                 HashIdUtil.encodeId(b.getId()), b.getReference(), developmentName,
                 home == null ? null : home.getUnitLabel(),
@@ -735,7 +777,9 @@ public class BookingService {
                 b.getCreatedAt(), b.getCreatedBy(),
                 HashIdUtil.encodeId(b.getPropertyId()),
                 home == null ? null : home.getTitle(),
-                home == null ? null : home.getListingKind());
+                home == null ? null : home.getListingKind(),
+                introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
+                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null));
     }
 
     private InstalmentResponse toInstalment(BookingInstalment i) {

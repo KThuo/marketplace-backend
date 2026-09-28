@@ -16,11 +16,13 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Locale;
 import java.util.Set;
 
 /**
- * Who collects a development's money, and who manages its spending — the two decisions that are the bank's.
+ * Who collects a development's money, who manages its spending, and what a sale here pays the bank and the
+ * agent who brought the buyer — the decisions that are the bank's.
  *
  * <p>Both live on the development rather than platform-wide. The bank sells on an owner's behalf and holds the
  * buyers' money until every party is satisfied, which is why collection defaults to the bank; and it may
@@ -40,6 +42,9 @@ public class DevelopmentMoneySettingsService {
             Set.of(Development.COLLECTED_BY_BANK, Development.COLLECTED_BY_OWNER);
     private static final Set<String> SPENDING_MANAGERS =
             Set.of(Development.MANAGED_BY_OWNER, Development.MANAGED_BY_BANK);
+    private static final Set<String> AGENT_FEE_BEARERS =
+            Set.of(Development.AGENT_PAID_BY_SELLER, Development.AGENT_PAID_BY_BANK);
+    private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
@@ -49,19 +54,39 @@ public class DevelopmentMoneySettingsService {
     /**
      * The settings as this caller sees them, with what they may do about them.
      *
-     * @param mayChange          the caller is the bank's staff and may change both
-     * @param mayManageSpending  the caller may record and pay costs here — for the finance tab's buttons
+     * @param mayChange                    the caller is the bank's staff and may change everything here
+     * @param mayManageSpending            the caller may record and pay costs here — for the finance tab's buttons
+     * @param bankCommissionPercent        this development's rate, or null for the platform default
+     * @param agentCommissionPercent       likewise for the agent who brought the buyer
+     * @param agentCommissionPaidBy        SELLER or BANK: whose money the agent's fee comes out of
+     * @param defaultBankCommissionPercent what null means today, so the card can say "1.5% (platform default)"
      */
     public record MoneySettings(
             String developmentId,
             String collectionMode,
             String spendingManagedBy,
             boolean mayChange,
-            boolean mayManageSpending) {}
+            boolean mayManageSpending,
+            BigDecimal bankCommissionPercent,
+            BigDecimal agentCommissionPercent,
+            String agentCommissionPaidBy,
+            BigDecimal defaultBankCommissionPercent,
+            BigDecimal defaultAgentCommissionPercent) {}
 
+    /**
+     * The three commission fields are optional: absent or null means "the platform default", which is what a
+     * development starts with. A rate is a percentage between 0 and 100 with at most three decimals.
+     */
     public record SaveMoneySettingsRequest(
             @NotBlank(message = "Say who collects the money") String collectionMode,
-            @NotBlank(message = "Say who manages the spending") String spendingManagedBy) {}
+            @NotBlank(message = "Say who manages the spending") String spendingManagedBy,
+            BigDecimal bankCommissionPercent,
+            BigDecimal agentCommissionPercent,
+            String agentCommissionPaidBy) {
+        public SaveMoneySettingsRequest(String collectionMode, String spendingManagedBy) {
+            this(collectionMode, spendingManagedBy, null, null, null);
+        }
+    }
 
     @Transactional(readOnly = true)
     public MoneySettings find(String developmentHashId) {
@@ -78,10 +103,17 @@ public class DevelopmentMoneySettingsService {
         }
         String collection = oneOf(request.collectionMode(), COLLECTION_MODES, "Who collects");
         String spending = oneOf(request.spendingManagedBy(), SPENDING_MANAGERS, "Who manages spending");
+        BigDecimal bankRate = rate(request.bankCommissionPercent(), "The bank's commission");
+        BigDecimal agentRate = rate(request.agentCommissionPercent(), "The agent's commission");
+        String agentPaidBy = request.agentCommissionPaidBy() == null || request.agentCommissionPaidBy().isBlank()
+                ? null : oneOf(request.agentCommissionPaidBy(), AGENT_FEE_BEARERS, "Who pays the agent");
 
         String before = snapshot(development);
         development.setCollectionMode(collection);
         development.setSpendingManagedBy(spending);
+        development.setBankCommissionPercent(bankRate);
+        development.setAgentCommissionPercent(agentRate);
+        development.setAgentCommissionPaidBy(agentPaidBy);
         development.setUpdatedBy(AuthContext.username());
         developments.save(development);
         /*
@@ -90,8 +122,7 @@ public class DevelopmentMoneySettingsService {
          */
         audit.record(AppConstant.ACTION_UPDATE, "DevelopmentMoneySettings", development.getId(), before,
                 snapshot(development));
-        log.info("{} set {} to collection={} spending={}", AuthContext.username(), development.getReference(),
-                collection, spending);
+        log.info("{} set {} to {}", AuthContext.username(), development.getReference(), snapshot(development));
         return toResponse(development, caller);
     }
 
@@ -113,7 +144,31 @@ public class DevelopmentMoneySettingsService {
 
     private MoneySettings toResponse(Development d, UserPrincipal caller) {
         return new MoneySettings(HashIdUtil.encodeId(d.getId()), d.getCollectionMode(), d.getSpendingManagedBy(),
-                caller.isPlatformStaff(), visibility.mayManageSpending(d, caller));
+                caller.isPlatformStaff(), visibility.mayManageSpending(d, caller),
+                d.getBankCommissionPercent(), d.getAgentCommissionPercent(), d.getAgentCommissionPaidBy(),
+                percent(ConfigKey.COMMISSION_RATE_PERCENT), percent(ConfigKey.AGENT_COMMISSION_RATE_PERCENT));
+    }
+
+    /** The platform default as a number, or zero when what is configured is not one. */
+    private BigDecimal percent(ConfigKey key) {
+        String raw = configs.getString(key);
+        try {
+            return new BigDecimal(raw == null || raw.isBlank() ? "0" : raw.trim());
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
+    }
+
+    /** Null stays null — the default. Anything else is a percentage, and says so if it is not. */
+    private static BigDecimal rate(BigDecimal value, String what) {
+        if (value == null) return null;
+        if (value.compareTo(BigDecimal.ZERO) < 0 || value.compareTo(HUNDRED) > 0) {
+            throw new HodiException(what + " is a percentage between 0 and 100.", HttpStatus.BAD_REQUEST);
+        }
+        if (value.stripTrailingZeros().scale() > 3) {
+            throw new HodiException(what + " has at most three decimal places.", HttpStatus.BAD_REQUEST);
+        }
+        return value.setScale(3, java.math.RoundingMode.UNNECESSARY);
     }
 
     private Development requireVisible(String hashId) {
@@ -134,6 +189,9 @@ public class DevelopmentMoneySettingsService {
     }
 
     private static String snapshot(Development d) {
-        return "collection=" + d.getCollectionMode() + " spending=" + d.getSpendingManagedBy();
+        return "collection=" + d.getCollectionMode() + " spending=" + d.getSpendingManagedBy()
+                + " bankRate=" + (d.getBankCommissionPercent() == null ? "default" : d.getBankCommissionPercent())
+                + " agentRate=" + (d.getAgentCommissionPercent() == null ? "default" : d.getAgentCommissionPercent())
+                + " agentPaidBy=" + d.agentFeeBorneBy();
     }
 }
