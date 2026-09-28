@@ -93,7 +93,8 @@ public class ReportService {
 
     public record FilterOption(String label, String column, String kind, List<String> options) {}
 
-    public record ReportSummary(String code, String name, String description, boolean platformOnly) {}
+    /** @param group which tab of the picker it sits under: Sales, Money, or Compliance */
+    public record ReportSummary(String code, String name, String description, boolean platformOnly, String group) {}
 
     public record ReportResult(
             String code,
@@ -123,7 +124,8 @@ public class ReportService {
         boolean platform = AuthContext.current().map(p -> p.isPlatformStaff()).orElse(false);
         return ReportCatalogue.all().stream()
                 .filter(r -> platform || !r.platformOnly())
-                .map(r -> new ReportSummary(r.code(), r.name(), r.description(), r.platformOnly()))
+                .map(r -> new ReportSummary(r.code(), r.name(), r.description(), r.platformOnly(),
+                        ReportCatalogue.groupOf(r.code())))
                 .toList();
     }
 

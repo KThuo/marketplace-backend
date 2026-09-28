@@ -83,6 +83,19 @@ public final class ReportCatalogue {
         }
     }
 
+    /**
+     * Which tab of the picker a report sits under. Thirteen cards in one grid crowded the page; three
+     * groups of four or five read at a glance. A report the map does not name lands under "Sales".
+     */
+    public static String groupOf(String code) {
+        return switch (code) {
+            case "COMMISSION", "SALE_SETTLEMENTS", "AGENT_SALES", "DEVELOPMENT_FINANCE",
+                 "DEVELOPMENT_MONEY_IN", "DEVELOPMENT_MONEY_OUT" -> "Money";
+            case "VALUATIONS", "COMPLIANCE" -> "Compliance";
+            default -> "Sales";
+        };
+    }
+
     /** Insertion-ordered, because it is also the order the picker shows them in. */
     private static final List<Report> REPORTS = List.of(
             new Report("LISTINGS", "Listings",
