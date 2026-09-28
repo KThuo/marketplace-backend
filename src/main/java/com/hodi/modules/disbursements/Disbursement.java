@@ -46,6 +46,10 @@ public class Disbursement {
 
     public static final String PAYEE_SELLER = "SELLER_ORGANISATION";
     public static final String PAYEE_OTHER = "OTHER";
+    /** A development paying somebody it registered. Only ever from a development, out of the owner's money. */
+    public static final String PAYEE_BENEFICIARY = "BENEFICIARY";
+    public static final String MANAGED_BY_OWNER = "OWNER";
+    public static final String MANAGED_BY_BANK = "BANK";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -66,6 +70,23 @@ public class Disbursement {
     @Column(nullable = false, length = 240) private String purpose;
     @Column(length = 160) private String narration;
     @Column(name = "source_account_id", nullable = false) private Long sourceAccountId;
+
+    // ── a development paying a beneficiary ────────────────────────────────────
+    //
+    // Null on the bank's own payouts. Set together on a payment from a development: which project, phase and
+    // category the money is for, who was paid and what kind of payee they are (as it was when paid), whose
+    // account it left, and which side's makers and checkers handled it.
+    @Column(name = "development_id") private Long developmentId;
+    @Column(name = "phase_id") private Long phaseId;
+    @Column(name = "cost_category_id") private Long costCategoryId;
+    @Column(name = "beneficiary_id") private Long beneficiaryId;
+    @Column(name = "beneficiary_type", length = 120) private String beneficiaryType;
+    @Column(name = "owner_tenant_id") private Long ownerTenantId;
+    @Column(name = "owner_institution_id") private Long ownerInstitutionId;
+    @Column(name = "invoice_reference", length = 64) private String invoiceReference;
+    @Column(name = "managed_by", nullable = false, length = 8) @Builder.Default private String managedBy = MANAGED_BY_BANK;
+    /** The invoice or certificate behind it, in the vault. Copied onto the cost once paid. */
+    @Column(name = "document_id") private Long documentId;
 
     @Column(nullable = false, length = 24) @Builder.Default private String state = AWAITING_APPROVAL;
     @Column(name = "bank_reference", length = 64) private String bankReference;
@@ -97,6 +118,9 @@ public class Disbursement {
     private OffsetDateTime updatedAt;
     @Column(name = "created_by", length = 64) private String createdBy;
     @Column(name = "updated_by", length = 64) private String updatedBy;
+
+    /** A development's payment, as opposed to the bank's own payout. */
+    public boolean isFromDevelopment() { return developmentId != null; }
 
     public boolean isTerminal() {
         return SUCCEEDED.equals(state) || FAILED.equals(state) || REFUSED.equals(state);

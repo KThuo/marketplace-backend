@@ -339,3 +339,43 @@ already held. What changed is who may set one up and what a development may pay 
 - A debit-account manager needs `PAYMENT_TYPES_VIEW` to reach the Payment types screen at all; owners' system
   groups hold it already.
 
+### Phase 4 — done (28 September 2026)
+
+The existing disbursement engine, extended rather than duplicated: the bank's name-check, the once-only send,
+the status enquiry and the never-resend rule all carry over unchanged.
+
+**Backend**
+- Migration `V20260928170000`: `disbursements` gains the development context (development, phase, category,
+  beneficiary and its type as it was when paid, whose account it left, the invoice, `managed_by`, evidence).
+  `payee_kind` admits `BENEFICIARY`, only ever from a development. `development_expenditures` gains
+  `beneficiary_id`, `disbursement_id` (unique) and `entry_kind` (`MANUAL` | `DISBURSEMENT`).
+- `POST /disbursements/pay-from/{development}`: the caller must manage the development's spending; the
+  beneficiary must be **payable** (approved *and* confirmed); the account must be one the development may pay
+  from (§3.3's list); the bank is asked again who holds the account and the answer must match the name the
+  beneficiary was registered under — a holder that changed since is refused with both names. The approval is
+  scoped to the managing organisation, so **its** checker decides; where the bank manages, the bank's.
+  `GET …/options` gives the form everything in one read.
+- **The cost writes itself.** `PaidCostRecorder` runs inside the settling transaction: when Co-op confirms,
+  a `SPENT` line is written against the same development, phase and category, naming the beneficiary,
+  carrying the invoice and evidence, pointing back at the payment — once, whatever the bank's answer is read.
+  A failed or refused payment writes nothing.
+- A manual cost may name a beneficiary; its name becomes the payee, and the line says **Manual entry**.
+- `DISBURSEMENTS_VIEW/MAKE/APPROVE` are no longer platform-only. The bank's own payouts are unchanged and
+  still the bank's alone to propose and decide. Reading is scoped: an organisation sees payments out of its
+  own account; the bank sees all.
+- Evidence: `POST /disbursements/{id}/evidence` and a download, vault-stored, audited on read.
+- `PayFromDevelopmentIT`: 6 tests. What it does not exercise: the live send-and-settle round trip, which is
+  `DisbursementIT`'s against an in-JVM Co-op and needs committed rows; the hook into settlement is one call
+  into the recorder, tested on its own.
+
+**Frontend**
+- The finance tab gains **Pay a beneficiary** (a four-step wizard: who, what for, from, confirm, with the
+  invoice attached at the end), a **Payments** tab showing each payment's state through approval and the bank's
+  answer, and cost lines that say "Paid through Hodi · DB…" or "Manual entry".
+- Recording a cost by hand offers the organisation's beneficiaries, or a one-off payee typed in.
+- The disbursements list and detail carry the development, category, invoice and evidence; **Send money**
+  there stays the bank's own payout.
+
+**To confirm with the bank before this goes live** (§6): that the platform's Co-op credentials may debit an
+owner's account. The code passes the chosen account as the source; whether the bank honours it is banking.
+

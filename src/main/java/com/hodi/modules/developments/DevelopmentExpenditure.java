@@ -59,6 +59,13 @@ public class DevelopmentExpenditure {
     /** The evidence in the vault, where one was attached. */
     @Column(name = "document_id") private Long documentId;
 
+    /** Who was paid, as a beneficiary; {@code payee} carries their name either way. */
+    @Column(name = "beneficiary_id") private Long beneficiaryId;
+    /** The payment that wrote this line, when one did. One line per payment. */
+    @Column(name = "disbursement_id") private Long disbursementId;
+    /** MANUAL, typed in; DISBURSEMENT, written by a payment that succeeded. */
+    @Column(name = "entry_kind", nullable = false, length = 16) @Builder.Default private String entryKind = "MANUAL";
+
     @Column(name = "tenant_id") private Long tenantId;
     @Column(name = "institution_id") private Long institutionId;
 

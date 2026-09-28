@@ -276,14 +276,20 @@ public enum AppPermissionEnum {
      * Money leaving the bank's own account. Not a payment — nothing here credits a booking — and the one
      * flow on the platform with no undo, which is why it is three permissions and all three the platform's.
      */
-    DISBURSEMENTS_VIEW("See disbursements and what became of them", AppModuleEnum.PAYMENTS, true),
-    /** Proposing a transfer: naming the payee, validating the account, stating the purpose. */
-    DISBURSEMENTS_MAKE("Propose a disbursement", AppModuleEnum.PAYMENTS, true),
+    DISBURSEMENTS_VIEW("See disbursements and what became of them", AppModuleEnum.PAYMENTS),
+    /**
+     * Proposing a transfer: naming the payee, validating the account, stating the purpose.
+     *
+     * <p>No longer the platform's alone: a development pays its beneficiaries from the owner's own account, and
+     * the owner's makers propose that. What stays the bank's is deciding <em>which</em> money — a development's
+     * payment is decided by whichever side manages its spending, the bank's own payouts by the bank.
+     */
+    DISBURSEMENTS_MAKE("Propose a disbursement", AppModuleEnum.PAYMENTS),
     /**
      * Releasing it. Separate from proposing, and the separation is the control: the maker names the account,
      * the checker reads the name Co-op resolved it to, and only then does money move.
      */
-    DISBURSEMENTS_APPROVE("Approve a disbursement before it is sent", AppModuleEnum.PAYMENTS, true),
+    DISBURSEMENTS_APPROVE("Approve a disbursement before it is sent", AppModuleEnum.PAYMENTS),
 
     // ── BENEFICIARIES ─────────────────────────────────────────────────────────
     /**

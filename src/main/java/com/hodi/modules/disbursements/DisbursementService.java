@@ -17,7 +17,18 @@ import com.hodi.modules.approvals.ChangeSet;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.disbursements.DisbursementDtos.*;
+import com.hodi.modules.beneficiaries.Beneficiary;
+import com.hodi.modules.beneficiaries.BeneficiaryDtos.PayableBeneficiary;
+import com.hodi.modules.beneficiaries.BeneficiaryType;
+import com.hodi.modules.beneficiaries.PayoutAccountCheck;
+import com.hodi.modules.developments.Development;
+import com.hodi.modules.developments.DevelopmentCostCategory;
+import com.hodi.modules.disbursements.DisbursementDtos.Option;
+import com.hodi.modules.disbursements.DisbursementDtos.PayFromDevelopmentRequest;
+import com.hodi.modules.disbursements.DisbursementDtos.PaymentOptions;
+import com.hodi.modules.payments.PaymentAccountService;
 import com.hodi.modules.payments.CoopChannel;
+import com.hodi.security.principal.UserPrincipal;
 import com.hodi.modules.payments.PaymentAccount;
 import com.hodi.modules.payments.PaymentAccountRepository;
 import com.hodi.modules.payments.PaymentType;
@@ -84,6 +95,17 @@ public class DisbursementService {
     private final ConfigurationService configs;
     private final TransactionTemplate newTransaction;
     private final ObjectMapper mapper;
+    private final com.hodi.modules.developments.DevelopmentRepository developments;
+    private final com.hodi.modules.developments.DevelopmentVisibility visibility;
+    private final com.hodi.modules.developments.DevelopmentPhaseRepository phases;
+    private final com.hodi.modules.developments.DevelopmentCostCategoryRepository categories;
+    private final com.hodi.modules.developments.PaidCostRecorder costs;
+    private final com.hodi.modules.beneficiaries.BeneficiaryRepository beneficiaries;
+    private final com.hodi.modules.beneficiaries.BeneficiaryTypeRepository beneficiaryTypes;
+    private final com.hodi.modules.beneficiaries.PayoutAccountCheck payoutCheck;
+    private final PaymentAccountService paymentAccounts;
+    private final com.hodi.modules.kyc.DocumentService documents;
+    private final com.hodi.modules.kyc.VaultDocumentRepository vaultDocuments;
 
     // ── asking who holds the account ──────────────────────────────────────────
 
@@ -203,6 +225,210 @@ public class DisbursementService {
                 .min(java.util.Comparator.comparing(PaymentAccount::getId))
                 .orElseThrow(() -> new HodiException(
                         "No approved PesaLink account is set up for the platform to send from.", HttpStatus.CONFLICT));
+    }
+
+    // ── a development paying a beneficiary ────────────────────────────────────
+
+    /**
+     * What the pay-a-beneficiary form needs for one development, in one read: who may be paid, what the money
+     * may leave from, the categories and phases, and whether this caller may propose at all.
+     */
+    @Transactional(readOnly = true)
+    public PaymentOptions paymentOptions(String developmentHash) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireDevelopment(developmentHash, caller);
+        Map<Long, String> typeNames = beneficiaryTypes.findAll().stream()
+                .collect(java.util.stream.Collectors.toMap(BeneficiaryType::getId, BeneficiaryType::getName));
+        List<PayableBeneficiary> payable = beneficiaries
+                .findPayable(development.getTenantId(), development.getInstitutionId()).stream()
+                .map(b -> new PayableBeneficiary(HashIdUtil.encodeId(b.getId()), b.getReference(), b.getName(),
+                        typeNames.get(b.getTypeId()), b.getBankCode(), b.getAccountNo(), b.getConfirmedName()))
+                .toList();
+        return new PaymentOptions(
+                payable,
+                paymentAccounts.debitAccountsFor(development),
+                categories.findAvailable().stream()
+                        .map(c -> new Option(HashIdUtil.encodeId(c.getId()), c.getName())).toList(),
+                phases.findForDevelopment(development.getId()).stream()
+                        .map(p -> new Option(HashIdUtil.encodeId(p.getId()), p.getSequenceNo() + ". " + p.getName())).toList(),
+                visibility.mayManageSpending(development, caller) && AuthContext.hasAuthority("DISBURSEMENTS_MAKE"));
+    }
+
+    /**
+     * A development pays one of its beneficiaries, out of the owner's own account.
+     *
+     * <p>The same engine as the bank's payouts, with three things decided by the development instead of the
+     * platform: whose money leaves (an account the development may pay from), who decides (the side that
+     * manages its spending), and what the payment is for (a beneficiary of a known kind, a category, a phase,
+     * an invoice) — which is what lets the cost write itself when the money has gone.
+     *
+     * <p>The bank is asked again who holds the account, and the answer has to be the name the beneficiary was
+     * registered under. An account whose holder has changed since is refused with both names: it is the exact
+     * thing verification at registration cannot catch.
+     *
+     * <p>Not transactional as a whole: the bank is asked between the checks and the write, and a connection
+     * held open across that call is one the rest of the site cannot have.
+     */
+    public DisbursementResponse payFromDevelopment(String developmentHash, PayFromDevelopmentRequest request) {
+        UserPrincipal caller = AuthContext.require();
+        Development development = requireDevelopment(developmentHash, caller);
+        visibility.assertMayManageSpending(development, caller);
+
+        Beneficiary beneficiary = beneficiaries.findById(HashIdUtil.decodeId(request.beneficiaryId()))
+                .filter(b -> b.getStatus() != AppConstant.STATUS_DELETED
+                        && b.visibleTo(development.getTenantId(), development.getInstitutionId()))
+                .orElseThrow(() -> new HodiException("Choose one of this organisation's beneficiaries.", HttpStatus.BAD_REQUEST));
+        if (!beneficiary.isPayable()) {
+            throw new HodiException(beneficiary.getName() + " cannot be paid yet: "
+                    + (beneficiary.isVerified() ? "a second person has not approved them."
+                            : "the bank has not confirmed the account."), HttpStatus.CONFLICT);
+        }
+        Long sourceId = HashIdUtil.decodeId(request.sourceAccountId());
+        boolean allowed = paymentAccounts.debitAccountsFor(development).stream()
+                .anyMatch(a -> HashIdUtil.decodeId(a.id()).equals(sourceId));
+        PaymentAccount source = allowed ? accounts.findById(sourceId).orElse(null) : null;
+        if (source == null) {
+            throw new HodiException("That is not an account " + development.getName() + " may pay from.", HttpStatus.BAD_REQUEST);
+        }
+        PaymentType channel = types.findById(source.getPaymentTypeId()).filter(PaymentType::isAvailable)
+                .orElseThrow(() -> new HodiException("The channel that account sends on is switched off.", HttpStatus.CONFLICT));
+        DevelopmentCostCategory category = categories.findById(HashIdUtil.decodeId(request.costCategoryId()))
+                .filter(DevelopmentCostCategory::isLive)
+                .orElseThrow(() -> new HodiException("Choose a cost category that is available.", HttpStatus.BAD_REQUEST));
+        Long phaseId = phaseOf(development, request.phaseId());
+        if (request.amount() == null || request.amount().signum() <= 0) {
+            throw new HodiException("Enter the amount to send.", HttpStatus.BAD_REQUEST);
+        }
+
+        PayoutAccountCheck.Answer answer = payoutCheck.check(beneficiary.getBankCode(), beneficiary.getAccountNo());
+        if (!answer.confirmed()) {
+            throw new HodiException("The bank could not confirm " + beneficiary.getName() + "'s account just now: "
+                    + answer.failure(), HttpStatus.BAD_REQUEST);
+        }
+        if (!sameName(answer.holderName(), beneficiary.getConfirmedName())) {
+            throw new HodiException("The bank now says that account is held by " + answer.holderName() + ", but "
+                    + beneficiary.getName() + " was registered as held by " + beneficiary.getConfirmedName()
+                    + ". Check the beneficiary before paying.", HttpStatus.CONFLICT);
+        }
+        String typeName = beneficiaryTypes.findById(beneficiary.getTypeId()).map(BeneficiaryType::getName).orElse(null);
+        return writeProposal(development, beneficiary, typeName, source, channel, category, phaseId, request, answer, caller);
+    }
+
+    @Transactional
+    protected DisbursementResponse writeProposal(Development development, Beneficiary beneficiary, String typeName,
+                                                 PaymentAccount source, PaymentType channel,
+                                                 DevelopmentCostCategory category, Long phaseId,
+                                                 PayFromDevelopmentRequest request, PayoutAccountCheck.Answer answer,
+                                                 UserPrincipal caller) {
+        String by = caller.getUsername();
+        boolean bankManages = development.bankManagesSpending();
+        Disbursement row = rows.saveAndFlush(Disbursement.builder()
+                .reference(RrnGenerator.generate("DB"))
+                .payeeKind(Disbursement.PAYEE_BENEFICIARY)
+                .payeeName(beneficiary.getName())
+                .bankCode(answer.bankCode() == null ? beneficiary.getBankCode() : answer.bankCode())
+                .accountNo(answer.accountNo() == null ? beneficiary.getAccountNo() : answer.accountNo())
+                .validatedName(answer.holderName())
+                .validatedAt(OffsetDateTime.now())
+                .amount(request.amount().setScale(2, RoundingMode.HALF_UP))
+                .currency(development.getCurrency() == null ? "KES" : development.getCurrency())
+                .purpose(request.purpose().trim())
+                .narration(request.narration() == null || request.narration().isBlank()
+                        ? clip(request.purpose().trim(), 160) : request.narration().trim())
+                .sourceAccountId(source.getId())
+                .developmentId(development.getId())
+                .phaseId(phaseId)
+                .costCategoryId(category.getId())
+                .beneficiaryId(beneficiary.getId())
+                .beneficiaryType(typeName)
+                .ownerTenantId(development.getTenantId())
+                .ownerInstitutionId(development.getInstitutionId())
+                .invoiceReference(request.invoiceReference() == null || request.invoiceReference().isBlank()
+                        ? null : request.invoiceReference().trim())
+                .managedBy(bankManages ? Disbursement.MANAGED_BY_BANK : Disbursement.MANAGED_BY_OWNER)
+                .state(Disbursement.AWAITING_APPROVAL)
+                .callbackTimeoutSeconds(Math.max(300, configs.getInt(ConfigKey.COOP_CALLBACK_TIMEOUT_SECONDS)))
+                .madeBy(by).createdBy(by).updatedBy(by)
+                .build());
+
+        ChangeSet.Snapshot what = ChangeSet.of()
+                .put("amount", "Amount", row.getCurrency() + " " + MONEY.format(row.getAmount()))
+                .put("payee", "Paid to", row.getPayeeName() + (typeName == null ? "" : " (" + typeName.toLowerCase() + ")"))
+                .put("account", "Account", row.getAccountNo() + " at bank " + row.getBankCode())
+                .put("validatedName", "Account held by (Co-op)", row.getValidatedName())
+                .put("development", "Development", development.getName())
+                .put("category", "Cost category", category.getName()
+                        + (phaseId == null ? "" : " · " + phases.findById(phaseId).map(p -> p.getName()).orElse("")))
+                .put("invoice", "Invoice", row.getInvoiceReference())
+                .put("purpose", "Purpose", row.getPurpose())
+                .put("source", "Sent from", label(source, channel))
+                .put("madeBy", "Proposed by", by);
+        /*
+         * Scoped to the organisation that manages the development's spending, so its own checker decides —
+         * their money, their second pair of eyes. Where the bank manages, nobody's: the bank's staff decide.
+         */
+        approvals.submit(AppConstant.APPROVAL_ENTITY_DISBURSEMENT, row.getId(), AppConstant.APPROVAL_ACTION_SEND,
+                bankManages ? null : development.getTenantId(), bankManages ? null : development.getInstitutionId(),
+                row.getCurrency() + " " + MONEY.format(row.getAmount()) + " to " + row.getValidatedName()
+                        + " — " + development.getName(),
+                "Money out of " + development.getName() + "'s account. Check the name Co-op resolved the account to "
+                        + "against who is meant to be paid, and the invoice against the amount.",
+                null, what);
+        audit.record(AppConstant.AUDIT_DISBURSEMENT_PROPOSED, "Disbursement", row.getId(), null, snapshot(row));
+        log.info("Disbursement {} proposed by {} from {}: {} {} to {} ({})", row.getReference(), by,
+                development.getReference(), row.getCurrency(), row.getAmount(), row.getValidatedName(), row.getAccountNo());
+        return toResponse(row);
+    }
+
+    /** The invoice or certificate behind a development's payment, into the vault. Copied onto the cost when paid. */
+    @Transactional
+    public DisbursementResponse attachEvidence(String hashId, org.springframework.web.multipart.MultipartFile file) {
+        UserPrincipal caller = AuthContext.require();
+        Disbursement row = requireVisible(hashId, caller);
+        if (!row.isFromDevelopment()) {
+            throw new HodiException("Evidence is attached to a development's payment.", HttpStatus.BAD_REQUEST);
+        }
+        Development development = developments.findById(row.getDevelopmentId()).orElseThrow();
+        visibility.assertMayManageSpending(development, caller);
+        if (file == null || file.isEmpty()) throw new HodiException("Choose a file to attach.", HttpStatus.BAD_REQUEST);
+        com.hodi.modules.kyc.VaultDocument stored = documents.store(file, "disbursements", "PAYMENT_EVIDENCE",
+                "Evidence for " + row.getReference(), row.getOwnerTenantId(), caller.getUserId(), null, null, null);
+        row.setDocumentId(stored.getId());
+        row.setUpdatedBy(caller.getUsername());
+        rows.save(row);
+        return toResponse(row);
+    }
+
+    /** The bytes of a payment's evidence, for somebody who may see the payment. Audited like every vault read. */
+    @Transactional
+    public com.hodi.modules.kyc.DocumentService.Fetched evidence(String hashId) {
+        Disbursement row = requireVisible(hashId, AuthContext.require());
+        com.hodi.modules.kyc.VaultDocument document = row.getDocumentId() == null ? null
+                : vaultDocuments.findById(row.getDocumentId()).orElse(null);
+        if (document == null) throw new ResourceNotFoundException("Document", hashId);
+        return documents.readTrusted(document, "disbursement " + row.getReference() + " evidence");
+    }
+
+    private Development requireDevelopment(String hashId, UserPrincipal caller) {
+        Development development = developments.findById(HashIdUtil.decodeId(hashId))
+                .orElseThrow(() -> new ResourceNotFoundException("Development", hashId));
+        if (!visibility.mayRead(development, caller)) throw new ResourceNotFoundException("Development", hashId);
+        return development;
+    }
+
+    private Long phaseOf(Development development, String phaseHash) {
+        Long id = HashIdUtil.decodeId(phaseHash);
+        if (id == null) return null;
+        return phases.findById(id).filter(p -> p.getDevelopmentId().equals(development.getId()))
+                .map(p -> p.getId())
+                .orElseThrow(() -> new HodiException("That phase is not one of " + development.getName() + "'s.",
+                        HttpStatus.BAD_REQUEST));
+    }
+
+    /** The bank's spelling, ours, and whitespace aside, the same person. */
+    private static boolean sameName(String a, String b) {
+        if (a == null || b == null) return false;
+        return a.trim().replaceAll("\\s+", " ").equalsIgnoreCase(b.trim().replaceAll("\\s+", " "));
     }
 
     // ── the decision ──────────────────────────────────────────────────────────
@@ -332,6 +558,8 @@ public class DisbursementService {
      */
     public String query(Long id, boolean counted, String by) {
         Disbursement row = rows.findById(id).orElseThrow(() -> new ResourceNotFoundException("Disbursement", String.valueOf(id)));
+        // A person asks only about a payment they may see; the sweep (by == null) asks about every one.
+        if (by != null) requireVisible(HashIdUtil.encodeId(id), AuthContext.require());
         if (!row.isOut()) return row.getState();
         PaymentType enquiry = types.findByProviderType(CoopChannel.COOP_FT_STATUS.name())
                 .filter(PaymentType::isAvailable).orElse(null);
@@ -387,6 +615,8 @@ public class DisbursementService {
                     row.setState(Disbursement.SUCCEEDED);
                     row.setSettledAt(OffsetDateTime.now());
                     row.setProcessingReason("Confirmed by Co-op: " + reading.description());
+                    // The money has gone, so the cost exists — in this transaction, once (the recorder checks).
+                    costs.record(row);
                 }
                 case FAILED -> {
                     row.setState(Disbursement.FAILED);
@@ -423,6 +653,8 @@ public class DisbursementService {
     public PagedResponse<DisbursementResponse> list(ListRequest request) {
         Specification<Disbursement> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
+                scope(AuthContext.require()),
+                SearchSpecs.eq("developmentId", HashIdUtil.decodeId(request.getDevelopmentId())),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.eq("state", request.getState() == null || request.getState().isBlank()
                         ? null : request.getState().trim().toUpperCase(Locale.ROOT)),
@@ -434,10 +666,32 @@ public class DisbursementService {
 
     @Transactional(readOnly = true)
     public DisbursementDetail find(String hashId) {
+        Disbursement row = requireVisible(hashId, AuthContext.require());
+        return new DisbursementDetail(toResponse(row), row.getRawResponse());
+    }
+
+    /**
+     * The rows this caller may see: the bank's staff, everything; an organisation, the payments out of its own
+     * account — which is what {@code ownerTenantId} records. The bank's own payouts carry no owner and so are
+     * nobody else's to read.
+     */
+    private static Specification<Disbursement> scope(UserPrincipal caller) {
+        if (caller.isPlatformStaff()) return null;
+        if (caller.getInstitutionId() != null) return SearchSpecs.eq("ownerInstitutionId", caller.getInstitutionId());
+        if (caller.getTenantId() != null) return SearchSpecs.eq("ownerTenantId", caller.getTenantId());
+        return (root, query, cb) -> cb.disjunction();
+    }
+
+    private Disbursement requireVisible(String hashId, UserPrincipal caller) {
         Disbursement row = rows.findById(HashIdUtil.decodeId(hashId))
                 .filter(d -> d.getStatus() != AppConstant.STATUS_DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("Disbursement", hashId));
-        return new DisbursementDetail(toResponse(row), row.getRawResponse());
+        boolean mine = caller.isPlatformStaff()
+                || (caller.getTenantId() != null && caller.getTenantId().equals(row.getOwnerTenantId()))
+                || (caller.getInstitutionId() != null && caller.getInstitutionId().equals(row.getOwnerInstitutionId()));
+        // Not found rather than forbidden: whether a payment exists is itself information.
+        if (!mine) throw new ResourceNotFoundException("Disbursement", hashId);
+        return row;
     }
 
     public DisbursementResponse toResponse(Disbursement d) {
@@ -451,7 +705,14 @@ public class DisbursementService {
                 source == null ? null : source.getAccountNo(), source == null ? null : source.getAccountName(),
                 d.getBankReference(), d.getResponseCode(), d.getResponseDescription(),
                 d.getSentAt(), d.getSettledAt(), d.getStatusQueryAttempts(), d.getProcessingReason(),
-                d.getMadeBy(), d.getCheckedBy(), d.getCheckedAt(), d.getDecisionReason(), d.getCreatedAt());
+                d.getMadeBy(), d.getCheckedBy(), d.getCheckedAt(), d.getDecisionReason(), d.getCreatedAt(),
+                HashIdUtil.encodeId(d.getDevelopmentId()),
+                d.getDevelopmentId() == null ? null : developments.findById(d.getDevelopmentId()).map(Development::getName).orElse(null),
+                d.getPhaseId() == null ? null : phases.findById(d.getPhaseId()).map(p -> p.getName()).orElse(null),
+                d.getCostCategoryId() == null ? null : categories.findById(d.getCostCategoryId()).map(DevelopmentCostCategory::getName).orElse(null),
+                HashIdUtil.encodeId(d.getBeneficiaryId()), d.getBeneficiaryType(), d.getInvoiceReference(), d.getManagedBy(),
+                d.getDocumentId() == null ? null : vaultDocuments.findById(d.getDocumentId()).map(v -> v.getReference()).orElse(null),
+                d.getDocumentId() == null ? null : vaultDocuments.findById(d.getDocumentId()).map(v -> v.getOriginalName()).orElse(null));
     }
 
     static String stateLabel(String state) {

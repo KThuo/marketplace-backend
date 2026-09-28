@@ -38,6 +38,47 @@ public class DisbursementController {
         return ApiResponse.success("Sent for approval. Nothing moves until a second person releases it.", proposed);
     }
 
+    /** What the pay-a-beneficiary form needs for one development, in one read. */
+    @GetMapping("/pay-from/{developmentId}/options")
+    @PreAuthorize("hasAnyAuthority('DISBURSEMENTS_MAKE','DEVELOPMENTS_FINANCE_VIEW')")
+    public ApiResponse<PaymentOptions> paymentOptions(@PathVariable String developmentId) {
+        return ApiResponse.success(service.paymentOptions(developmentId));
+    }
+
+    /** A development pays one of its beneficiaries. Written and put in front of the managing side's checker. */
+    @PostMapping("/pay-from/{developmentId}")
+    @PreAuthorize("hasAuthority('DISBURSEMENTS_MAKE')")
+    @RequestAction("PAY_BENEFICIARY_FROM_DEVELOPMENT")
+    public ApiResponse<DisbursementResponse> payFromDevelopment(@PathVariable String developmentId,
+                                                                @Valid @RequestBody PayFromDevelopmentRequest request) {
+        DisbursementResponse proposed = service.payFromDevelopment(developmentId, request);
+        return ApiResponse.success(proposed.reference() + " sent for approval", proposed);
+    }
+
+    @PostMapping(value = "/{hashId}/evidence", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('DISBURSEMENTS_MAKE')")
+    @RequestAction("ATTACH_PAYMENT_EVIDENCE")
+    public ApiResponse<DisbursementResponse> attachEvidence(
+            @PathVariable String hashId,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ApiResponse.success("Attached", service.attachEvidence(hashId, file));
+    }
+
+    @GetMapping("/{hashId}/evidence")
+    @PreAuthorize("hasAuthority('DISBURSEMENTS_VIEW')")
+    @RequestAction("READ PAYMENT EVIDENCE")
+    public org.springframework.http.ResponseEntity<byte[]> evidence(@PathVariable String hashId) {
+        com.hodi.modules.kyc.DocumentService.Fetched fetched = service.evidence(hashId);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                        fetched.contentType() == null ? "application/octet-stream" : fetched.contentType()))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        org.springframework.http.ContentDisposition.attachment()
+                                .filename(fetched.fileName() == null ? "evidence" : fetched.fileName()).build().toString())
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate, private")
+                .body(fetched.bytes());
+    }
+
     @GetMapping("/list")
     @PreAuthorize("hasAuthority('DISBURSEMENTS_VIEW')")
     public ApiResponse<PagedResponse<DisbursementResponse>> list(@ModelAttribute ListRequest request) {

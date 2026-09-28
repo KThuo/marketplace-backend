@@ -77,6 +77,8 @@ public class DevelopmentFinanceService {
     private final VaultDocumentRepository vaultDocuments;
     private final AuditService audit;
     private final JdbcTemplate jdbc;
+    private final com.hodi.modules.beneficiaries.BeneficiaryRepository beneficiaries;
+    private final com.hodi.modules.disbursements.DisbursementRepository disbursements;
 
     // ── the summary ───────────────────────────────────────────────────────────
 
@@ -173,6 +175,18 @@ public class DevelopmentFinanceService {
         if (incurredOn.isAfter(LocalDate.now())) {
             throw new HodiException("A cost cannot be incurred in the future.", HttpStatus.BAD_REQUEST);
         }
+        /*
+         * A registered beneficiary, or a one-off payee by name. The beneficiary's name becomes the payee, so
+         * a statement reads the same whichever way the line was made; the id is what groups by payee.
+         */
+        com.hodi.modules.beneficiaries.Beneficiary beneficiary = null;
+        if (request.beneficiaryId() != null && !request.beneficiaryId().isBlank()) {
+            beneficiary = beneficiaries.findById(HashIdUtil.decodeId(request.beneficiaryId()))
+                    .filter(b -> b.getStatus() != AppConstant.STATUS_DELETED
+                            && b.visibleTo(development.getTenantId(), development.getInstitutionId()))
+                    .orElseThrow(() -> new HodiException("Choose one of this organisation's beneficiaries.",
+                            HttpStatus.BAD_REQUEST));
+        }
 
         DevelopmentExpenditure saved = expenditures.save(DevelopmentExpenditure.builder()
                 .reference(nextReference("EX", expenditures::existsByReference))
@@ -183,7 +197,9 @@ public class DevelopmentFinanceService {
                 .amount(request.amount())
                 .currency(development.getCurrency() == null ? "KES" : development.getCurrency())
                 .incurredOn(incurredOn)
-                .payee(blankToNull(request.payee()))
+                .payee(beneficiary != null ? beneficiary.getName() : blankToNull(request.payee()))
+                .beneficiaryId(beneficiary == null ? null : beneficiary.getId())
+                .entryKind(PaidCostRecorder.ENTRY_MANUAL)
                 .referenceNo(blankToNull(request.referenceNo()))
                 .notes(blankToNull(request.notes()))
                 .tenantId(development.getTenantId())
@@ -401,7 +417,7 @@ public class DevelopmentFinanceService {
     }
 
     private record Lookups(Map<Long, DevelopmentCostCategory> categories, Map<Long, DevelopmentPhase> phases,
-                           Map<Long, VaultDocument> documents) {}
+                           Map<Long, VaultDocument> documents, Map<Long, String> paymentReferences) {}
 
     private Lookups lookups(List<DevelopmentExpenditure> lines, List<FacilityDrawdown> rows) {
         Set<Long> categoryIds = lines.stream().map(DevelopmentExpenditure::getCategoryId)
@@ -417,7 +433,11 @@ public class DevelopmentFinanceService {
                 phases.findAllById(phaseIds).stream()
                         .collect(Collectors.toMap(DevelopmentPhase::getId, Function.identity())),
                 vaultDocuments.findAllById(documentIds).stream()
-                        .collect(Collectors.toMap(VaultDocument::getId, Function.identity())));
+                        .collect(Collectors.toMap(VaultDocument::getId, Function.identity())),
+                disbursements.findAllById(lines.stream().map(DevelopmentExpenditure::getDisbursementId)
+                                .filter(Objects::nonNull).collect(Collectors.toSet())).stream()
+                        .collect(Collectors.toMap(com.hodi.modules.disbursements.Disbursement::getId,
+                                com.hodi.modules.disbursements.Disbursement::getReference)));
     }
 
     private ExpenditureResponse toResponse(DevelopmentExpenditure e, Lookups lookups) {
@@ -436,7 +456,10 @@ public class DevelopmentFinanceService {
                 document == null ? null : document.getReference(),
                 document == null ? null : document.getOriginalName(),
                 e.getStatus(), e.isVoided() ? "Voided" : "Recorded",
-                e.getVoidedAt(), e.getVoidedBy(), e.getVoidReason(), e.getCreatedAt(), e.getCreatedBy());
+                e.getVoidedAt(), e.getVoidedBy(), e.getVoidReason(), e.getCreatedAt(), e.getCreatedBy(),
+                HashIdUtil.encodeId(e.getBeneficiaryId()), e.getEntryKind(),
+                HashIdUtil.encodeId(e.getDisbursementId()),
+                e.getDisbursementId() == null ? null : lookups.paymentReferences().get(e.getDisbursementId()));
     }
 
     private DrawdownResponse toResponse(FacilityDrawdown d, Lookups lookups) {

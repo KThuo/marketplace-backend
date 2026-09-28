@@ -33,11 +33,21 @@ public class DisbursementApprovalHandler implements ApprovalHandler {
         return "DISBURSEMENTS_APPROVE";
     }
 
+    /**
+     * The bank's staff decide anything. A development's payment is scoped to the organisation that manages
+     * its spending, and that organisation's checker decides it — their money, their second pair of eyes. The
+     * bank's own payouts carry no organisation, so nobody but the bank reaches them.
+     */
     @Override
     public void assertMayDecide(ApprovalWorkflow workflow, UserPrincipal caller) {
-        if (!caller.isPlatformStaff()) {
-            throw new HodiException("Only the bank's own staff may release money.", HttpStatus.FORBIDDEN);
-        }
+        if (caller.isPlatformStaff()) return;
+        boolean ownTenant = workflow.getTenantId() != null && workflow.getTenantId().equals(caller.getTenantId());
+        boolean ownInstitution = workflow.getInstitutionId() != null
+                && workflow.getInstitutionId().equals(caller.getInstitutionId());
+        if (ownTenant || ownInstitution) return;
+        throw new HodiException(workflow.getTenantId() == null && workflow.getInstitutionId() == null
+                ? "Only the bank's own staff may release the bank's money."
+                : "That payment is another organisation's to decide.", HttpStatus.FORBIDDEN);
     }
 
     @Override

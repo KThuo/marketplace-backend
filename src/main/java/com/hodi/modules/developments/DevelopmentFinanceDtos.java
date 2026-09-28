@@ -110,7 +110,13 @@ public final class DevelopmentFinanceDtos {
             String voidedBy,
             String voidReason,
             OffsetDateTime createdAt,
-            String createdBy) {}
+            String createdBy,
+            /** Who was paid, as a beneficiary; {@code payee} carries the name either way. */
+            String beneficiaryId,
+            /** MANUAL, typed in; DISBURSEMENT, written by a payment that succeeded. */
+            String entryKind,
+            String disbursementId,
+            String disbursementReference) {}
 
     /**
      * Record a cost.
@@ -129,7 +135,16 @@ public final class DevelopmentFinanceDtos {
             LocalDate incurredOn,
             @Size(max = 160) String payee,
             @Size(max = 64) String referenceNo,
-            String notes) {}
+            String notes,
+            /** A registered beneficiary; their name becomes the payee. Optional — a one-off payee is typed. */
+            String beneficiaryId) {
+
+        /** Without a beneficiary: a one-off payee by name, which is every cost line before beneficiaries existed. */
+        public RecordExpenditureRequest(String categoryId, String phaseId, String kind, BigDecimal amount,
+                                        LocalDate incurredOn, String payee, String referenceNo, String notes) {
+            this(categoryId, phaseId, kind, amount, incurredOn, payee, referenceNo, notes, null);
+        }
+    }
 
     public record DrawdownResponse(
             String id,

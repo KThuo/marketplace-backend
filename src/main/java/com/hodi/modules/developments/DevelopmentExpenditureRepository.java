@@ -13,6 +13,8 @@ public interface DevelopmentExpenditureRepository
 
     boolean existsByReference(String reference);
 
+    boolean existsByDisbursementId(Long disbursementId);
+
     /** What a phase has committed or spent, from recorded lines only. The authority on the phase's column. */
     @Query("select coalesce(sum(e.amount), 0) from DevelopmentExpenditure e "
             + "where e.phaseId = :phaseId and e.kind = :kind and e.status = 1")
