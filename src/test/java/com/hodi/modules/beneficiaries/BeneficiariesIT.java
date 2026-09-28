@@ -118,7 +118,7 @@ class BeneficiariesIT {
     }
 
     private SaveBeneficiaryRequest supplier(String name, String accountNo) {
-        return new SaveBeneficiaryRequest(null, null, typeId("SUPPLIER"), name, "A001234567Z",
+        return new SaveBeneficiaryRequest(null, null, null, typeId("SUPPLIER"), name, "A001234567Z",
                 "Jane", "+254700000002", "jane@example.invalid", "11", accountNo, null);
     }
 
@@ -199,7 +199,7 @@ class BeneficiariesIT {
 
         asMaker();
         HodiException refused = assertThrows(HodiException.class, () -> service.create(
-                new SaveBeneficiaryRequest(null, null, labour, "Casuals", null, null, null, null, "11", account("00"), null)));
+                new SaveBeneficiaryRequest(null, null, null, labour, "Casuals", null, null, null, null, "11", account("00"), null)));
         assertTrue(refused.getMessage().contains("available"));
     }
 
@@ -211,14 +211,14 @@ class BeneficiariesIT {
         BeneficiaryResponse saved = service.create(supplier("Mwangi Hardware", account("00")));
         approve(saved);
 
-        BeneficiaryResponse renamed = service.update(saved.id(), new SaveBeneficiaryRequest(null, null,
+        BeneficiaryResponse renamed = service.update(saved.id(), new SaveBeneficiaryRequest(null, null, null,
                 typeId("SUPPLIER"), "Mwangi Hardware Ltd", null, "Joseph", "+254700000003", null, saved.bankCode(),
                 saved.accountNo(), "Cement and steel."));
         assertEquals(AppConstant.STATUS_ACTIVE, renamed.status(), "nothing about where the money goes changed");
         assertEquals("Joseph", renamed.contactName());
         assertTrue(renamed.payable());
 
-        BeneficiaryResponse moved = service.update(saved.id(), new SaveBeneficiaryRequest(null, null,
+        BeneficiaryResponse moved = service.update(saved.id(), new SaveBeneficiaryRequest(null, null, null,
                 typeId("SUPPLIER"), "Mwangi Hardware Ltd", null, "Joseph", null, null, "68", account("99"), null));
         assertEquals(AppConstant.STATUS_NEW, moved.status(), "out of use until somebody approves the new account");
         assertEquals("UNVERIFIED", moved.verification());
@@ -263,13 +263,48 @@ class BeneficiariesIT {
     }
 
     @Test
+    @DisplayName("a supplier the bank shares is everybody's to see and pay, and only the bank's to change")
+    void aSharedBeneficiaryIsEverybodys() {
+        String shared = account("00");
+        asBank();
+        BeneficiaryResponse cement = service.create(new SaveBeneficiaryRequest(null, null, true, typeId("SUPPLIER"),
+                "Bamburi Cement", null, null, null, null, "11", shared, null));
+        assertEquals("SHARED", cement.ownerKind());
+        assertNull(cement.ownerName());
+        Long id = HashIdUtil.decodeId(cement.id());
+
+        // The bank's own checker, since it belongs to no organisation.
+        asChecker();
+        assertThrows(HodiException.class, () -> approvals.decideFor(AppConstant.APPROVAL_ENTITY_BENEFICIARY, id,
+                AppConstant.APPROVAL_ACTION_CREATE, new DecisionRequest("APPROVED", "ok")), "a seller's checker is not the bank's");
+        signIn(checkerId, AppConstant.ACTOR_PLATFORM, "SUPER_ADMIN", null, true, "BENEFICIARIES_APPROVE", "APPROVALS_VIEW");
+        approvals.decideFor(AppConstant.APPROVAL_ENTITY_BENEFICIARY, id, AppConstant.APPROVAL_ACTION_CREATE,
+                new DecisionRequest("APPROVED", "Known nationally."));
+
+        asMaker();
+        BeneficiaryResponse seen = service.find(HashIdUtil.encodeId(id));
+        assertTrue(seen.payable(), "a seller may pay it");
+        assertFalse(seen.mayChange(), "and may not change it");
+        assertTrue(service.payable(null, null).stream().anyMatch(p -> p.name().equals("Bamburi Cement")));
+        assertTrue(service.list(new BeneficiaryListRequest()).getContent().stream().anyMatch(b -> b.ownerKind().equals("SHARED")),
+                "listed beside their own");
+        HodiException edit = assertThrows(HodiException.class, () -> service.setStatus(HashIdUtil.encodeId(id), false));
+        assertTrue(edit.getMessage().contains("only the bank"));
+        HodiException dup = assertThrows(HodiException.class, () -> service.create(supplier("Bamburi (mine)", shared)));
+        assertTrue(dup.getMessage().contains("shared by the bank"), "no private copy of a shared supplier");
+        assertThrows(HodiException.class, () -> service.create(new SaveBeneficiaryRequest(null, null, true,
+                typeId("SUPPLIER"), "Mine for all", null, null, null, null, "11", account("00"), null)),
+                "only the bank shares");
+    }
+
+    @Test
     @DisplayName("the bank registers a beneficiary for an owner, naming the owner; an owner cannot name one")
     void theBankRegistersForOwners() {
         asBank();
         assertThrows(HodiException.class, () -> service.create(supplier("Nobody's", account("00"))),
                 "the bank must say whose");
         BeneficiaryResponse forTenant = service.create(new SaveBeneficiaryRequest(HashIdUtil.encodeId(tenantId), null,
-                typeId("CONTRACTOR"), "Jenga Builders", null, null, null, null, "11", account("00"), null));
+                null, typeId("CONTRACTOR"), "Jenga Builders", null, null, null, null, "11", account("00"), null));
         assertEquals("TENANT", forTenant.ownerKind());
         assertTrue(forTenant.mayChange());
 
@@ -277,7 +312,7 @@ class BeneficiariesIT {
         asMaker();
         assertTrue(service.find(HashIdUtil.encodeId(id)).mayChange(), "it is the owner's, whoever registered it");
         HodiException refused = assertThrows(HodiException.class, () -> service.create(new SaveBeneficiaryRequest(
-                HashIdUtil.encodeId(anotherTenant()), null, typeId("SUPPLIER"), "Theirs", null, null, null, null,
+                HashIdUtil.encodeId(anotherTenant()), null, null, typeId("SUPPLIER"), "Theirs", null, null, null, null,
                 "11", account("00"), null)));
         assertTrue(refused.getMessage().contains("not your organisation"));
     }

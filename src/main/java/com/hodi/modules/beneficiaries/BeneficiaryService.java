@@ -68,9 +68,10 @@ public class BeneficiaryService {
     private final TenantRepository tenants;
     private final BankRepository institutions;
 
-    /** Whose beneficiary this is: exactly one of the two, never neither. */
+    /** Whose beneficiary this is: one organisation, or neither — the bank's, shared with everybody. */
     record Owner(Long tenantId, Long institutionId) {
-        String kind() { return institutionId != null ? "INSTITUTION" : "TENANT"; }
+        boolean shared() { return tenantId == null && institutionId == null; }
+        String kind() { return shared() ? "SHARED" : institutionId != null ? "INSTITUTION" : "TENANT"; }
     }
 
     // ── reading ───────────────────────────────────────────────────────────────
@@ -80,7 +81,7 @@ public class BeneficiaryService {
         UserPrincipal caller = AuthContext.require();
         Specification<Beneficiary> spec = SearchSpecs.allOf(
                 SearchSpecs.notArchived(),
-                scope(caller, request.getTenantId(), request.getInstitutionId()),
+                scope(caller, request.getTenantId(), request.getInstitutionId(), request.getShared()),
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.statusIn(request.effectiveStatuses()),
                 SearchSpecs.eq("typeId", HashIdUtil.decodeId(request.getTypeId())),
@@ -100,7 +101,8 @@ public class BeneficiaryService {
     /** What a payment form may pick from: live and verified, for one owner. */
     @Transactional(readOnly = true)
     public List<PayableBeneficiary> payable(String tenantHash, String institutionHash) {
-        Owner owner = ownerFor(AuthContext.require(), tenantHash, institutionHash);
+        // Own and shared alike: findPayable adds the bank's shared ones to whichever owner is asked about.
+        Owner owner = ownerFor(AuthContext.require(), tenantHash, institutionHash, null);
         List<Beneficiary> rows = beneficiaries.findPayable(owner.tenantId(), owner.institutionId());
         Names names = names(rows);
         return rows.stream().map(b -> new PayableBeneficiary(HashIdUtil.encodeId(b.getId()), b.getReference(),
@@ -123,7 +125,7 @@ public class BeneficiaryService {
      */
     public BeneficiaryResponse create(SaveBeneficiaryRequest request) {
         UserPrincipal caller = AuthContext.require();
-        Owner owner = ownerFor(caller, request.tenantId(), request.institutionId());
+        Owner owner = ownerFor(caller, request.tenantId(), request.institutionId(), request.shared());
         BeneficiaryType type = requireType(request.typeId());
         String bankCode = bankCode(request.bankCode());
         String accountNo = accountNo(request.accountNo());
@@ -159,7 +161,9 @@ public class BeneficiaryService {
         approvals.submitOrRestate(AppConstant.APPROVAL_ENTITY_BENEFICIARY, saved.getId(),
                 AppConstant.APPROVAL_ACTION_CREATE, owner.tenantId(), owner.institutionId(),
                 saved.getName() + " — " + nameOf(owner),
-                "A new beneficiary, " + type.getName().toLowerCase() + ". Nothing can be paid to it until approved."
+                "A new beneficiary, " + type.getName().toLowerCase()
+                        + (owner.shared() ? ", shared with every organisation" : "")
+                        + ". Nothing can be paid to it until approved."
                         + (saved.isVerified() ? "" : " The bank has not confirmed the account."),
                 null, describe(saved, type));
         audit.record(AppConstant.ACTION_CREATE, "Beneficiary", saved.getId(), null, snapshot(saved));
@@ -325,20 +329,37 @@ public class BeneficiaryService {
         beneficiaries.findPayoutClash(owner.tenantId(), owner.institutionId(), bankCode, accountNo, exceptId)
                 .ifPresent(other -> {
                     throw new HodiException("That account is already registered as " + other.getName()
-                            + " (" + other.getReference() + ").", HttpStatus.CONFLICT);
+                            + " (" + other.getReference() + ")"
+                            + (other.isShared() && !owner.shared() ? ", shared by the bank with every organisation" : "")
+                            + ".", HttpStatus.CONFLICT);
                 });
     }
 
-    /** The owner named by platform staff, or derived from everybody else — never chosen by them. */
-    private Owner ownerFor(UserPrincipal caller, String tenantHash, String institutionHash) {
+    /**
+     * The owner named by platform staff, or derived from everybody else — never chosen by them.
+     *
+     * <p>The bank may name nobody, deliberately ({@code shared}): one supplier for every organisation. Anybody
+     * else asking for that is refused, because a shared beneficiary is the bank's to vouch for.
+     */
+    private Owner ownerFor(UserPrincipal caller, String tenantHash, String institutionHash, Boolean shared) {
         Long tenantId = HashIdUtil.decodeId(tenantHash);
         Long institutionId = HashIdUtil.decodeId(institutionHash);
         if (caller.isPlatformStaff()) {
+            if (Boolean.TRUE.equals(shared)) {
+                if (tenantId != null || institutionId != null) {
+                    throw new HodiException("A beneficiary shared with every organisation belongs to none of them.",
+                            HttpStatus.BAD_REQUEST);
+                }
+                return new Owner(null, null);
+            }
             if ((tenantId == null) == (institutionId == null)) {
-                throw new HodiException("Say which organisation this beneficiary belongs to: a seller or a bank, "
-                        + "not both and not neither.", HttpStatus.BAD_REQUEST);
+                throw new HodiException("Say which organisation this beneficiary belongs to — a seller or a bank — "
+                        + "or share it with every organisation.", HttpStatus.BAD_REQUEST);
             }
             return new Owner(tenantId, institutionId);
+        }
+        if (Boolean.TRUE.equals(shared)) {
+            throw new HodiException("Only the bank registers a beneficiary for every organisation.", HttpStatus.FORBIDDEN);
         }
         if (caller.getInstitutionId() != null) {
             if (tenantId != null || (institutionId != null && !institutionId.equals(caller.getInstitutionId()))) {
@@ -355,16 +376,26 @@ public class BeneficiaryService {
         throw new HodiException("You do not belong to an organisation that pays beneficiaries.", HttpStatus.FORBIDDEN);
     }
 
-    /** The rows this caller may list: the platform's choice of owner, or their own organisation only. */
-    private Specification<Beneficiary> scope(UserPrincipal caller, String tenantHash, String institutionHash) {
+    /**
+     * The rows this caller may list: the platform's choice of owner (or only the shared ones), or their own
+     * organisation's together with the ones the bank shares with everybody.
+     */
+    private Specification<Beneficiary> scope(UserPrincipal caller, String tenantHash, String institutionHash,
+                                             Boolean shared) {
+        Specification<Beneficiary> sharedOnly = (root, query, cb) ->
+                cb.and(cb.isNull(root.get("tenantId")), cb.isNull(root.get("institutionId")));
         if (caller.isPlatformStaff()) {
+            if (Boolean.TRUE.equals(shared)) return sharedOnly;
             return SearchSpecs.allOf(
                     SearchSpecs.eq("tenantId", HashIdUtil.decodeId(tenantHash)),
                     SearchSpecs.eq("institutionId", HashIdUtil.decodeId(institutionHash)));
         }
-        if (caller.getInstitutionId() != null) return SearchSpecs.eq("institutionId", caller.getInstitutionId());
-        if (caller.getTenantId() != null) return SearchSpecs.eq("tenantId", caller.getTenantId());
-        return (root, query, cb) -> cb.disjunction();
+        Specification<Beneficiary> own = caller.getInstitutionId() != null
+                ? SearchSpecs.eq("institutionId", caller.getInstitutionId())
+                : caller.getTenantId() != null ? SearchSpecs.eq("tenantId", caller.getTenantId()) : null;
+        if (own == null) return (root, query, cb) -> cb.disjunction();
+        if (Boolean.TRUE.equals(shared)) return sharedOnly;
+        return own.or(sharedOnly);
     }
 
     private Beneficiary requireVisible(String hashId, UserPrincipal caller) {
@@ -372,14 +403,24 @@ public class BeneficiaryService {
                 .filter(b -> b.getStatus() != AppConstant.STATUS_DELETED)
                 .orElseThrow(() -> new ResourceNotFoundException("Beneficiary", hashId));
         // Not found rather than forbidden: whose suppliers an organisation has is itself information.
-        if (!caller.isPlatformStaff() && !row.belongsTo(caller.getTenantId(), caller.getInstitutionId())) {
+        if (!caller.isPlatformStaff() && !row.visibleTo(caller.getTenantId(), caller.getInstitutionId())) {
             throw new ResourceNotFoundException("Beneficiary", hashId);
         }
         return row;
     }
 
+    /** Readable is not changeable: a shared beneficiary is everybody's to pay and the bank's to change. */
     private Beneficiary requireOwn(String hashId, UserPrincipal caller) {
-        return requireVisible(hashId, caller);
+        Beneficiary row = requireVisible(hashId, caller);
+        if (!mayChange(row, caller)) {
+            throw new HodiException("The bank shares " + row.getName() + " with every organisation, so only the bank "
+                    + "can change it.", HttpStatus.FORBIDDEN);
+        }
+        return row;
+    }
+
+    private static boolean mayChange(Beneficiary row, UserPrincipal caller) {
+        return caller.isPlatformStaff() || row.belongsTo(caller.getTenantId(), caller.getInstitutionId());
     }
 
     private BeneficiaryType requireType(String hashId) {
@@ -471,6 +512,7 @@ public class BeneficiaryService {
     }
 
     private String nameOf(Owner owner) {
+        if (owner.shared()) return "every organisation";
         if (owner.institutionId() != null) {
             return institutions.findById(owner.institutionId()).map(Bank::getName).orElse("the bank");
         }
@@ -480,7 +522,8 @@ public class BeneficiaryService {
     private BeneficiaryResponse toResponse(Beneficiary b, Names names, UserPrincipal caller) {
         BeneficiaryType type = names.types().get(b.getTypeId());
         Owner owner = new Owner(b.getTenantId(), b.getInstitutionId());
-        String ownerName = owner.institutionId() != null ? names.institutions().get(owner.institutionId())
+        String ownerName = owner.shared() ? null
+                : owner.institutionId() != null ? names.institutions().get(owner.institutionId())
                 : names.tenants().get(owner.tenantId());
         return new BeneficiaryResponse(
                 HashIdUtil.encodeId(b.getId()), b.getReference(),
@@ -492,7 +535,7 @@ public class BeneficiaryService {
                 b.getVerification(), b.getConfirmedName(), b.getConfirmedAt(), b.getVerificationNote(),
                 b.getNotes(), b.isPayable(),
                 b.getStatus(), b.getStatusFlag(),
-                caller.isPlatformStaff() || b.belongsTo(caller.getTenantId(), caller.getInstitutionId()),
+                mayChange(b, caller),
                 b.getCreatedAt(), b.getCreatedBy(), b.getUpdatedAt(), b.getUpdatedBy());
     }
 }

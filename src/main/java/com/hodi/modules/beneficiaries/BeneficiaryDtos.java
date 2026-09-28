@@ -23,6 +23,8 @@ public final class BeneficiaryDtos {
     public record SaveBeneficiaryRequest(
             String tenantId,
             String institutionId,
+            /** The bank registering one supplier for every organisation. Refused from anybody else. */
+            Boolean shared,
             @NotBlank(message = "Say what kind of payee this is") String typeId,
             @NotBlank(message = "Enter the beneficiary's name") @Size(max = 160) String name,
             @Size(max = 16, message = "That KRA PIN is too long") String kraPin,
@@ -84,6 +86,8 @@ public final class BeneficiaryDtos {
         /** Platform staff narrow to an owner; everybody else's owner is fixed. */
         private String tenantId;
         private String institutionId;
+        /** Only the ones the bank shares with every organisation. */
+        private Boolean shared;
     }
 
     public record TypeResponse(String id, String code, String name, String description, int sortOrder,

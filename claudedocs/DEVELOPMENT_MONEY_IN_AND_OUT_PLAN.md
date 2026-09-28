@@ -293,6 +293,13 @@ Suite after the review: 489 tests, 0 failures. The screens are still unverified 
 - **Beneficiary types** (Platform group), mirroring cost categories. The approvals screen labels the new
   entity. `vue-tsc` and `npm run build` pass.
 
+**Added after review (28 September 2026)**
+- **Shared beneficiaries.** A supplier several developers buy from is registered once by the bank with no
+  owner (`V20260928150000` relaxes the owner check). Every organisation sees it beside its own and may pay it;
+  only the bank changes it, and only the bank's checker approves it. An owner registering an account the bank
+  already shares is refused by name — no private copies of a shared supplier. `ownerKind` gains `SHARED`.
+- The form is a three-step wizard (who, contact, paid into) and the phone field is `AppTelInput`.
+
 **Not built, deliberately**
 - The bank registering a beneficiary for an *institution* (a bank-owned development) has no form: the
   modal offers seller organisations only, because the auth store does not expose the caller's institution.

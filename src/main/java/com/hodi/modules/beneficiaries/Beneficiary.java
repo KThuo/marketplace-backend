@@ -29,6 +29,12 @@ import java.util.Objects;
  * to the bank code or account number, because a changed account is how money is diverted. Contact details
  * change without ceremony.
  *
+ * <h2>Shared, or one organisation's</h2>
+ *
+ * <p>A supplier several developers buy from is registered once by the bank with no owner at all — both owner
+ * columns null — and every organisation may read and pay it. Only the bank changes it. An organisation's own
+ * beneficiary has exactly one owner.
+ *
  * <p>Deactivated, never deleted: a payment keeps pointing at the beneficiary as it was when it was made.
  */
 @Entity
@@ -91,8 +97,16 @@ public class Beneficiary {
     /** Live and confirmed with the bank — the only state a payment may name. */
     public boolean isPayable() { return isLive() && isVerified(); }
 
+    /** Registered by the bank for every organisation. */
+    public boolean isShared() { return tenantId == null && institutionId == null; }
+
     public boolean belongsTo(Long tenant, Long institution) {
         return (tenant != null && Objects.equals(tenant, tenantId))
                 || (institution != null && Objects.equals(institution, institutionId));
+    }
+
+    /** Readable and payable by this organisation: its own, or one the bank shares with everybody. */
+    public boolean visibleTo(Long tenant, Long institution) {
+        return isShared() || belongsTo(tenant, institution);
     }
 }

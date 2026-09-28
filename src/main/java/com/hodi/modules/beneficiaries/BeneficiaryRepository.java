@@ -22,7 +22,9 @@ public interface BeneficiaryRepository extends JpaRepository<Beneficiary, Long>,
     @Query("select b from Beneficiary b where b.bankCode = :bankCode and b.accountNo = :accountNo "
             + "and b.status <> 5 and b.id <> :exceptId "
             + "and ((:tenantId is not null and b.tenantId = :tenantId) "
-            + "  or (:institutionId is not null and b.institutionId = :institutionId))")
+            + "  or (:institutionId is not null and b.institutionId = :institutionId) "
+            // The bank's shared one counts as already registered for everybody.
+            + "  or (b.tenantId is null and b.institutionId is null))")
     Optional<Beneficiary> findPayoutClash(@Param("tenantId") Long tenantId,
                                           @Param("institutionId") Long institutionId,
                                           @Param("bankCode") String bankCode,
@@ -32,7 +34,8 @@ public interface BeneficiaryRepository extends JpaRepository<Beneficiary, Long>,
     /** Live and verified — what a payment form may pick from. */
     @Query("select b from Beneficiary b where b.status in (1, 2) and b.verification = 'VERIFIED' "
             + "and ((:tenantId is not null and b.tenantId = :tenantId) "
-            + "  or (:institutionId is not null and b.institutionId = :institutionId)) "
+            + "  or (:institutionId is not null and b.institutionId = :institutionId) "
+            + "  or (b.tenantId is null and b.institutionId is null)) "
             + "order by b.name")
     List<Beneficiary> findPayable(@Param("tenantId") Long tenantId, @Param("institutionId") Long institutionId);
 
