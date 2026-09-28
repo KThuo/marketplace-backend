@@ -66,6 +66,16 @@ public class DevelopmentFinanceController {
         return ApiResponse.success(accounts.debitAccountsFor(hashId));
     }
 
+    /** Money in and money out for a period, from the same views the two exportable statements read. */
+    @GetMapping("/statement")
+    @PreAuthorize("hasAuthority('DEVELOPMENTS_FINANCE_VIEW')")
+    public ApiResponse<StatementSummary> statement(
+            @PathVariable String hashId,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate from,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate to) {
+        return ApiResponse.success(service.statement(hashId, from, to));
+    }
+
     // ── the ledger ────────────────────────────────────────────────────────────
 
     @GetMapping("/expenditures")

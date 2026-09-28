@@ -140,6 +140,72 @@ public class DevelopmentFinanceService {
                 p.slippageDays(), late);
     }
 
+    // ── the statements ────────────────────────────────────────────────────────
+
+    /**
+     * Money in and money out for a period, totalled and broken down, from the two statement views.
+     *
+     * <p>The same views the exportable reports read, so the figures here and the rows in a download cannot
+     * disagree. Read by development id rather than through the report engine's owner scope, because the caller
+     * has already been checked against this development — the one thing the engine's scope could add is
+     * refusing a collaborator the development itself admits.
+     */
+    @Transactional(readOnly = true)
+    public StatementSummary statement(String developmentHashId, LocalDate from, LocalDate to) {
+        Development development = requireVisible(developmentHashId);
+        LocalDate start = from == null ? LocalDate.now().withDayOfMonth(1) : from;
+        LocalDate end = to == null ? LocalDate.now() : to;
+        java.sql.Timestamp since = java.sql.Timestamp.valueOf(start.atStartOfDay());
+        java.sql.Timestamp until = java.sql.Timestamp.valueOf(end.plusDays(1).atStartOfDay());
+        Long id = development.getId();
+
+        Map<String, Object> in = jdbc.queryForMap(
+                "select coalesce(sum(amount), 0) as total, count(*) as n from v_report_development_money_in "
+                        + "where development_id = ? and state = 'Received' and paid_on >= ? and paid_on < ?",
+                id, since, until);
+        Map<String, Object> paid = jdbc.queryForMap(
+                "select coalesce(sum(amount), 0) as total, count(*) as n from v_report_development_money_out "
+                        + "where development_id = ? and state in ('Paid', 'Recorded') and happened_on >= ? and happened_on < ?",
+                id, since, until);
+        Map<String, Object> flight = jdbc.queryForMap(
+                "select coalesce(sum(amount), 0) as total from v_report_development_money_out "
+                        + "where development_id = ? and state in ('Awaiting approval', 'Approved, about to send', "
+                        + "'Sending', 'Sent, awaiting the bank') and happened_on >= ? and happened_on < ?",
+                id, since, until);
+
+        BigDecimal moneyIn = money(in, "total");
+        BigDecimal moneyOut = money(paid, "total");
+        return new StatementSummary(
+                HashIdUtil.encodeId(id), development.getName(),
+                development.getCurrency() == null ? "KES" : development.getCurrency(),
+                start, end, moneyIn, moneyOut, money(flight, "total"), moneyIn.subtract(moneyOut),
+                ((Number) in.get("n")).intValue(), ((Number) paid.get("n")).intValue(),
+                slices("category_name", id, since, until),
+                slices("beneficiary_type", id, since, until),
+                slices("phase_name", id, since, until),
+                inSlices(id, since, until));
+    }
+
+    /** Money that left, grouped by one column of the money-out view. The column is a literal from this class. */
+    private List<Slice> slices(String column, Long developmentId, java.sql.Timestamp since, java.sql.Timestamp until) {
+        return jdbc.query(
+                "select coalesce(" + column + ", '—') as label, coalesce(sum(amount), 0) as total, count(*) as n "
+                        + "from v_report_development_money_out where development_id = ? "
+                        + "and state in ('Paid', 'Recorded') and happened_on >= ? and happened_on < ? "
+                        + "group by 1 order by 2 desc",
+                (rs, i) -> new Slice(rs.getString("label"), rs.getBigDecimal("total"), rs.getLong("n")),
+                developmentId, since, until);
+    }
+
+    private List<Slice> inSlices(Long developmentId, java.sql.Timestamp since, java.sql.Timestamp until) {
+        return jdbc.query(
+                "select how_placed as label, coalesce(sum(amount), 0) as total, count(*) as n "
+                        + "from v_report_development_money_in where development_id = ? and state = 'Received' "
+                        + "and paid_on >= ? and paid_on < ? group by 1 order by 2 desc",
+                (rs, i) -> new Slice(rs.getString("label"), rs.getBigDecimal("total"), rs.getLong("n")),
+                developmentId, since, until);
+    }
+
     // ── the ledger ────────────────────────────────────────────────────────────
 
     @Transactional(readOnly = true)

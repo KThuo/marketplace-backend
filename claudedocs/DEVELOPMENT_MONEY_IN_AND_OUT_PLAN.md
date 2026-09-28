@@ -379,3 +379,43 @@ the status enquiry and the never-resend rule all carry over unchanged.
 **To confirm with the bank before this goes live** (§6): that the platform's Co-op credentials may debit an
 owner's account. The code passes the chosen account as the source; whether the bank honours it is banking.
 
+### Phase 5 — done (28 September 2026)
+
+Built on the reports module rather than beside it: two report definitions over two views, so the rows on
+screen, the CSV, the Excel and the PDF all come from one query with the engine's own owner scoping, paging,
+totals and audit on export.
+
+**Backend**
+- Migration `V20260928190000`: `v_report_development_money_in` (buyers' payments against the development's
+  bookings — receipt, bank reference, booking, unit, buyer, method, how it was placed, state) and
+  `v_report_development_money_out` (every payment through Hodi in whatever state, plus every cost recorded
+  by hand as a manual entry — payee and kind, purpose, phase, category, invoice, the paying account masked
+  to its last four digits, maker, checker, state, route). The cost a paid payment wrote for itself is not
+  listed again. Neither view joins the other; slip validation never sees a row from either.
+- `DEVELOPMENT_MONEY_IN` and `DEVELOPMENT_MONEY_OUT` in the catalogue, owner-scoped, with the filters §3.5
+  asked for. `GET /developments/{id}/finance/statement?from&to` totals the period from the same views:
+  money in, money out (what actually left), in flight (proposed, approved or with the bank — beside, never
+  added), net, and breakdowns by category, kind of payee, phase and how money in was placed.
+- `DevelopmentStatementsIT`: 3 tests, including that a stranger's organisation sees no rows and that the
+  self-written cost is not counted twice.
+
+**Frontend**
+- A **Statements** card on the finance tab: a period picker, money in and money out side by side with the
+  in-flight figure beside money out, the four breakdowns, and per statement "Open the statement" (the reports
+  page, now able to open on a report and filters from the address) and CSV/PDF downloads.
+
+**Worth knowing**
+- Opening or downloading a statement needs `REPORTS_VIEW` / `REPORTS_EXPORT`; the totals on the finance tab
+  need only `DEVELOPMENTS_FINANCE_VIEW`. Owners' system groups hold all of these.
+- "How placed" says *bank notification* or *by hand*; the platform does not record whether a matched
+  notification was matched automatically or by slip, so the finer split §3.5 mentioned is not shown.
+
+## 8. Where this leaves the plan
+
+Phases 1–5 are built, tested (511 backend tests at the last full run) and committed on
+`feature/development-money-in-and-out`. Still open, and all named above: confirming the bank's debit mandate on
+owners' accounts before phase 4 goes live; whether the two development settings should themselves need a
+second bank user; whether a partner lender's staff should count as the bank; a form for the bank to register
+a beneficiary owned by an institution; and a browser walk-through of the screens with a signed-in bank user
+and a signed-in owner. Commissions (§5) are the next piece.
+

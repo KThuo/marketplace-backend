@@ -191,6 +191,49 @@ public final class ReportCatalogue {
                             new Filter("Build", "construction_status", Filter.Kind.ENUM)),
                     true),
 
+            /*
+             * A development's two statements. Separate reports over separate views, and never one over both:
+             * money in is buyers' money the bank holds, money out is the owner's own, and a running balance
+             * across them would suggest the one may be spent as the other. The finance tab opens either with
+             * the development already chosen, and totals the period from the same views.
+             */
+            new Report("DEVELOPMENT_MONEY_IN", "Development money in",
+                    "Buyers' payments against a development's bookings: who paid, for which home, and how the "
+                            + "money was placed.",
+                    "v_report_development_money_in", "paid_on",
+                    ordered("Paid on", "paid_on", "Development", "development_name",
+                            "Reference", "reference", "Receipt", "receipt", "Bank reference", "bank_reference",
+                            "Booking", "booking_reference", "Unit", "unit_label", "Buyer", "buyer_name",
+                            "Paid by", "payer_name", "Amount", "amount", "Method", "payment_type_name",
+                            "How placed", "how_placed", "State", "state", "Recorded by", "recorded_by",
+                            "Void reason", "void_reason"),
+                    List.of("amount"), false,
+                    List.of(new Filter("Development", "development_name", Filter.Kind.ENUM),
+                            new Filter("How placed", "how_placed", Filter.Kind.ENUM),
+                            new Filter("Method", "payment_type_name", Filter.Kind.ENUM),
+                            new Filter("State", "state", Filter.Kind.ENUM)),
+                    true),
+
+            new Report("DEVELOPMENT_MONEY_OUT", "Development money out",
+                    "What a development paid, and to whom: every payment through Hodi in whatever state it is "
+                            + "in, and every cost recorded by hand.",
+                    "v_report_development_money_out", "happened_on",
+                    ordered("When", "happened_on", "Development", "development_name",
+                            "Reference", "reference", "Bank reference", "bank_reference",
+                            "Paid to", "payee", "Kind of payee", "beneficiary_type",
+                            "For", "purpose", "Phase", "phase_name", "Category", "category_name",
+                            "Invoice", "invoice_reference", "Paid from", "paid_from",
+                            "Proposed by", "maker", "Approved by", "checker",
+                            "State", "state", "Route", "route", "Amount", "amount"),
+                    List.of("amount"), false,
+                    List.of(new Filter("Development", "development_name", Filter.Kind.ENUM),
+                            new Filter("Kind of payee", "beneficiary_type", Filter.Kind.ENUM),
+                            new Filter("Category", "category_name", Filter.Kind.ENUM),
+                            new Filter("Phase", "phase_name", Filter.Kind.ENUM),
+                            new Filter("State", "state", Filter.Kind.ENUM),
+                            new Filter("Route", "route", Filter.Kind.ENUM)),
+                    true),
+
             new Report("RATINGS", "Reviews",
                     "What buyers said, by subject.",
                     "v_report_ratings", "created_at",

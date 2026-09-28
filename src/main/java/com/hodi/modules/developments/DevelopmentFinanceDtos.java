@@ -65,6 +65,32 @@ public final class DevelopmentFinanceDtos {
             int phasesLate,
             List<PhaseMoneyRow> phaseRows) {}
 
+    /**
+     * The two statements totalled for a period, from the same views the exportable reports read.
+     *
+     * <p>Money out counts what actually left: payments the bank confirmed, and costs recorded by hand. What is
+     * proposed, approved or with the bank is {@code inFlight}, shown beside it and never added to it.
+     */
+    public record StatementSummary(
+            String developmentId,
+            String developmentName,
+            String currency,
+            LocalDate from,
+            LocalDate to,
+            BigDecimal moneyIn,
+            BigDecimal moneyOut,
+            BigDecimal inFlight,
+            BigDecimal net,
+            int paymentsIn,
+            int paymentsOut,
+            List<Slice> outByCategory,
+            List<Slice> outByBeneficiaryType,
+            List<Slice> outByPhase,
+            List<Slice> inByPlacement) {}
+
+    /** One row of a breakdown: a label, a total and how many lines made it. */
+    public record Slice(String label, BigDecimal amount, long count) {}
+
     /** One phase, in money and in time. */
     public record PhaseMoneyRow(
             String id,
