@@ -262,3 +262,42 @@ Two things the plan leaves open, for the client:
 
 Suite after the review: 489 tests, 0 failures. The screens are still unverified in a browser.
 
+### Phase 2 — done (28 September 2026)
+
+**Backend**
+- Migration `V20260928120000`: `beneficiary_types` (ten seeded, a platform list like cost categories) and
+  `beneficiaries`, owned by exactly one organisation, with a generated `search_text` and the `pg_trgm` guard.
+  One owner may register one account once (`uk_beneficiary_payout`); another owner may register the same one.
+- `modules/beneficiaries`: `BeneficiaryService` (register, edit, verify, deactivate, the payable picker),
+  `BeneficiaryTypeService`, two controllers, and `BeneficiaryApprovalHandler`.
+- **The bank's name.** `PayoutAccountCheck` asks Co-op who holds the account through the same
+  account-validation channel a disbursement uses (`CoopPayoutAccountCheck`), at registration and again whenever
+  the account changes. The confirmed name is stored; an account the bank cannot confirm is kept `UNVERIFIED`
+  with the bank's reason, can be asked about again, and is never payable.
+- **Maker/Checker.** A new beneficiary, and any change to its bank code or account number, is written at
+  `STATUS_NEW` and goes to the approvals queue (`BENEFICIARY`), decided by somebody in the same organisation or
+  the bank's staff holding `BENEFICIARIES_APPROVE`. Contact details, the type and the notes save directly.
+  `payable` is live **and** verified: approved-but-unconfirmed is not payable.
+- Permissions: `BENEFICIARIES_VIEW`, `BENEFICIARIES_MANAGE`, `BENEFICIARIES_APPROVE` (PAYMENTS module, held by
+  owners' staff and the bank's), and platform-only `BENEFICIARY_TYPES_MANAGE`.
+- Bank codes are stored padded to four digits, as disbursements store them. The first version compared the
+  typed `11` against the bank's `0011`, missed a duplicate, and hit the unique index instead.
+- `BeneficiariesIT`: 8 tests. Full suite: 497, 0 failures.
+
+**Frontend**
+- **Beneficiaries** (Money group): list with search, kind, and the bank's answer as filters; the bank's staff
+  narrow by organisation. Each row shows the account, who the bank says holds it, whether it is confirmed,
+  whether it is approved, and whether it can be paid. Edit, "ask the bank again", deactivate.
+- `BeneficiaryModal`: name, kind, KRA PIN, contact, bank and account, "ask the bank who holds it", and a
+  warning when an edit changes the account and so needs a checker.
+- **Beneficiary types** (Platform group), mirroring cost categories. The approvals screen labels the new
+  entity. `vue-tsc` and `npm run build` pass.
+
+**Not built, deliberately**
+- The bank registering a beneficiary for an *institution* (a bank-owned development) has no form: the
+  modal offers seller organisations only, because the auth store does not expose the caller's institution.
+  The API accepts `institutionId`; the form is a phase 4 concern, when bank-managed payments need it.
+- M-Pesa destinations, per §5.
+
+**Not verified in a browser**, as with phase 1.
+

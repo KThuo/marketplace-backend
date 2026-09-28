@@ -285,6 +285,18 @@ public enum AppPermissionEnum {
      */
     DISBURSEMENTS_APPROVE("Approve a disbursement before it is sent", AppModuleEnum.PAYMENTS, true),
 
+    // ── BENEFICIARIES ─────────────────────────────────────────────────────────
+    /**
+     * The people and companies an organisation pays. An owner's staff hold these for their own; the bank's
+     * staff hold them for everybody, because on a project the bank manages it registers who is paid.
+     */
+    BENEFICIARIES_VIEW("See the people and companies a development pays", AppModuleEnum.PAYMENTS),
+    BENEFICIARIES_MANAGE("Register beneficiaries and change where they are paid", AppModuleEnum.PAYMENTS),
+    /** Its own permission: held by the person who registered the payee, it is not a second pair of eyes. */
+    BENEFICIARIES_APPROVE("Approve a beneficiary before it can be paid", AppModuleEnum.PAYMENTS),
+    /** The kinds of payee — a platform list, like cost categories. */
+    BENEFICIARY_TYPES_MANAGE("Add, rename and suspend beneficiary types", AppModuleEnum.PAYMENTS, true),
+
     // ── MORTGAGE PRODUCTS ─────────────────────────────────────────────────────
     MORTGAGE_PRODUCTS_VIEW("See mortgage products", AppModuleEnum.MORTGAGE_PRODUCTS),
     MORTGAGE_PRODUCTS_CREATE("Create a mortgage product", AppModuleEnum.MORTGAGE_PRODUCTS),

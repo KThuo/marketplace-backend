@@ -163,6 +163,8 @@ public final class AppConstant {
     public static final String APPROVAL_ENTITY_PAYMENT_ACCOUNT = "PAYMENT_ACCOUNT";
     /** Money out. The checker sees the amount, the destination and the name the bank resolved it to. */
     public static final String APPROVAL_ENTITY_DISBURSEMENT = "DISBURSEMENT";
+    /** Somebody an organisation pays. Live only once a second person agrees, as a payment account is. */
+    public static final String APPROVAL_ENTITY_BENEFICIARY = "BENEFICIARY";
     public static final String APPROVAL_ACTION_SEND = "SEND";
 
     // ── Developments (a project with many units) ─────────────────────────────
