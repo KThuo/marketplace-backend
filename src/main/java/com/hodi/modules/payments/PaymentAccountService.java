@@ -361,9 +361,11 @@ public class PaymentAccountService {
         UserPrincipal caller = AuthContext.require();
         Owner owner = ownerFor(caller, request.tenantId(), request.institutionId());
         // Which account and which development are not known yet, so this asks only whether there is anything
-        // this caller could set up. The save makes the real decision.
+        // this caller could set up. The save makes the real decision, and a refusal here costs no text.
         if (!owner.platform() && !caller.isPlatformStaff() && !organisationsMayCollect() && !collectsSomewhere(owner)) {
-            requireMayCollect(owner);
+            throw new HodiException("The bank collects buyers' payments for every one of your developments, so the "
+                    + "bank sets up the accounts that collect for them. Ask the bank if one of them should "
+                    + "collect into an account of your own.", HttpStatus.CONFLICT);
         }
         /*
          * To the person doing it, not to the organisation.
@@ -498,8 +500,6 @@ public class PaymentAccountService {
         account.setAccountName(type.needsAccount() ? blankToNull(request.accountName()) : null);
         account.setShortCode(shortCode);
         if (configured != null) account.setConfig(configured.values());
-        // Edited by the bank, it is the bank's configuration from now on; edited by its owner, it never was.
-        if (caller.isPlatformStaff()) account.setConfiguredByBank(true);
         /*
          * An edited account stops collecting until somebody approves it.
          *
@@ -608,7 +608,10 @@ public class PaymentAccountService {
         ChangeSet.Snapshot snapshot = ChangeSet.of()
                 .put("method", "Payment method", type == null ? null : type.getName())
                 .put("developmentId", "Collects for",
-                        account.getDevelopmentId() == null ? "Every development" : "One development");
+                        account.getDevelopmentId() == null ? "Every development" : "One development")
+                // A checker deciding on an organisation's account should know whether the organisation or the
+                // bank is proposing it: on a bank-collected development only the bank's may collect.
+                .put("configuredByBank", "Set up by", account.isConfiguredByBank() ? "The bank" : "The organisation");
 
         List<ChannelConfig.Field> fields = type == null ? List.of() : declaredFields(type, account);
         if (fields.isEmpty()) {
@@ -1101,7 +1104,8 @@ public class PaymentAccountService {
 
     /** The lookups a page needs, fetched once rather than per row. */
     private record Names(Map<Long, String> tenants, Map<Long, String> institutions,
-                         Map<Long, String> developments, Map<Long, PaymentType> types) {}
+                         Map<Long, String> developments, java.util.Set<Long> bankCollected,
+                         Map<Long, PaymentType> types) {}
 
     private Names names(List<PaymentAccount> rows) {
         Map<Long, String> tenantNames = tenants.findAllById(ids(rows, PaymentAccount::getTenantId)).stream()
@@ -1109,12 +1113,14 @@ public class PaymentAccountService {
         Map<Long, String> institutionNames = institutions
                 .findAllById(ids(rows, PaymentAccount::getInstitutionId)).stream()
                 .collect(Collectors.toMap(Bank::getId, Bank::getName));
-        Map<Long, String> developmentNames = developments
-                .findAllById(ids(rows, PaymentAccount::getDevelopmentId)).stream()
+        List<Development> developmentRows = developments.findAllById(ids(rows, PaymentAccount::getDevelopmentId));
+        Map<Long, String> developmentNames = developmentRows.stream()
                 .collect(Collectors.toMap(Development::getId, Development::getName));
+        java.util.Set<Long> bankCollected = developmentRows.stream()
+                .filter(Development::bankCollects).map(Development::getId).collect(Collectors.toSet());
         Map<Long, PaymentType> typeRows = types.findAllById(ids(rows, PaymentAccount::getPaymentTypeId))
                 .stream().collect(Collectors.toMap(PaymentType::getId, Function.identity()));
-        return new Names(tenantNames, institutionNames, developmentNames, typeRows);
+        return new Names(tenantNames, institutionNames, developmentNames, bankCollected, typeRows);
     }
 
     private static Set<Long> ids(List<PaymentAccount> rows, Function<PaymentAccount, Long> field) {
@@ -1142,7 +1148,18 @@ public class PaymentAccountService {
                 type == null ? List.of() : declaredFields(type, a),
                 type == null ? "Account" : ChannelConfig.accountsLabel(type.getAccountConfigFields()),
                 a.getStatus(), a.getStatusFlag(), a.getCreatedAt(), a.getCreatedBy(),
-                a.getUpdatedAt(), a.getUpdatedBy());
+                a.getUpdatedAt(), a.getUpdatedBy(),
+                a.isConfiguredByBank(),
+                mayChange(a, type, names.bankCollected().contains(a.getDevelopmentId()), AuthContext.require()));
+    }
+
+    /**
+     * {@link #requireMayChange} as a yes or no, for the row: so the list offers no Edit or Withdraw where the
+     * save would refuse them. The two must agree; a change to one is a change to the other.
+     */
+    private static boolean mayChange(PaymentAccount a, PaymentType type, boolean bankCollected, UserPrincipal caller) {
+        if (caller.isPlatformStaff() || type == null || !type.selectable()) return true;
+        return !a.isConfiguredByBank() && !bankCollected;
     }
 
     private static String snapshot(PaymentAccount a, PaymentType type) {

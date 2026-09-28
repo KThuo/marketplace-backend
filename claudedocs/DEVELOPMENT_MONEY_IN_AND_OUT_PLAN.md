@@ -230,4 +230,35 @@ bootstrap login is stale.
 - A bank officer can no longer record costs on a developer-managed project unless it is switched to `BANK`.
 - A developer who is a collaborator on a bank-owned project can no longer record its costs, because the owner
   (the bank) manages spending there.
+- An owner can no longer withdraw an account the bank configured, or one collecting for a bank-collected
+  development. Before, anyone could withdraw any account of theirs without a code.
+
+### Phase 1 review (28 September 2026)
+
+Read back against §3.1 after it was built. Confirmed as matching the plan: the two settings and their
+defaults, bank-only changes, audit with before and after, the migration taking existing developments from the
+platform-wide setting, the platform-wide setting still deciding for a house, and the non-managing side reading
+everything. Found and fixed:
+
+- **Bug.** On a bank-owned development under `OWNER` spending, a platform administrator with no institution
+  on their profile was refused as "the wrong side". The owner of such a project *is* a bank, and a bank's
+  staff are the platform's, so they are the owner's side there. Fixed in `DevelopmentVisibility`, with a test.
+- **Removed a rule the plan never asked for.** A bank edit of an owner's account silently made it "the
+  bank's", locking the owner out of their own account. An account is the bank's only if the bank set it up.
+- **The list now says which accounts are the bank's** (`configuredByBank`, `mayChange` on every row) and
+  offers an owner no Edit or Withdraw on them, instead of a 403 after the click.
+- **The approvals checker is told who set an account up**, since that decides where it may collect.
+- **An owner whose developments are all bank-collected** gets a message saying so, in place of one telling
+  them to change a platform setting they cannot see.
+
+Two things the plan leaves open, for the client:
+
+- **Should changing the settings go through the approvals queue?** Switching a development to `OWNER` lets
+  the owner's already-approved accounts start collecting there. Today it is one bank user, audited. A second
+  bank user's approval would match how accounts themselves are handled.
+- **Should a partner lender's staff be platform staff?** Today every institution's staff are, so "the bank"
+  in these rules means any institution. If a partner lender should manage only its own projects' spending
+  and never another's, that needs a distinction the actor model does not yet make.
+
+Suite after the review: 489 tests, 0 failures. The screens are still unverified in a browser.
 

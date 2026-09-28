@@ -100,7 +100,11 @@ public final class PaymentTypeDtos {
             OffsetDateTime createdAt,
             String createdBy,
             OffsetDateTime updatedAt,
-            String updatedBy) {}
+            String updatedBy,
+            /** The bank set it up, rather than the organisation it belongs to. */
+            boolean configuredByBank,
+            /** Whether this caller may edit or withdraw it — false for an owner on the bank's accounts. */
+            boolean mayChange) {}
 
     /**
      * Assign or edit an account.

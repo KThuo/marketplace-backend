@@ -161,6 +161,13 @@ class DevelopmentMoneySettingsIT {
                 null, null, code[0], code[1]);
     }
 
+    private SaveAccountRequest tillForEveryDevelopment() {
+        String[] code = code();
+        String channel = HashIdUtil.encodeId(types.findByProviderType("BUNI_IPN_TILL").orElseThrow().getId());
+        return new SaveAccountRequest(channel, null, null, null, "522522",
+                "T" + RrnGenerator.generate("A").substring(0, 9), "Test Seller Ltd", null, null, code[0], code[1]);
+    }
+
     /** Approved and live, as the checker would leave it. Straight to the row: the approval flow has its own tests. */
     private PaymentAccount live(AccountResponse saved) {
         PaymentAccount row = accounts.findById(HashIdUtil.decodeId(saved.id())).orElseThrow();
@@ -265,6 +272,32 @@ class DevelopmentMoneySettingsIT {
                 "an account the owner configured never collects where the bank collects");
     }
 
+    @Test
+    @DisplayName("an owner's account for every development collects only where the owner collects")
+    void anEveryDevelopmentAccountFollowsEachDevelopment() {
+        platformScope("ORGANISATION");
+        PaymentAccount mine = live(accountService.assign(tillForEveryDevelopment()));
+        assertFalse(mine.isConfiguredByBank());
+        assertFalse(offeredAccountNos().contains(mine.getAccountNo()), "this development is the bank's to collect");
+
+        setModes("OWNER", "OWNER");
+        assertTrue(offeredAccountNos().contains(mine.getAccountNo()));
+    }
+
+    @Test
+    @DisplayName("the list tells an owner which accounts are the bank's, and offers nothing on them")
+    void theListSaysWhatAnOwnerMayChange() {
+        asBank();
+        AccountResponse banks = accountService.assign(tillForTheDevelopment(true));
+        assertTrue(banks.configuredByBank());
+        assertTrue(banks.mayChange(), "the bank may change its own");
+
+        asOwner();
+        AccountResponse seen = accountService.find(banks.id());
+        assertTrue(seen.configuredByBank());
+        assertFalse(seen.mayChange());
+    }
+
     // ── spending ─────────────────────────────────────────────────────────────
 
     @Test
@@ -281,6 +314,29 @@ class DevelopmentMoneySettingsIT {
         assertEquals(1, finance.expenditures(id(development),
                 new DevelopmentFinanceDtos.ExpenditureListRequest()).getContent().size(),
                 "but sees the owner's line");
+    }
+
+    /**
+     * The owner of a bank-owned project is a bank, and a bank's staff are the platform's. The first version of
+     * the rule refused the platform-wide administrator here with "only the owner records and pays them" —
+     * describing the caller as the wrong side of a project whose owner is their own organisation.
+     */
+    @Test
+    @DisplayName("a bank-owned development under OWNER is recorded by the bank's staff, institution or not")
+    void aBankOwnedDevelopmentIsTheBanksToManage() {
+        Long bankId = jdbc.queryForObject("select id from banks where status <> 5 order by id limit 1", Long.class);
+        Development banks = developments.save(Development.builder()
+                .reference(RrnGenerator.generate("DV")).institutionId(bankId).sellingTenantId(tenantId)
+                .name("Lender's Court").developmentType("APARTMENT").currency("KES")
+                .listingState(AppConstant.LISTING_DRAFT).build());
+        assertEquals(Development.MANAGED_BY_OWNER, banks.getSpendingManagedBy());
+
+        asBank();
+        assertTrue(settings.find(id(banks)).mayManageSpending());
+        finance.recordExpenditure(id(banks), aCost());
+
+        asOwner();
+        assertFalse(settings.find(id(banks)).mayManageSpending(), "a seller is not the owner of a bank's project");
     }
 
     @Test

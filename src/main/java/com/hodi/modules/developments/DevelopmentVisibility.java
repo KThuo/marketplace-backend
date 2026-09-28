@@ -118,41 +118,41 @@ public class DevelopmentVisibility {
      * Refuses unless this caller may record or pay this development's costs.
      *
      * <p>One side manages spending and the other reads it, and the development says which. Under OWNER it is
-     * the owning organisation — which, for a development a bank owns, is that bank. Under BANK it is the
-     * platform's staff: the bank financing or running the project decides what is paid and to whom.
+     * the owning organisation; under BANK it is the platform's staff, for a project the bank finances or runs.
      *
      * <p>Unlike every other rule in this class, platform staff are <em>not</em> admitted unconditionally. On a
      * development whose owner manages its own money, the bank recording a cost against it would be the bank
-     * writing figures into somebody else's books; it reads them instead. Both sides can always see everything,
-     * which is {@link #mayRead}'s business, not this method's.
+     * writing figures into somebody else's books; it reads them instead. The one exception is a development an
+     * institution owns: its owner is a bank, and a bank's staff are the platform's, so the platform-wide
+     * administrator carrying no institution of their own is still on the owner's side there. Both sides can
+     * always see everything, which is {@link #mayRead}'s business, not this method's.
      */
     public void assertMayManageSpending(Development development, UserPrincipal caller) {
+        String refusal = spendingRefusal(development, caller);
+        if (refusal != null) throw new HodiException(refusal, HttpStatus.FORBIDDEN);
+    }
+
+    /** The same rule as a yes or no, for a screen deciding whether to offer the controls. */
+    public boolean mayManageSpending(Development development, UserPrincipal caller) {
+        return spendingRefusal(development, caller) == null;
+    }
+
+    private static String spendingRefusal(Development development, UserPrincipal caller) {
         if (development.bankManagesSpending()) {
-            if (caller.isPlatformStaff()) return;
-            throw new HodiException("The bank manages spending on " + development.getName()
-                    + ". You can see every cost, but only the bank records and pays them.",
-                    HttpStatus.FORBIDDEN);
+            if (caller.isPlatformStaff()) return null;
+            return "The bank manages spending on " + development.getName()
+                    + ". You can see every cost, but only the bank records and pays them.";
         }
         boolean owns = (caller.getInstitutionId() != null
                         && caller.getInstitutionId().equals(development.getInstitutionId()))
                 || (caller.getTenantId() != null
-                        && caller.getTenantId().equals(development.getTenantId()));
-        if (owns) return;
-        throw new HodiException(caller.isPlatformStaff()
+                        && caller.getTenantId().equals(development.getTenantId()))
+                || (development.getInstitutionId() != null && caller.isPlatformStaff());
+        if (owns) return null;
+        return caller.isPlatformStaff()
                 ? "The owner manages spending on " + development.getName()
                         + ". The bank can see every cost, but only the owner records and pays them."
-                : "That development belongs to another organisation.",
-                HttpStatus.FORBIDDEN);
-    }
-
-    /** Whether this caller manages spending here — for a screen deciding whether to offer the controls. */
-    public boolean mayManageSpending(Development development, UserPrincipal caller) {
-        try {
-            assertMayManageSpending(development, caller);
-            return true;
-        } catch (HodiException e) {
-            return false;
-        }
+                : "That development belongs to another organisation.";
     }
 
     /**
