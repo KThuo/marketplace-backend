@@ -84,6 +84,9 @@ public class SecurityConfig {
             "/api/v1/public/coop/biller/advice",
             // What became of a transfer we sent. HTTP Basic inside, like the notification.
             "/api/v1/public/coop/transfers/callback",
+            // The one-click way out of promotional messages: a signed token in the body is what stands in
+            // for a session, because the person is on a phone and has not signed in. It only ever refuses.
+            "/api/v1/public/unsubscribe",
             "/api/v1/auth/login",
             // The second half of a challenged login: the caller has no session yet, only a one-shot
             // challenge token, so this cannot require authentication.
