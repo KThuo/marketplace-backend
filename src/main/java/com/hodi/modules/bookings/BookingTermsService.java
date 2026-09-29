@@ -349,9 +349,10 @@ public class BookingTermsService {
         f.put("bankSharePercent", policy.bankSharePercent());
         f.put("penalty", policy.penaltySaid(currency));
         f.put("refundWithinDays", policy.refundWithinDays());
-        f.put("refundWindow", policy.refundWithinDays() <= 0 ? "any time" : policy.refundWithinDays() + " days");
+        // With the preposition, so the sentence reads either way: "at any time", "within 90 days".
+        f.put("refundWindow", policy.refundWithinDays() <= 0 ? "at any time" : "within " + policy.refundWithinDays() + " days");
         f.put("reviveWithinDays", policy.reviveWithinDays());
-        f.put("reviveWindow", policy.reviveWithinDays() <= 0 ? "any time" : policy.reviveWithinDays() + " days");
+        f.put("reviveWindow", policy.reviveWithinDays() <= 0 ? "at any time" : "within " + policy.reviveWithinDays() + " days");
         f.put("policyNote", policy.note() == null || policy.note().isBlank()
                 ? "The seller has added nothing to these terms." : policy.note());
         return f;

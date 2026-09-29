@@ -103,7 +103,7 @@ class BookingTermsIT {
         Map<String, Object> figures = row.getFigures();
         assertEquals("T-1-01, Terms Heights", figures.get("home"));
         assertEquals("PERCENT_OF_PAID", figures.get("penaltyBasis"));
-        assertEquals("45 days", figures.get("reviveWindow"));
+        assertEquals("within 45 days", figures.get("reviveWindow"));
         assertTrue(String.valueOf(figures.get("penalty")).contains("5% of what you paid"), figures.get("penalty").toString());
         assertTrue(String.valueOf(figures.get("penalty")).contains("never more than KES 100000"));
 
