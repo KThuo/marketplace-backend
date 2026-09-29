@@ -92,6 +92,7 @@ public class BookingService {
     private final com.hodi.modules.agents.AgentProfileRepository agents;
     private final com.hodi.modules.agents.IntroducerService introducers;
     private final AuditService audit;
+    private final com.hodi.modules.valuations.LendingValueService lendingValues;
 
     // ── reading ───────────────────────────────────────────────────────────────
 
@@ -772,7 +773,9 @@ public class BookingService {
                 home == null ? null : home.getTitle(),
                 home == null ? null : home.getListingKind(),
                 introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
-                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null));
+                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null),
+                lendingValues.latestFor(b.getPropertyId(),
+                        b.getPriceAgreed() != null ? b.getPriceAgreed() : home == null ? null : home.getPrice()).orElse(null));
     }
 
     private InstalmentResponse toInstalment(BookingInstalment i) {

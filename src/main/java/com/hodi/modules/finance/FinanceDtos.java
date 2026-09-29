@@ -154,6 +154,11 @@ public final class FinanceDtos {
             String propertyReference,
             BigDecimal price,
             String currency,
+            /** What the options are costed against: the price, or a completed valuation's figure when lower. */
+            BigDecimal lendingValue,
+            /** PRICE, FORCED_SALE or MARKET — which figure set {@code lendingValue}. */
+            String lendingBasis,
+            String valuationReference,
             /*
              * No count of banks. It counted those partnered with this seller, and the panel said "from N
              * banks this seller works with" — a sentence about a marketplace of banks competing for a
@@ -267,6 +272,11 @@ public final class FinanceDtos {
             String propertyReference,
             String propertyTitle,
             BigDecimal propertyPrice,
+            /** What the loan was sized against: the price, or a completed valuation's figure when lower. */
+            BigDecimal lendingValue,
+            /** PRICE, FORCED_SALE or MARKET. */
+            String lendingBasis,
+            String valuationReference,
             /** The assessor's own working, so the figures can be checked rather than trusted. */
             Map<String, Object> working,
             /** What the money would actually buy today, at the banks in play. */

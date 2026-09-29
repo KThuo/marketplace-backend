@@ -199,7 +199,9 @@ public final class LeadDtos {
             BigDecimal agreedAmount,
             /** The agent who brought this buyer, when one is named — carried onto the booking. */
             String introducedByAgentRef,
-            String introducedByAgentName) {}
+            String introducedByAgentName,
+            /** The latest completed valuation of the home, with what the bank lends against, or null. */
+            com.hodi.modules.valuations.LendingValueService.ValuationFigures valuation) {}
 
     /**
      * Turning an accepted offer into a booking. Everything here is optional: the offer already names the

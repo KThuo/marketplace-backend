@@ -45,6 +45,7 @@ public class FinanceMatchService {
 
     private final PropertyRepository properties;
     private final MortgageProductRepository products;
+    private final com.hodi.modules.valuations.LendingValueService lendingValues;
 
     /**
      * The finance panel for one live listing.
@@ -58,15 +59,17 @@ public class FinanceMatchService {
         Property property = properties.findLiveByReference(reference == null ? "" : reference.trim())
                 .orElseThrow(() -> new ResourceNotFoundException("Listing", reference));
 
+        // The lesser of the price and a completed valuation's figure: what a bank would actually lend on.
+        var lending = lendingValues.lendingValueFor(property.getId(), property.getPrice());
         List<MortgageProduct> onOffer = products.findOnOffer(Pageable.unpaged());
         List<FinanceOption> options = new ArrayList<>(onOffer.size());
         for (MortgageProduct product : onOffer) {
-            FinanceOption option = cost(product, property.getPrice(), requestedTerm, netMonthlyIncome);
+            FinanceOption option = cost(product, lending.value(), requestedTerm, netMonthlyIncome);
             if (option != null) options.add(option);
         }
 
         return new FinancePanel(property.getReference(), property.getPrice(), property.getCurrency(),
-                options, DISCLAIMER);
+                lending.value(), lending.basis(), lending.valuationReference(), options, DISCLAIMER);
     }
 
     /**

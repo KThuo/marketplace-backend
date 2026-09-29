@@ -30,6 +30,11 @@ public interface ValuationRequestRepository
             + "and r.state in ('ASSIGNED', 'IN_PROGRESS') and r.status <> 5")
     long countOpenForValuer(@Param("valuerProfileId") Long valuerProfileId);
 
+    /** Completed valuations of one property, newest first. The caller takes the first. */
+    @Query("select r from ValuationRequest r where r.propertyId = :propertyId and r.state = 'COMPLETED' "
+            + "and r.status <> 5 order by r.completedAt desc")
+    List<ValuationRequest> findLatestCompletedForProperty(@Param("propertyId") Long propertyId);
+
     /** Open jobs whose due date has passed and nobody has yet been told. */
     @Query("select r from ValuationRequest r where r.dueOn < :today and r.overdueNoticedOn is null "
             + "and r.state in ('REQUESTED', 'ASSIGNED', 'IN_PROGRESS') and r.status <> 5 order by r.dueOn asc")

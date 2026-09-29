@@ -10,6 +10,11 @@ import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.approvals.ApprovalService;
 import com.hodi.modules.approvals.ChangeSet;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.bookings.UnitBooking;
+import com.hodi.modules.bookings.UnitBookingRepository;
+import com.hodi.modules.leads.PurchaseRequest;
+import com.hodi.modules.leads.PurchaseRequestRepository;
+import com.hodi.security.hashid.HashIdUtil;
 import com.hodi.modules.kyc.DocumentService;
 import com.hodi.modules.kyc.VaultDocument;
 import com.hodi.modules.kyc.VaultDocumentRepository;
@@ -87,6 +92,8 @@ public class ValuationService {
     private final CalendarService calendar;
     private final DocumentService documents;
     private final VaultDocumentRepository vaultDocuments;
+    private final UnitBookingRepository bookings;
+    private final PurchaseRequestRepository offers;
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -131,6 +138,10 @@ public class ValuationService {
             OffsetDateTime completedAt,
             /** When the valuer will be on site, once booked. */
             OffsetDateTime inspectionAt,
+            /** The sale it was raised against, when it was. */
+            String bookingId,
+            String bookingReference,
+            String offerReference,
             /** Present once the valuer has answered. Null before that, for everybody. */
             ReportResponse report,
             OffsetDateTime createdAt,
@@ -159,11 +170,21 @@ public class ValuationService {
             String reason) {}
 
     public record RaiseRequest(
-            @NotBlank(message = "Which listing is this about?") String propertyReference,
+            /** The listing. May be blank when a booking or an offer names it. */
+            String propertyReference,
             String purpose,
             LocalDate dueOn,
             BigDecimal feeAmount,
-            String note) {}
+            String note,
+            /** The sale it is for, when it is for one: a booking's id, or an offer's reference. */
+            String bookingId,
+            String offerReference) {
+
+        public RaiseRequest(String propertyReference, String purpose, LocalDate dueOn, BigDecimal feeAmount,
+                            String note) {
+            this(propertyReference, purpose, dueOn, feeAmount, note, null, null);
+        }
+    }
 
     public record AssignRequest(
             /** A valuer's reference for a manual choice; absent asks the panel to choose. */
@@ -217,11 +238,35 @@ public class ValuationService {
                     "A valuation is raised by the seller or the bank who needs it.", HttpStatus.FORBIDDEN);
         }
 
-        Property property = properties.findLiveByReference(trim(request.propertyReference()))
-                .orElseThrow(() -> new ResourceNotFoundException("Listing", request.propertyReference()));
+        // Raised against a sale, or against a listing. A sale names its own home, and it must be the
+        // requester's own sale — a valuation is commissioned by the party to it, not by a bystander.
+        UnitBooking booking = null;
+        PurchaseRequest offer = null;
+        Property property;
+        if (blankToNull(request.bookingId()) != null) {
+            booking = bookings.findById(HashIdUtil.decodeId(request.bookingId().trim()))
+                    .orElseThrow(() -> new ResourceNotFoundException("Booking", request.bookingId()));
+            requireParty(caller, booking.getTenantId(), booking.getInstitutionId());
+            property = properties.findById(booking.getPropertyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Listing", request.bookingId()));
+        } else if (blankToNull(request.offerReference()) != null) {
+            offer = offers.findByReference(request.offerReference().trim())
+                    .orElseThrow(() -> new ResourceNotFoundException("Offer", request.offerReference()));
+            requireParty(caller, offer.getTenantId(), null);
+            property = properties.findById(offer.getPropertyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Listing", request.offerReference()));
+        } else {
+            if (blankToNull(request.propertyReference()) == null) {
+                throw new HodiException("Which listing is this about?", HttpStatus.BAD_REQUEST);
+            }
+            property = properties.findLiveByReference(trim(request.propertyReference()))
+                    .orElseThrow(() -> new ResourceNotFoundException("Listing", request.propertyReference()));
+        }
 
         ValuationRequest job = requests.save(ValuationRequest.builder()
                 .reference(nextReference())
+                .bookingId(booking == null ? null : booking.getId())
+                .offerId(offer == null ? null : offer.getId())
                 .propertyId(property.getId())
                 .propertyReference(property.getReference())
                 .propertyTitle(property.getTitle())
@@ -247,6 +292,16 @@ public class ValuationService {
                 job.getReference() + " on " + job.getPropertyReference() + " for " + job.getPurpose());
         notifier.platformRaised(job);
         return toResponse(job);
+    }
+
+    /** The caller's organisation is a party to the sale: the seller who made it, or the bank financing it. */
+    private static void requireParty(UserPrincipal caller, Long tenantId, Long institutionId) {
+        if (caller.isPlatformStaff()) return;
+        boolean seller = caller.getTenantId() != null && caller.getTenantId().equals(tenantId);
+        boolean bank = caller.getInstitutionId() != null && caller.getInstitutionId().equals(institutionId);
+        if (!seller && !bank) {
+            throw new HodiException("That sale is not yours to commission a valuation for.", HttpStatus.FORBIDDEN);
+        }
     }
 
     // ── assignment ────────────────────────────────────────────────────────────
@@ -801,6 +856,10 @@ public class ValuationService {
 
         String valuerReference = job.getValuerProfileId() == null ? null
                 : valuers.findById(job.getValuerProfileId()).map(ValuerProfile::getReference).orElse(null);
+        String bookingReference = job.getBookingId() == null ? null
+                : bookings.findById(job.getBookingId()).map(UnitBooking::getReference).orElse(null);
+        String offerReference = job.getOfferId() == null ? null
+                : offers.findById(job.getOfferId()).map(PurchaseRequest::getReference).orElse(null);
 
         UserPrincipal caller = AuthContext.current().orElse(null);
         boolean platform = caller != null && caller.isPlatformStaff();
@@ -825,7 +884,9 @@ public class ValuationService {
                 job.getPurpose(), job.getState(), job.getValuerName(), valuerReference,
                 job.getAssignedAt(), job.getAssignmentMethod(), job.getDueOn(), job.getFeeAmount(),
                 job.getCurrency(), job.getRequesterNote(), job.getDeclinedReason(),
-                job.getCancelledReason(), job.getCompletedAt(), job.getInspectionAt(), report, job.getCreatedAt(),
+                job.getCancelledReason(), job.getCompletedAt(), job.getInspectionAt(),
+                job.getBookingId() == null ? null : HashIdUtil.encodeId(job.getBookingId()), bookingReference, offerReference,
+                report, job.getCreatedAt(),
                 job.getSubmittedAt(), job.getReviewedBy(), job.getReviewedAt(), job.getReviewNote(),
                 mayAssign, mayAccept, mayDecline, mayReport, mayApprove, mayCancel, mayInspect, mayAttachReport,
                 handBacks, timeline);

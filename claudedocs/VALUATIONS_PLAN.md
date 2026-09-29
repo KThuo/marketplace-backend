@@ -218,5 +218,30 @@ Also asked for: the list as a paginated table, and a details page with everythin
 - Not walked in the browser: the valuer's own actions (book, attach) need a valuer login; the platform
   side (inspection row, download row) was checked on the job's page.
 
-Left for phase 5: the figure reaching affordability and LTV under `valuation.lending.basis`, and linking a
-completed valuation to the booking or offer it was for.
+### Phase 5 — done (29 September 2026)
+
+- `V20260929090000__a_valuation_is_for_a_sale_and_its_figure_reaches_the_bank.sql`: `booking_id` and
+  `offer_id` on the job; a partial index on completed valuations by property.
+- **The figure reaches the bank** — `LendingValueService`: the latest COMPLETED valuation of a property
+  gives the figure the bank lends against, the lesser of the asking price and the valuer's figure, with
+  `valuation.lending.basis` (new config, FORCED_SALE by default, MARKET the alternative) choosing which of
+  the two figures. A submitted-but-unreviewed report changes nothing. The mortgage panel costs every
+  option on that lending value and says so (`lendingValue`, `lendingBasis`, `valuationReference` on the
+  panel); an affordability check sizes the loan on it, puts "Lending value" first in the working with the
+  arithmetic and the valuation's reference, and carries the three fields on the response — a stored check
+  reads them back from its own working, so today's valuation cannot rewrite last month's answer.
+- **A valuation is for a sale** — the request takes a booking's id or an offer's reference instead of a
+  listing; the sale names the home, the job remembers the sale (`bookingId`, `bookingReference`,
+  `offerReference` on the response) and its page links to it. Only a party to the sale — the seller who
+  made it, the bank financing it, or the platform — may raise one against it.
+- Screens: the booking and offer pages carry a "Valuation" card with the market value, the forced-sale
+  value, what the bank lends against and why, and a link to the job — or, with none, "Request a
+  valuation", which opens the valuations page's request form already knowing the sale and asking for a
+  mortgage figure. The public finance panel and both affordability screens say when the figures are on
+  the valuer's value rather than the asking price.
+- Tests: `ValuationFlowIT` grew to 11 — the price until approval, then the forced-sale value through the
+  lending service, the finance panel and an affordability estimate with the working's first line; a
+  lower price winning; and a valuation raised against an offer by its seller, refused to another.
+
+The plan is complete. Not walked in the browser: the seller's "Request a valuation" from a sale's page
+(the platform does not commission valuations); the card itself was checked on a booking's page.

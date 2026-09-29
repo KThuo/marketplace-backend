@@ -59,6 +59,7 @@ public class AffordabilityService {
     private final MockAffordabilityProvider mock;
     private final List<AffordabilityProvider> providers;
     private final ConfigurationService configs;
+    private final com.hodi.modules.valuations.LendingValueService lendingValues;
 
     // ── the calculation ───────────────────────────────────────────────────────
 
@@ -131,6 +132,12 @@ public class AffordabilityService {
         BigDecimal rate = product != null ? product.getInterestRate() : mock.defaultRate();
         String currency = property != null ? property.getCurrency() : "KES";
 
+        // A bank lends against the lesser of the price and a completed valuation's figure, not the price.
+        com.hodi.modules.valuations.LendingValueService.LendingValue lending = property == null
+                ? new com.hodi.modules.valuations.LendingValueService.LendingValue(null,
+                        com.hodi.modules.valuations.LendingValueService.BASIS_PRICE, null)
+                : lendingValues.lendingValueFor(property.getId(), property.getPrice());
+
         AffordabilityProvider provider = resolveProvider();
         AffordabilityProvider.Decision decision = provider.assess(new AffordabilityProvider.Request(
                 request.monthlyTakeHome(),
@@ -140,10 +147,20 @@ public class AffordabilityService {
                 term,
                 blankToNull(request.employmentType()),
                 request.dependants(),
-                property == null ? null : property.getPrice(),
+                lending.value(),
                 rate,
                 currency,
                 termsOf(product)));
+        // Said in the working, first, because every figure below it turns on which number was used.
+        List<AffordabilityProvider.Step> steps = decision.steps();
+        if (property != null && lending.fromValuation()) {
+            steps = new java.util.ArrayList<>(steps);
+            steps.add(0, AffordabilityProvider.Step.money("Lending value",
+                    "min(asking " + property.getPrice().toPlainString() + ", valuation "
+                            + lending.value().toPlainString() + ")",
+                    lending.value(),
+                    "The bank lends against " + lending.said() + ", which is below the asking price."));
+        }
         // The product may have moved the term into its own band, and the answer is about the term used.
         term = decision.termMonths();
 
@@ -180,12 +197,15 @@ public class AffordabilityService {
                 product == null ? null : product.getReference(),
                 product == null ? null : product.getName(),
                 product == null ? null : product.getInstitutionName(),
-                decision.steps(),
+                steps,
                 termOptions(product, decision, rate, term, nz(request.depositAmount()),
                         netIncomeFor(request)),
                 property == null ? null : property.getReference(),
                 property == null ? null : property.getTitle(),
                 property == null ? null : property.getPrice(),
+                property == null ? null : lending.value(),
+                property == null ? null : lending.basis(),
+                lending.valuationReference(),
                 decision.payload(),
                 options,
                 FinanceMatchService.DISCLAIMER,
@@ -419,6 +439,7 @@ public class AffordabilityService {
                 computed.providerLabel(), computed.productReference(), computed.productName(),
                 computed.institutionName(), computed.steps(), computed.terms(),
                 computed.propertyReference(), computed.propertyTitle(), computed.propertyPrice(),
+                computed.lendingValue(), computed.lendingBasis(), computed.valuationReference(),
                 computed.working(), computed.options(), computed.disclaimer(), createdAt);
     }
 
@@ -443,7 +464,32 @@ public class AffordabilityService {
                 c.getProviderSteps() == null ? java.util.List.of() : c.getProviderSteps(),
                 storedTermOptions(c),
                 c.getPropertyReference(), null, c.getPropertyPrice(),
+                // The stored working's first line carries the lending value where a valuation set it.
+                storedLendingValue(c), storedLendingBasis(c), null,
                 c.getProviderPayload(), options, FinanceMatchService.DISCLAIMER, c.getCreatedAt());
+    }
+
+    /** The lending value as the working recorded it on the day, or the price. */
+    private static BigDecimal storedLendingValue(AffordabilityCheck c) {
+        if (c.getProviderSteps() != null) {
+            for (AffordabilityProvider.Step step : c.getProviderSteps()) {
+                if ("Lending value".equals(step.label())) return step.value();
+            }
+        }
+        return c.getPropertyPrice();
+    }
+
+    private static String storedLendingBasis(AffordabilityCheck c) {
+        if (c.getProviderSteps() != null) {
+            for (AffordabilityProvider.Step step : c.getProviderSteps()) {
+                if ("Lending value".equals(step.label())) {
+                    return step.note() != null && step.note().contains("market value")
+                            ? com.hodi.modules.valuations.LendingValueService.BASIS_MARKET
+                            : com.hodi.modules.valuations.LendingValueService.BASIS_FORCED_SALE;
+                }
+            }
+        }
+        return c.getPropertyPrice() == null ? null : com.hodi.modules.valuations.LendingValueService.BASIS_PRICE;
     }
 
     /**

@@ -72,6 +72,7 @@ public class PurchaseRequestService {
     private final UnitBookingRepository bookingRows;
     private final com.hodi.modules.agents.IntroducerService introducers;
     private final EnquiryTicketRepository enquiries;
+    private final com.hodi.modules.valuations.LendingValueService lendingValues;
 
     // ── the buyer's side ──────────────────────────────────────────────────────
 
@@ -532,7 +533,8 @@ public class PurchaseRequestService {
                 p.getOriginalAmount() == null ? p.getOfferAmount() : p.getOriginalAmount(),
                 p.getCounterAmount(), p.getCounterBy(), p.getAgreedAmount(),
                 introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
-                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null));
+                introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null),
+                lendingValues.latestFor(p.getPropertyId(), p.getAskingPrice()).orElse(null));
     }
 
     private String nextReference() {

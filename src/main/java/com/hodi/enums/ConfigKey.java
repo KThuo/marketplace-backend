@@ -253,6 +253,12 @@ public enum ConfigKey {
      * than a build-time choice so the day it does exist, going live is a new class and an edit here — with
      * the way back being the same edit, which is what makes trying it a reversible decision.
      */
+    VALUATION_LENDING_BASIS(
+            "valuation.lending.basis", "STRING", "AFFORDABILITY", "FORCED_SALE",
+            "Which valuation figure the bank lends against",
+            "FORCED_SALE or MARKET. Where a completed valuation exists for a property, affordability and the "
+                    + "mortgage panel lend against the lesser of the asking price and this figure, and say which "
+                    + "they used.", false, false),
     AFFORDABILITY_PROVIDER(
             "affordability.provider", "STRING", "AFFORDABILITY", "MOCK",
             "Affordability provider",

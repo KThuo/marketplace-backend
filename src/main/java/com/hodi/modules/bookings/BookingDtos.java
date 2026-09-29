@@ -138,7 +138,9 @@ public final class BookingDtos {
             String listingKind,
             /** The agent who brought the buyer, when one is named. */
             String introducedByAgentRef,
-            String introducedByAgentName) {}
+            String introducedByAgentName,
+            /** The latest completed valuation of the home, with what the bank lends against, or null. */
+            com.hodi.modules.valuations.LendingValueService.ValuationFigures valuation) {}
 
     /**
      * A sale made off the platform, or a booking completed by hand.

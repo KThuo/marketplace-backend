@@ -4,6 +4,11 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.approvals.ApprovalService;
+import com.hodi.modules.finance.AffordabilityService;
+import com.hodi.modules.finance.FinanceDtos.AffordabilityRequest;
+import com.hodi.modules.finance.FinanceMatchService;
+import com.hodi.modules.leads.PurchaseRequest;
+import com.hodi.modules.leads.PurchaseRequestRepository;
 import com.hodi.modules.kyc.DocumentService;
 import com.hodi.modules.operations.CalendarEntry;
 import com.hodi.modules.operations.CalendarEntryRepository;
@@ -55,6 +60,10 @@ class ValuationFlowIT {
     @Autowired PropertyRepository properties;
     @Autowired ApprovalService approvals;
     @Autowired ValuationSweep sweep;
+    @Autowired LendingValueService lendingValues;
+    @Autowired FinanceMatchService matcher;
+    @Autowired AffordabilityService affordability;
+    @Autowired PurchaseRequestRepository offers;
     @Autowired CalendarEntryRepository diary;
     @Autowired JdbcTemplate jdbc;
 
@@ -377,6 +386,74 @@ class ValuationFlowIT {
         valuers.save(wanjiru);
         sweep.pass(LocalDate.now());
         assertEquals(LocalDate.now().plusDays(25), valuers.findById(wanjiru.getId()).orElseThrow().getLapseWarnedFor());
+    }
+
+    // ── the figure reaches the bank ───────────────────────────────────────────
+
+    @Test
+    @DisplayName("once approved, the forced-sale value is what the bank lends against — and the working says so")
+    void theFigureReachesTheBank() {
+        assertEquals(LendingValueService.BASIS_PRICE, lendingValues.lendingValueFor(home.getId(), PRICE).basis(),
+                "no valuation yet: the price");
+        assertTrue(lendingValues.latestFor(home.getId(), PRICE).isEmpty());
+
+        ValuationResponse raised = valuations.raise(new RaiseRequest(home.getReference(), "MORTGAGE", null, null, null));
+        asBank();
+        valuations.assign(raised.reference(), new AssignRequest(wanjiru.getReference(), null, null));
+        asValuer(wanjiru);
+        valuations.submitReport(raised.reference(), new SubmitReportRequest(
+                new BigDecimal("11500000"), new BigDecimal("9800000"), null, "COMPARABLE", LocalDate.now(), null, null, null, null));
+        assertEquals(LendingValueService.BASIS_PRICE, lendingValues.lendingValueFor(home.getId(), PRICE).basis(),
+                "submitted is not approved: still the price");
+
+        asBank();
+        valuations.review(raised.reference(), new ReviewRequest("APPROVED", null));
+
+        LendingValueService.LendingValue lending = lendingValues.lendingValueFor(home.getId(), PRICE);
+        assertEquals(0, new BigDecimal("9800000").compareTo(lending.value()));
+        assertEquals(LendingValueService.BASIS_FORCED_SALE, lending.basis());
+        assertEquals(raised.reference(), lending.valuationReference());
+        assertEquals(LendingValueService.BASIS_PRICE, lendingValues.lendingValueFor(home.getId(), new BigDecimal("9000000")).basis(),
+                "a price below the figure is the lesser, and wins");
+
+        var figures = lendingValues.latestFor(home.getId(), PRICE).orElseThrow();
+        assertEquals(0, new BigDecimal("11500000").compareTo(figures.marketValue()));
+        assertEquals("Wanjiru Valuer", figures.valuerName());
+
+        var panel = matcher.forListing(home.getReference(), null, null);
+        assertEquals(0, PRICE.compareTo(panel.price()), "the price is still the price");
+        assertEquals(0, new BigDecimal("9800000").compareTo(panel.lendingValue()), "the options are costed on the valuation");
+        assertEquals(raised.reference(), panel.valuationReference());
+
+        asSeller(tenantId);
+        var estimate = affordability.estimate(new AffordabilityRequest(new BigDecimal("400000"), null, null,
+                new BigDecimal("2000000"), (short) 240, null, null, home.getReference(), null));
+        assertEquals(0, new BigDecimal("9800000").compareTo(estimate.lendingValue()));
+        assertEquals(LendingValueService.BASIS_FORCED_SALE, estimate.lendingBasis());
+        assertEquals(0, new BigDecimal("7800000").compareTo(estimate.loanRequired()), "the loan is sized on the lending value");
+        assertEquals("Lending value", estimate.steps().get(0).label(), "the working says which figure it used, first");
+    }
+
+    @Test
+    @DisplayName("a valuation raised against an offer names the sale, and only a party to the sale may raise it")
+    void raisedAgainstASale() {
+        PurchaseRequest offer = offers.save(PurchaseRequest.builder()
+                .reference(RrnGenerator.generate("OF")).tenantId(tenantId).tenantName("Test Seller")
+                .propertyId(home.getId()).propertyReference(home.getReference()).propertyTitle(home.getTitle())
+                .askingPrice(PRICE).userId(1L).buyerName("A Buyer").offerAmount(new BigDecimal("11000000"))
+                .build());
+
+        asSeller(otherTenantId);
+        HodiException notTheirs = assertThrows(HodiException.class, () -> valuations.raise(
+                new RaiseRequest(null, "MORTGAGE", null, null, null, null, offer.getReference())));
+        assertTrue(notTheirs.getMessage().contains("not yours"));
+
+        asSeller(tenantId);
+        ValuationResponse raised = valuations.raise(new RaiseRequest(null, "MORTGAGE", null, null, null, null, offer.getReference()));
+        assertEquals(home.getReference(), raised.propertyReference(), "the offer names the home");
+        assertEquals(offer.getReference(), raised.offerReference());
+        assertNull(raised.bookingId());
+        assertEquals(offer.getId(), requests.findByReference(raised.reference()).orElseThrow().getOfferId());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

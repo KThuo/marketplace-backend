@@ -36,6 +36,10 @@ public class ValuationRequest {
     @Column(name = "property_price", precision = 15, scale = 2) private BigDecimal propertyPrice;
     @Column(length = 64) private String county;
 
+    /** The sale it was raised against, when it was: a booking, or an offer still being negotiated. */
+    @Column(name = "booking_id") private Long bookingId;
+    @Column(name = "offer_id") private Long offerId;
+
     @Column(name = "tenant_id") private Long tenantId;
     @Column(name = "tenant_name", length = 255) private String tenantName;
     @Column(name = "institution_id") private Long institutionId;
