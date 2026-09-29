@@ -91,7 +91,7 @@ notification_events        one row per thing the platform can say
                            PAYMENT_RECEIVED, INSTALMENT_DUE, INSTALMENT_OVERDUE, VIEWING_TOMORROW, …
   audience                 BUYER | SELLER_STAFF | PLATFORM_STAFF | VALUER | AGENT
   purpose                  TRANSACTIONAL | PROPERTY_ALERTS | PROMOTIONAL   (what consent it is under)
-  enabled, channels        the platform's default: EMAIL, SMS, IN_APP, any subset
+  enabled, channels        the platform's default: EMAIL, SMS, IN_APP, any subset — IN_APP on for every event
   permission               for staff audiences: who holds it is who is told (as today)
   subject, body_email,     the wording, with placeholders, versioned like the booking terms
   body_sms
@@ -103,13 +103,16 @@ the event, applies the organisation's override, asks consent for the event's pur
 wording, sends on each channel, and writes the log. The three notifiers become thin: they name the
 event and hand over the model. A Settings → Notifications page lists the catalogue, lets the platform
 edit wording and defaults, and lets an organisation's administrator switch events on or off and choose
-channels for their own staff.
+channels for their own staff — and reword them, when the platform's `notify.organisation.wording.enabled`
+says organisations may.
 
 ### 3.3 In-app as a third channel
 
 `notifications` (user, event, title, line, link, read_at) with a bell in both layouts and a page;
-written whenever IN_APP is among the channels, which for staff audiences it is by default. The seller
-who turned email off still sees the enquiry.
+written whenever IN_APP is among the channels, which it is for every event and every user by default.
+The seller who turned email off still sees the enquiry; the buyer sees their receipt without opening
+mail. IN_APP is the third column of the consent grid, granted by default, and never refusable for
+TRANSACTIONAL.
 
 ### 3.4 A log, delivery status, retry
 
@@ -168,14 +171,23 @@ identifiable). Platform-wide: quiet hours for non-transactional messages, daily 
 4. **Reminders** — §3.5.
 5. **Campaigns** — §3.6 and §3.7.
 
-## 5. To confirm before building
+## 5. Decisions taken (29 September 2026)
 
-1. **In-app as a channel** for staff by default — wanted, or email and SMS only?
-2. **Who edits wording**: the platform alone, or may a seller's administrator reword the messages their
-   own staff and buyers receive?
-3. **WhatsApp** — the gateway may offer it; a third channel in the consent grid, or not now?
-4. **Campaign approval**: the approval engine's maker-checker inside the platform, or may a seller run a
-   campaign to its own buyers with its own checker?
-5. **Sending window and caps**: 08:00–20:00 East Africa Time and a daily cap per channel as the default?
-6. **Delivery callbacks**: does the notify gateway report delivery and bounces? If not, §3.4 stops at
-   SENT / FAILED.
+1. **In-app is a channel for every user**, staff and buyers alike: each person sees their own messages
+   in the bell and on the page. It joins EMAIL and SMS in the consent grid as a third channel, granted by
+   default for every purpose — it is a page the person opens, not a message pushed at them — and it
+   cannot be refused for TRANSACTIONAL, like the other two.
+2. **Sellers may reword** the messages their own staff and buyers receive — behind a platform setting
+   (`notify.organisation.wording.enabled`, off by default), so the platform decides whether to allow it
+   at all. The platform's wording is the fallback for every event an organisation has not reworded.
+3. **No WhatsApp** for now.
+4. **The gateway reports no delivery or bounces.** The log stops at SENT / FAILED; retry is on FAILED
+   only; suppression comes from a person's refusal, not from bounces. The DELIVERED / BOUNCED states
+   stay in the design for the day the gateway offers a callback, and nothing depends on them.
+
+Assumed until said otherwise: campaigns are the platform's, through its maker-checker; a seller may run
+one to its own buyers with its own checker only behind the same organisation setting as wording.
+Non-transactional sending happens 08:00–20:00 East Africa Time with a daily cap per channel, both
+platform settings.
+
+Nothing left to confirm before phase 1.
