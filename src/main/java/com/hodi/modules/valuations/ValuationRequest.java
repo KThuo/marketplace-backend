@@ -59,7 +59,15 @@ public class ValuationRequest {
 
     @Column(name = "declined_reason", columnDefinition = "TEXT") private String declinedReason;
     @Column(name = "cancelled_reason", columnDefinition = "TEXT") private String cancelledReason;
+    /** The report landed; awaiting the platform's review. */
+    @Column(name = "submitted_at") private OffsetDateTime submittedAt;
+    @Column(name = "reviewed_by", length = 64) private String reviewedBy;
+    @Column(name = "reviewed_at") private OffsetDateTime reviewedAt;
+    @Column(name = "review_note", columnDefinition = "TEXT") private String reviewNote;
     @Column(name = "completed_at") private OffsetDateTime completedAt;
+
+    /** Two people assigning at once: the second save fails rather than both succeeding. */
+    @Version @Column(nullable = false) private Integer version;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
@@ -79,6 +87,11 @@ public class ValuationRequest {
     public boolean isOpen() {
         return !AppConstant.VALUATION_COMPLETED.equals(state)
                 && !AppConstant.VALUATION_CANCELLED.equals(state);
+    }
+
+    /** The report is in and awaiting the platform's review. */
+    public boolean isAwaitingReview() {
+        return AppConstant.VALUATION_SUBMITTED.equals(state);
     }
 
     /** Waiting for a valuer. Either never assigned, or the last one said no. */

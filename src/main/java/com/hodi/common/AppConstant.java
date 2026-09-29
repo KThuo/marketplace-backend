@@ -165,6 +165,9 @@ public final class AppConstant {
     public static final String APPROVAL_ENTITY_DISBURSEMENT = "DISBURSEMENT";
     /** Somebody an organisation pays. Live only once a second person agrees, as a payment account is. */
     public static final String APPROVAL_ENTITY_BENEFICIARY = "BENEFICIARY";
+    /** A valuation report, checked by the platform before its figure counts. */
+    public static final String APPROVAL_ENTITY_VALUATION = "VALUATION";
+    public static final String APPROVAL_ACTION_REPORT = "REPORT";
     public static final String APPROVAL_ACTION_SEND = "SEND";
 
     // ── Developments (a project with many units) ─────────────────────────────
@@ -562,6 +565,7 @@ public final class AppConstant {
     public static final String AUDIT_KYC_DECIDED      = "KYC_DECIDED";
     public static final String AUDIT_VALUATION_ASSIGN = "VALUATION_ASSIGNED";
     public static final String AUDIT_VALUATION_REPORT = "VALUATION_REPORTED";
+    public static final String AUDIT_VALUATION_REVIEW = "VALUATION_REVIEWED";
     public static final String AUDIT_LOT_PUBLISHED    = "LOT_PUBLISHED";
     public static final String AUDIT_LOT_RESULT       = "LOT_RESULT";
     public static final String AUDIT_BIDDER_DECIDED   = "BIDDER_DECIDED";

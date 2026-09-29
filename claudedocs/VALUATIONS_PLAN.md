@@ -132,6 +132,52 @@ counties once; widen `v_report_valuations` (purpose, requester, fee, due, both v
 - Whether the bank's staff (now platform actors) raise valuations as the bank, as a seller does, or whether
   raising becomes the platform's alone under the Co-op-as-platform plan's stage 2.
 
-## 6. Progress
+## 6. Decisions taken (29 September 2026)
 
-(none yet)
+1. A submitted report is checked by a second person before it counts: anyone holding a new
+   `VALUATIONS_APPROVE` permission, through the approval engine; the valuer who submitted it cannot be the
+   one who approves it.
+2. Lending basis: the forced-sale value where a completed valuation exists, as the plan text says — made a
+   setting (`valuation.lending.basis` = FORCED_SALE | MARKET) because the client's standing rule is that
+   what can be configurable should be.
+3. The bank's staff keep raising valuations as the bank (their institution), as today; the Co-op-as-platform
+   plan's stage 2 changes that when it lands, not before.
+
+Also asked for: the list as a paginated table, and a details page with everything about one valuation.
+
+## 7. Progress
+
+### Phases 1–3 — done (29 September 2026)
+
+- `V20260929050000__a_valuation_is_reviewed_and_remembers_its_hand_backs.sql`: `valuation_events` (the
+  timeline: raised, assigned, accepted, handed back, reported, approved, sent back, cancelled — who, when,
+  what they said); on `valuation_requests` a `version` (optimistic lock), `submitted_at`, `reviewed_by/at`,
+  `review_note`; `v_report_valuations` widened (purpose, requester, both values, variance, fee, due,
+  overdue, hand-backs, `institution_id`) and the report owner-scoped with purpose/requester/overdue filters.
+- Review before it counts: a report lands the job in SUBMITTED and in the approvals queue
+  (`APPROVAL_ENTITY_VALUATION`, `ValuationApprovalHandler`, new platform-only `VALUATIONS_APPROVE`); approved
+  → COMPLETED, with the valuer's completed count going up (the ordering bug fixed); sent back or rejected →
+  the report is removed and the job returns to IN_PROGRESS with the reviewer's reason, for a corrected
+  submission. `POST /valuations/{ref}/review` decides from the job's own page; the approvals queue works too.
+- Hand-backs are history: the event keeps every reason; the job's own reason is cleared on reassignment;
+  `handBacks` is on every row.
+- Per-row action flags (`mayAssign`, `mayAccept`, `mayDecline`, `mayReport`, `mayApprove`, `mayCancel`)
+  decided by the server; SUPER_ADMIN and SUPPORT_ADMIN removed from the valuer workspace module, so an
+  administrator is no longer offered "Take it on" and refused. Audit on raise, accept, hand back, cancel,
+  panel update, suspend and restore. Cover required on the server; counties normalised once; the panel's
+  county filter honoured and an "available now" filter added; a job awaiting review cannot be cancelled.
+- Screens: the list is a paged table with state and purpose filters and a view for the platform's queue
+  and the reports awaiting review, opening on the queue for the platform; a row opens
+  `/app/valuations/{reference}` — the figures against the asking price with the variance, the method,
+  condition, comparables and assumptions, the review outcome, the job's facts, the valuer, and the timeline
+  — with every action there and on the list behind the server's flags. Reason modals replace
+  `window.prompt` and the unconfirmed cancel. The assign modal offers only valuers who can take the job and
+  says why the rest cannot. The report form has the insurance value and no default method. The panel gains
+  "Edit cover and registration" (the renewal that was impossible), a suspend note, registration expiry on
+  the row, and the "available now" filter.
+- Tests: `ValuationFlowIT` (6): the whole road to an approved figure with the count going up; sent back and
+  resubmitted; the cover rule by name and by the panel; hand-back remembered and the next valuer starting
+  clean; scope for a seller, another seller and a valuer, and the panel filters; cancellation.
+
+Left for phases 4 and 5: notifications, the signed report through the vault, the calendar appointment, and
+the figure reaching affordability and LTV under `valuation.lending.basis`.

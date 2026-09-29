@@ -379,6 +379,11 @@ public enum AppPermissionEnum {
     VALUATIONS_ASSIGN("Assign a valuer to a job", AppModuleEnum.VALUATIONS, true),
     VALUATIONS_CANCEL("Cancel a valuation", AppModuleEnum.VALUATIONS),
     /**
+     * Approving a submitted report, or sending it back. Platform-only for the same reason assignment is: the
+     * party that commissioned the valuation must not be the one who decides its figure stands.
+     */
+    VALUATIONS_APPROVE("Approve a valuation report, or send it back", AppModuleEnum.VALUATIONS, true),
+    /**
      * The valuer's own verbs: take it, hand it back, answer it.
      *
      * <p>In {@code VALUATION_WORK} rather than {@code VALUATIONS}, because that module admits only valuers

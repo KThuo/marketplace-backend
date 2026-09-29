@@ -243,7 +243,9 @@ public enum AppModuleEnum {
     VALUATION_WORK("VALUATION_WORK", "Valuer Workspace",
             "Accepting, declining and reporting on assigned valuation jobs",
             true, 62,
-            "SUPER_ADMIN,SUPPORT_ADMIN,VALUER"),
+            // Valuers only. The platform assigns and reviews; it does not value, and an administrator who
+            // held these verbs was offered "Take it on" by the screen and refused by the service.
+            "VALUER"),
 
     /**
      * The panel itself (M5).

@@ -68,6 +68,17 @@ public class ValuationController {
         return ApiResponse.success("Cancelled", valuations.cancel(reference, request));
     }
 
+    /** The reviewer's decision on a submitted report: APPROVED, SENT_BACK or REJECTED, with a reason. */
+    @PostMapping("/api/v1/valuations/{reference}/review")
+    @PreAuthorize("hasAuthority('VALUATIONS_APPROVE')")
+    @RequestAction("REVIEW VALUATION REPORT")
+    public ApiResponse<ValuationResponse> review(@PathVariable String reference,
+                                                 @Valid @RequestBody ReviewRequest request) {
+        ValuationResponse decided = valuations.review(reference, request);
+        return ApiResponse.success("APPROVED".equalsIgnoreCase(request.decision()) ? "Approved — the figure stands"
+                : "Sent back to the valuer", decided);
+    }
+
     @GetMapping("/api/v1/valuations/unassigned-count")
     @PreAuthorize("hasAuthority('VALUATIONS_ASSIGN')")
     public ApiResponse<Map<String, Long>> unassigned() {

@@ -138,6 +138,8 @@ public class ValuerService {
         /** {@code true} for the panel; {@code false} for those suspended from it. */
         private Boolean onPanel;
         private String county;
+        /** {@code true} for those who could be assigned work today. */
+        private Boolean available;
     }
 
     // ── the panel ─────────────────────────────────────────────────────────────
@@ -157,6 +159,8 @@ public class ValuerService {
                 SearchSpecs.fuzzy("searchText", request.getSearch()),
                 SearchSpecs.statusIn(request.effectiveStatuses()),
                 onPanelIs(request.getOnPanel()),
+                coversCounty(request.getCounty()),
+                availableIs(request.getAvailable()),
                 onlyMineIfValuer());
 
         var page = repository.findAll(spec,
@@ -194,6 +198,7 @@ public class ValuerService {
                         "The Valuer group is missing — the seeder has not run.",
                         HttpStatus.INTERNAL_SERVER_ERROR));
 
+        requireCover(request.piSumAssured());
         String temporary = temporaryPassword();
         User valuer = User.builder()
                 .firstName(request.firstName().trim())
@@ -228,7 +233,7 @@ public class ValuerService {
                 .piPolicyNumber(blankToNull(request.piPolicyNumber()))
                 .piSumAssured(request.piSumAssured())
                 .piExpiresOn(request.piExpiresOn())
-                .counties(blankToNull(request.counties()))
+                .counties(normaliseCounties(request.counties()))
                 .specialisations(blankToNull(request.specialisations()))
                 .createdBy(AuthContext.username())
                 .updatedBy(AuthContext.username())
@@ -239,9 +244,42 @@ public class ValuerService {
         return new OnboardedValuer(toResponse(panel), savedUser.getUsername(), temporary);
     }
 
+    /** A county as a token of the CSV, never a substring — the same rule the entity applies. */
+    private Specification<ValuerProfile> coversCounty(String county) {
+        if (county == null || county.isBlank()) return null;
+        String token = county.trim().toUpperCase();
+        return (root, query, cb) -> cb.or(
+                cb.isNull(root.get("counties")),
+                cb.equal(root.get("counties"), ""),
+                cb.like(cb.concat(cb.concat(cb.literal(","), cb.upper(root.get("counties"))), cb.literal(",")),
+                        "%," + token + ",%"));
+    }
+
+    /** The four rules of {@link ValuerProfile#isAvailable}, as a query. */
+    private Specification<ValuerProfile> availableIs(Boolean available) {
+        if (!Boolean.TRUE.equals(available)) return null;
+        LocalDate today = LocalDate.now();
+        return (root, query, cb) -> cb.and(
+                cb.isTrue(root.get("onPanel")),
+                root.get("status").in(AppConstant.STATUS_ACTIVE, AppConstant.STATUS_EDITED),
+                cb.greaterThan(root.get("piSumAssured"), BigDecimal.ZERO),
+                cb.or(cb.isNull(root.get("piExpiresOn")), cb.greaterThanOrEqualTo(root.get("piExpiresOn"), today)),
+                cb.or(cb.isNull(root.get("registeredUntil")), cb.greaterThanOrEqualTo(root.get("registeredUntil"), today)));
+    }
+
+    /** Cover is the assignment ceiling; a valuer without a figure cannot be assigned anything. */
+    private static void requireCover(BigDecimal sumAssured) {
+        if (sumAssured == null || sumAssured.signum() <= 0) {
+            throw new HodiException("Enter the professional indemnity cover: it is what decides which jobs "
+                    + "they may be assigned.", HttpStatus.BAD_REQUEST);
+        }
+    }
+
     @Transactional
     public ValuerResponse update(String reference, UpdateValuerRequest request) {
         ValuerProfile panel = load(reference);
+        requireCover(request.piSumAssured());
+        String before = snapshot(panel);
         panel.setFirmName(blankToNull(request.firmName()));
         panel.setRegistrationNumber(blankToNull(request.registrationNumber()));
         panel.setRegistrationBody(blankToNull(request.registrationBody()));
@@ -255,7 +293,16 @@ public class ValuerService {
         panel.setUpdatedBy(AuthContext.username());
         panel.setStatus(AppConstant.STATUS_EDITED);
         panel.setStatusFlag(AppConstant.FLAG_EDITED);
-        return toResponse(repository.save(panel));
+        ValuerProfile saved = repository.save(panel);
+        // Cover and registration decide what may be assigned, so a change to them is one an auditor asks about.
+        audit.record(AppConstant.ACTION_UPDATE, "ValuerProfile", saved.getId(), before, snapshot(saved));
+        return toResponse(saved);
+    }
+
+    private static String snapshot(ValuerProfile v) {
+        return v.getReference() + " cover " + v.getPiSumAssured() + " to " + v.getPiExpiresOn()
+                + " registered to " + v.getRegisteredUntil() + " counties " + v.getCounties()
+                + (v.isOnPanel() ? " on panel" : " off panel");
     }
 
     /**
@@ -268,6 +315,7 @@ public class ValuerService {
     @Transactional
     public ValuerResponse setOnPanel(String reference, boolean onPanel, PanelRequest request) {
         ValuerProfile panel = load(reference);
+        String before = snapshot(panel);
         panel.setOnPanel(onPanel);
         panel.setPanelNote(request == null ? null : blankToNull(request.note()));
         panel.setUpdatedBy(AuthContext.username());
@@ -277,7 +325,10 @@ public class ValuerService {
             log.info("Valuer {} suspended from the panel with {} job(s) still open — they keep them",
                     panel.getReference(), open);
         }
-        return toResponse(repository.save(panel));
+        ValuerProfile saved = repository.save(panel);
+        audit.record(AppConstant.ACTION_UPDATE, "ValuerProfile", saved.getId(), before,
+                snapshot(saved) + (saved.getPanelNote() == null ? "" : " — " + saved.getPanelNote()));
+        return toResponse(saved);
     }
 
     // ── internals ─────────────────────────────────────────────────────────────
