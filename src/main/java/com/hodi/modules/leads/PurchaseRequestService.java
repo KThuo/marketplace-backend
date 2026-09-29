@@ -14,6 +14,7 @@ import com.hodi.modules.bookings.UnitBookingRepository;
 import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.bookings.BookingService;
 import com.hodi.modules.leads.LeadDtos.*;
+import com.hodi.modules.notifications.NotificationService.About;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
 import com.hodi.modules.users.User;
@@ -67,6 +68,7 @@ public class PurchaseRequestService {
     private final UserRepository users;
     private final AuditService audit;
     private final LeadNotifier notifier;
+    private final com.hodi.modules.notifications.NotificationService notificationLog;
     private final LeadThreadService thread;
     private final BookingService bookings;
     private final UnitBookingRepository bookingRows;
@@ -176,7 +178,7 @@ public class PurchaseRequestService {
         notifier.toSeller(offer.getTenantId(),
                 "Offer withdrawn: " + offer.getPropertyTitle(),
                 offer.getBuyerName() + " has withdrawn their offer on " + offer.getPropertyTitle() + ".",
-                "/app/offers?ref=" + offer.getReference());
+                "/app/offers?ref=" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -216,7 +218,7 @@ public class PurchaseRequestService {
         repository.save(offer);
         notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(),
                 offer.getTenantName() + " has replied about your offer on " + offer.getPropertyTitle() + ".",
-                "/account/conversations?tab=offers&ref=" + offer.getReference());
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -245,7 +247,7 @@ public class PurchaseRequestService {
         notifier.toBuyer(offer.getUserId(), "A counter on your offer for " + offer.getPropertyTitle(),
                 offer.getTenantName() + " has come back at " + money(request.amount(), offer.getCurrency())
                         + " on " + offer.getPropertyTitle() + ". Accept it or counter from your offers.",
-                "/account/conversations?tab=offers&ref=" + offer.getReference());
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -268,7 +270,7 @@ public class PurchaseRequestService {
         notifier.toSeller(offer.getTenantId(), "Counter accepted: " + offer.getPropertyTitle(),
                 offer.getBuyerName() + " has accepted your counter of " + money(figure, offer.getCurrency())
                         + " on " + offer.getPropertyTitle() + ". Accept the offer to proceed.",
-                "/app/offers/" + offer.getReference());
+                "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -287,7 +289,7 @@ public class PurchaseRequestService {
         notifier.toSeller(offer.getTenantId(), "A new figure on an offer: " + offer.getPropertyTitle(),
                 offer.getBuyerName() + " now offers " + money(request.amount(), offer.getCurrency()) + " for "
                         + offer.getPropertyTitle() + ".",
-                "/app/offers/" + offer.getReference());
+                "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -318,7 +320,7 @@ public class PurchaseRequestService {
         repository.save(offer);
         notifier.toSeller(offer.getTenantId(), "New message on an offer: " + offer.getPropertyTitle(),
                 offer.getBuyerName() + " has added a message to their offer on " + offer.getPropertyTitle() + ".",
-                "/app/offers/" + offer.getReference());
+                "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -393,7 +395,7 @@ public class PurchaseRequestService {
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " " + offer.getState());
         notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(), line,
-                "/account/conversations?tab=offers&ref=" + offer.getReference());
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
 
@@ -455,7 +457,7 @@ public class PurchaseRequestService {
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " booked as " + booking.getReference());
         notifier.toBuyer(offer.getUserId(), "Your offer on " + offer.getPropertyTitle() + " is now a booking",
-                line, "/account/bookings");
+                line, "/account/bookings", about(offer));
         log.info("Offer {} converted to booking {} by {}", offer.getReference(), booking.getReference(),
                 AuthContext.username());
         return toResponse(offer);
@@ -535,6 +537,16 @@ public class PurchaseRequestService {
                 introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
                 introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null),
                 lendingValues.latestFor(p.getPropertyId(), p.getAskingPrice()).orElse(null));
+    }
+
+    /** What the platform sent about this offer, to the seller who may read it. */
+    @Transactional(readOnly = true)
+    public List<com.hodi.modules.notifications.NotificationService.LogRow> sentMessages(String reference) {
+        return notificationLog.about("OFFER", loadForSeller(reference).getId());
+    }
+
+    private static About about(PurchaseRequest offer) {
+        return new About("OFFER", offer.getId(), offer.getReference());
     }
 
     private String nextReference() {

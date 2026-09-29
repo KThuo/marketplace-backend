@@ -212,3 +212,31 @@ Nothing left to confirm before phase 1.
   records the position rather than dropping the notice; the grid with in-app on, refusable, and refused
   for transactional.
 
+### Phase 2 — the log and in-app — done (29 September 2026)
+
+- `V20260929150000__every_message_is_recorded_and_the_person_has_an_inbox.sql`: `notification_log`
+  (user or contact, event, purpose, channel, recipient kept for the retry and masked for the eye,
+  subject, the body as composed, status QUEUED | SENT | FAILED | SKIPPED, the gateway's reference or
+  error, attempts, next attempt, what it was about) and `notifications` (a person's inbox: title, line,
+  link, what it is about, read or not).
+- **One door** — `NotificationService`: a notice for a user asks consent for its purpose, writes an
+  inbox line when in-app is granted, and a log row plus a send on each other granted channel; a notice
+  for a contact with no account goes by email and SMS, logged without a user. A module that composes
+  its own message (the digest, the receipt) records it through the same door. The gateway's "skipped"
+  is SKIPPED and left alone; its "failed" is FAILED and tried again by `NotificationRetrySweep` every
+  minute with backoff — 2, 4, 8, 16, 32 minutes — up to `notify.retry.max.attempts` (new setting,
+  default 5). The three notifiers are thin now: they name who is told and hand over the words; the
+  offer, booking and valuation notices say what they are about, so each thing's page shows what was
+  sent about it. A buyer's booking link is encoded with the buyer's own salt, since hashed ids are
+  per user — the old link would have decoded to nothing in their hands.
+- **The inbox** — the bell in both layouts (unread count, the latest eight, mark all read, polled once
+  a minute while the tab is visible), a page at `/app/inbox` and `/account/inbox`, and read-on-open.
+- **The record** — Settings → Sent messages (readers of the audit trail): every message with channel,
+  masked recipient, subject, what it was about and the outcome, filtered by channel and outcome, with
+  Retry on a failed one; and a "Messages sent" card on the booking, offer and valuation pages.
+- Not moved: the one-time codes and password resets in auth, which stay on the sensitive path and are
+  not logged with a body.
+- Tests: `NotificationsIT` (3): a notice to a user is a row per channel and an inbox line, and says what
+  it is about; a contact is recorded without a user and masked; the retry's arithmetic — due, not yet,
+  capped, and skipped never.
+

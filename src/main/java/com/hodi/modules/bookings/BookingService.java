@@ -95,6 +95,7 @@ public class BookingService {
     private final com.hodi.modules.valuations.LendingValueService lendingValues;
     private final BookingTermsService terms;
     private final BookingNotifier notifier;
+    private final com.hodi.modules.notifications.NotificationService notifications;
 
     // ── reading ───────────────────────────────────────────────────────────────
 
@@ -430,6 +431,13 @@ public class BookingService {
         UserPrincipal caller = AuthContext.require();
         UnitBooking booking = caller.isBuyer() ? requireMine(bookingHashId) : requireReadable(bookingHashId);
         return terms.signedForm(booking);
+    }
+
+    /** What the platform sent about this booking. */
+    @Transactional(readOnly = true)
+    public List<com.hodi.modules.notifications.NotificationService.LogRow> sentMessages(String bookingHashId) {
+        UnitBooking booking = requireReadable(bookingHashId);
+        return notifications.about("BOOKING", booking.getId());
     }
 
     // ── the reminder before a hold lapses ─────────────────────────────────────

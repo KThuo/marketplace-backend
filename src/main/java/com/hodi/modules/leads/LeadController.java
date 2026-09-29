@@ -116,6 +116,13 @@ public class LeadController {
         return ApiResponse.success(offers.find(reference));
     }
 
+    @GetMapping("/api/v1/offers/{reference}/sent")
+    @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_VIEW')")
+    public ApiResponse<java.util.List<com.hodi.modules.notifications.NotificationService.LogRow>> sent(
+            @PathVariable String reference) {
+        return ApiResponse.success(offers.sentMessages(reference));
+    }
+
     @PostMapping("/api/v1/offers/{reference}/messages")
     @PreAuthorize("hasAuthority('PURCHASE_REQUESTS_DECIDE')")
     @RequestAction("MESSAGE ON OFFER")

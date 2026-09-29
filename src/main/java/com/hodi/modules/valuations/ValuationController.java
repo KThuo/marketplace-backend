@@ -110,6 +110,13 @@ public class ValuationController {
         return ApiResponse.success("Report submitted", valuations.submitReport(reference, request));
     }
 
+    @GetMapping("/api/v1/valuations/{reference}/messages")
+    @PreAuthorize("hasAuthority('VALUATIONS_VIEW')")
+    public ApiResponse<java.util.List<com.hodi.modules.notifications.NotificationService.LogRow>> messages(
+            @PathVariable String reference) {
+        return ApiResponse.success(valuations.sentMessages(reference));
+    }
+
     @PostMapping("/api/v1/valuations/{reference}/inspection")
     @PreAuthorize("hasAuthority('VALUATIONS_WORK')")
     @RequestAction("BOOK VALUATION INSPECTION")

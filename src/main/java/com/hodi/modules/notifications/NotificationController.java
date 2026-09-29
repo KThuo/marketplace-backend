@@ -1,0 +1,66 @@
+package com.hodi.modules.notifications;
+
+import com.hodi.common.ApiResponse;
+import com.hodi.common.PagedResponse;
+import com.hodi.common.dto.PagedDataRequest;
+import com.hodi.logging.RequestAction;
+import com.hodi.modules.notifications.NotificationService.*;
+import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Map;
+
+/**
+ * A person's inbox, and the platform's record of everything sent.
+ *
+ * <p>The inbox needs no permission beyond being signed in: it is the person's own. The log is read by
+ * whoever reads the audit trail, because that is what it is — the audit of what the platform said — and
+ * a retry by whoever changes settings.
+ */
+@RestController
+@RequestMapping("/api/v1")
+@RequiredArgsConstructor
+public class NotificationController {
+
+    private final NotificationService notifications;
+
+    // ── mine ──────────────────────────────────────────────────────────────────
+
+    /** The bell: how many unread, and the latest few. */
+    @GetMapping("/me/notifications/summary")
+    public ApiResponse<InboxSummary> summary() {
+        return ApiResponse.success(notifications.summary());
+    }
+
+    @GetMapping("/me/notifications")
+    public ApiResponse<PagedResponse<InboxItem>> mine(@ModelAttribute PagedDataRequest request) {
+        return ApiResponse.success(notifications.mine(request));
+    }
+
+    @PostMapping("/me/notifications/{hashId}/read")
+    public ApiResponse<InboxItem> read(@PathVariable String hashId) {
+        return ApiResponse.success(notifications.markRead(hashId));
+    }
+
+    @PostMapping("/me/notifications/read-all")
+    public ApiResponse<Map<String, Integer>> readAll() {
+        return ApiResponse.success(Map.of("marked", notifications.markAllRead()));
+    }
+
+    // ── the log ───────────────────────────────────────────────────────────────
+
+    @GetMapping("/notifications/log/list")
+    @PreAuthorize("hasAuthority('AUDIT_VIEW')")
+    public ApiResponse<PagedResponse<LogRow>> log(@ModelAttribute LogListRequest request) {
+        return ApiResponse.success(notifications.list(request));
+    }
+
+    @PostMapping("/notifications/log/{hashId}/retry")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_UPDATE')")
+    @RequestAction("RETRY NOTIFICATION")
+    public ApiResponse<LogRow> retry(@PathVariable String hashId) {
+        LogRow row = notifications.retryNow(hashId);
+        return ApiResponse.success(NotificationLog.SENT.equals(row.status()) ? "Sent" : "Still " + row.status().toLowerCase(), row);
+    }
+}

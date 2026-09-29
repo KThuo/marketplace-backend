@@ -5,10 +5,11 @@ import com.hodi.enums.ConfigKey;
 import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.modules.configurations.ConfigurationService;
-import com.hodi.modules.consent.ConsentService;
+import com.hodi.modules.notifications.NotificationService;
+import com.hodi.modules.notifications.NotificationService.About;
+import com.hodi.modules.notifications.NotificationService.Notice;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.users.User;
-import com.hodi.modules.users.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,9 +18,7 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Tells the three parties to a valuation what the other two did (M5, plan §3.4).
@@ -47,9 +46,10 @@ public class ValuationNotifier {
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy 'at' HH:mm");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("d MMMM yyyy");
 
-    private final UserRepository users;
+    public static final String EVENT = "VALUATIONS";
+
     private final UserProfileRepository profiles;
-    private final ConsentService consent;
+    private final NotificationService notifications;
     private final NotifyClient notify;
     private final MailTemplate mail;
     private final ConfigurationService configs;
@@ -57,11 +57,11 @@ public class ValuationNotifier {
     // ── the valuer ────────────────────────────────────────────────────────────
 
     public void valuerAssigned(ValuationRequest job, ValuerProfile valuer) {
-        toValuer(valuer, "A valuation for you: " + job.getPropertyTitle(),
+        toValuer(valuer, job, "A valuation for you: " + job.getPropertyTitle(),
                 "You have been assigned to value " + job.getPropertyTitle() + " (" + job.getReference() + ")"
                         + (job.getCounty() == null ? "" : " in " + job.getCounty())
                         + (job.getDueOn() == null ? "" : ", due by " + DAY.format(job.getDueOn()))
-                        + ". Take it on, or hand it back with a reason.", jobPath(job));
+                        + ". Take it on, or hand it back with a reason.");
     }
 
     public void valuerSentBack(ValuationRequest job, ValuerProfile valuer, String reason) {
@@ -114,7 +114,7 @@ public class ValuationNotifier {
                 requester(job) + " asked for a valuation of " + job.getPropertyTitle() + " (" + job.getReference()
                         + ")" + (job.getCounty() == null ? "" : " in " + job.getCounty())
                         + (job.getDueOn() == null ? "" : ", wanted by " + DAY.format(job.getDueOn()))
-                        + ". It needs a valuer.", jobPath(job));
+                        + ". It needs a valuer.", jobPath(job), about(job));
     }
 
     public void platformHandedBack(ValuationRequest job, String who, String reason) {
@@ -127,7 +127,7 @@ public class ValuationNotifier {
     public void platformReported(ValuationRequest job, String figure) {
         toPlatform("VALUATIONS_APPROVE", "Valuation report to review: " + job.getPropertyTitle(),
                 job.getValuerName() + " valued " + job.getPropertyTitle() + " (" + job.getReference() + ") at "
-                        + figure + ". The figure counts once it is reviewed and approved.", jobPath(job));
+                        + figure + ". The figure counts once it is reviewed and approved.", jobPath(job), about(job));
     }
 
     /** The due date passed: the valuer on it, if any, and the assigners either way. */
@@ -135,9 +135,9 @@ public class ValuationNotifier {
         String line = job.getPropertyTitle() + " (" + job.getReference() + ") was due by "
                 + DAY.format(job.getDueOn()) + " and is still " + (job.isUnassigned() ? "unassigned." : "open.");
         if (valuer != null) {
-            toValuer(valuer, "Overdue: " + job.getPropertyTitle(), "Your valuation of " + line, jobPath(job));
+            toValuer(valuer, job, "Overdue: " + job.getPropertyTitle(), "Your valuation of " + line);
         }
-        toPlatform("VALUATIONS_ASSIGN", "Overdue valuation: " + job.getPropertyTitle(), line, jobPath(job));
+        toPlatform("VALUATIONS_ASSIGN", "Overdue valuation: " + job.getPropertyTitle(), line, jobPath(job), about(job));
     }
 
     // ── the requester ─────────────────────────────────────────────────────────
@@ -171,7 +171,12 @@ public class ValuationNotifier {
 
     private void toValuer(ValuerProfile valuer, String subject, String line, String path) {
         if (valuer == null || valuer.getUserId() == null) return;
-        users.findById(valuer.getUserId()).ifPresent(user -> send(user, subject, line, path));
+        notifications.toUser(valuer.getUserId(), Notice.transactional(EVENT, subject, line, path, null));
+    }
+
+    private void toValuer(ValuerProfile valuer, ValuationRequest job, String subject, String line) {
+        if (valuer == null || valuer.getUserId() == null) return;
+        notifications.toUser(valuer.getUserId(), Notice.transactional(EVENT, subject, line, jobPath(job), about(job)));
     }
 
     /** Everybody at the organisation that commissioned it — the seller's staff, or the bank's. */
@@ -185,44 +190,25 @@ public class ValuationNotifier {
             log.warn("Valuation {} has no requester staff to notify about: {}", job.getReference(), subject);
             return;
         }
-        sendTo(staff, subject, line, jobPath(job));
+        notifications.toUsers(staff, Notice.transactional(EVENT, subject, line, jobPath(job), about(job)));
     }
 
     /** The platform's people who hold the permission the notice is for. */
     private void toPlatform(String permission, String subject, String line, String path) {
+        toPlatform(permission, subject, line, path, null);
+    }
+
+    private void toPlatform(String permission, String subject, String line, String path, About about) {
         List<Long> holders = profiles.findLivePlatformUserIdsHolding(permission);
         if (holders.isEmpty()) {
             log.warn("Nobody on the platform holds {} to be told: {}", permission, subject);
             return;
         }
-        sendTo(holders, subject, line, path);
+        notifications.toUsers(holders, Notice.transactional(EVENT, subject, line, path, about));
     }
 
-    private void sendTo(List<Long> userIds, String subject, String line, String path) {
-        // A person with two profiles at the same organisation is one person; told once.
-        Set<Long> distinct = new LinkedHashSet<>(userIds);
-        for (Long userId : distinct) {
-            users.findById(userId).ifPresent(user -> send(user, subject, line, path));
-        }
-    }
-
-    private void send(User user, String subject, String line, String path) {
-        if (!AppConstant.isLive(user.getStatus())) return;
-        try {
-            Set<String> channels = consent.channelsFor(user.getId(), AppConstant.CONSENT_TRANSACTIONAL);
-            String link = publicUrl() + path;
-            if (channels.contains(AppConstant.CONSENT_CHANNEL_EMAIL)) {
-                notify.sendEmail(user.getEmail(), subject,
-                        mail.notice(user.getFirstName(), line, "Open it on " + platformName(), link),
-                        user.fullName());
-            }
-            if (channels.contains(AppConstant.CONSENT_CHANNEL_SMS)) {
-                notify.sendSms(user.getPhone(), "Hodi: " + line + " " + link, user.fullName());
-            }
-        } catch (Exception e) {
-            // Courtesy, not correctness. The row is already written.
-            log.warn("Could not notify user {} about '{}': {}", user.getId(), subject, e.getMessage());
-        }
+    private static About about(ValuationRequest job) {
+        return new About("VALUATION", job.getId(), job.getReference());
     }
 
     // ── words ─────────────────────────────────────────────────────────────────

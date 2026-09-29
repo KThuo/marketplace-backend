@@ -89,6 +89,7 @@ public class ValuationService {
     private final ApprovalService approvals;
     private final AuditService audit;
     private final ValuationNotifier notifier;
+    private final com.hodi.modules.notifications.NotificationService notificationLog;
     private final CalendarService calendar;
     private final DocumentService documents;
     private final VaultDocumentRepository vaultDocuments;
@@ -637,6 +638,12 @@ public class ValuationService {
     @Transactional(readOnly = true)
     public long unassignedCount() {
         return requests.countUnassigned();
+    }
+
+    /** What the platform sent about this job, to anyone the job is visible to. */
+    @Transactional(readOnly = true)
+    public List<com.hodi.modules.notifications.NotificationService.LogRow> sentMessages(String reference) {
+        return notificationLog.about("VALUATION", load(reference).getId());
     }
 
     // ── cancellation ──────────────────────────────────────────────────────────

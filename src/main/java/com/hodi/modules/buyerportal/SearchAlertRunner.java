@@ -4,7 +4,7 @@ import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
 import com.hodi.infra.notify.MailPalette;
 import com.hodi.infra.notify.MailTemplate;
-import com.hodi.infra.notify.NotifyClient;
+import com.hodi.modules.notifications.NotificationService;
 import com.hodi.infra.notify.NotifyResult;
 import com.hodi.modules.audit.AuditService;
 import com.hodi.modules.configurations.ConfigurationService;
@@ -57,7 +57,7 @@ public class SearchAlertRunner {
     private final PublicPropertyService marketplace;
     private final ConsentService consent;
     private final UserRepository users;
-    private final NotifyClient notify;
+    private final NotificationService notifications;
     private final MailTemplate mail;
     private final ConfigurationService configs;
     private final AuditService audit;
@@ -105,16 +105,24 @@ public class SearchAlertRunner {
         }
 
         boolean sent = false;
-        List<String> attempts = new ArrayList<>(2);
+        List<String> attempts = new ArrayList<>(3);
+        NotificationService.Notice notice = new NotificationService.Notice("ALERTS", AppConstant.CONSENT_PROPERTY_ALERTS,
+                subject(alert, matches), count(matches) + " for your saved search \u201c" + alert.getName() + "\u201d.",
+                "/account/alerts", new NotificationService.About("SEARCH_ALERT", alert.getId(), alert.getName()));
+        if (channels.contains(AppConstant.CONSENT_CHANNEL_IN_APP)) {
+            NotifyResult result = notifications.composed(owner.getId(), notice, AppConstant.CONSENT_CHANNEL_IN_APP, null, null);
+            sent |= result.success();
+            attempts.add("IN_APP=" + describe(result));
+        }
         if (channels.contains(AppConstant.CONSENT_CHANNEL_EMAIL)) {
-            NotifyResult result = notify.sendEmail(owner.getEmail(), subject(alert, matches),
-                    emailBody(alert, matches, owner), owner.fullName());
+            NotifyResult result = notifications.composed(owner.getId(), notice, AppConstant.CONSENT_CHANNEL_EMAIL,
+                    owner.getEmail(), emailBody(alert, matches, owner));
             sent |= result.success();
             attempts.add("EMAIL=" + describe(result));
         }
         if (channels.contains(AppConstant.CONSENT_CHANNEL_SMS)) {
-            NotifyResult result = notify.sendSms(owner.getPhone(), smsBody(alert, matches),
-                    owner.fullName());
+            NotifyResult result = notifications.composed(owner.getId(), notice, AppConstant.CONSENT_CHANNEL_SMS,
+                    owner.getPhone(), smsBody(alert, matches));
             sent |= result.success();
             attempts.add("SMS=" + describe(result));
         }

@@ -80,6 +80,13 @@ public class BookingController {
         return ApiResponse.success(service.paymentsFor(bookingId));
     }
 
+    @GetMapping("/bookings/{bookingId}/messages")
+    @PreAuthorize("hasAuthority('BOOKINGS_VIEW')")
+    public ApiResponse<java.util.List<com.hodi.modules.notifications.NotificationService.LogRow>> messages(
+            @PathVariable String bookingId) {
+        return ApiResponse.success(service.sentMessages(bookingId));
+    }
+
     @PostMapping("/bookings/{bookingId}/agree")
     @PreAuthorize("hasAuthority('BOOKINGS_MANAGE')")
     @RequestAction("AGREE_BOOKING")

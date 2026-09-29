@@ -4,7 +4,6 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
-import com.hodi.infra.notify.NotifyClient;
 import com.hodi.infra.coop.CoopStatement;
 import com.hodi.infra.coop.CoopStatementRepository;
 import com.hodi.modules.audit.AuditService;
@@ -81,7 +80,7 @@ public class PaymentService {
     private final PaymentQueryService queries;
     private final CoopStatementRepository statements;
     private final AuditService audit;
-    private final NotifyClient notify;
+    private final com.hodi.modules.bookings.BookingNotifier notifier;
     private final org.springframework.context.ApplicationEventPublisher events;
 
     // ── receiving ─────────────────────────────────────────────────────────────
@@ -332,18 +331,16 @@ public class PaymentService {
      * somebody can be retried.
      */
     private void receipt(Payment payment, UnitBooking booking) {
-        if (booking.getBuyerPhone() == null || booking.getBuyerPhone().isBlank()) return;
         try {
             String currency = payment.getCurrency();
             String balance = payment.getBalanceAfter() != null && payment.getBalanceAfter().signum() > 0
                     ? " Balance now " + currency + " " + MONEY.format(payment.getBalanceAfter()) + "."
                     : " Your account is settled. Thank you.";
-            notify.sendSms(booking.getBuyerPhone(),
-                    currency + " " + MONEY.format(payment.getAmount()) + " received for "
-                            + (payment.getUnitLabel() == null ? "your unit" : payment.getUnitLabel())
-                            + " at " + payment.getDevelopmentName() + "." + balance
-                            + " Receipt " + payment.getReference() + ".",
-                    booking.getBuyerName());
+            String line = currency + " " + MONEY.format(payment.getAmount()) + " received for "
+                    + (payment.getUnitLabel() == null ? "your unit" : payment.getUnitLabel())
+                    + (payment.getDevelopmentName() == null ? "" : " at " + payment.getDevelopmentName()) + "." + balance
+                    + " Receipt " + payment.getReference() + ".";
+            notifier.toBuyer(booking, "PAYMENTS", "Payment received: " + payment.getReference(), line);
         } catch (RuntimeException e) {
             log.warn("Could not send the receipt for {}: {}", payment.getReference(), e.getMessage());
         }

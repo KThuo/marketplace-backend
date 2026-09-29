@@ -212,6 +212,10 @@ public enum ConfigKey {
     NOTIFY_SMS_ENABLED(
             "notify.sms.enabled", "BOOLEAN", "NOTIFY", "false",
             "SMS enabled", "Master switch for outbound SMS.", false, true),
+    NOTIFY_RETRY_MAX_ATTEMPTS(
+            "notify.retry.max.attempts", "INTEGER", "NOTIFY", "5",
+            "Times a failed send is tried again",
+            "With backoff: 2, 4, 8, 16 and 32 minutes. A switched-off channel is never retried.", false, false),
     NOTIFY_EMAIL_ENABLED(
             "notify.email.enabled", "BOOLEAN", "NOTIFY", "false",
             "Email enabled", "Master switch for outbound email.", false, true),
