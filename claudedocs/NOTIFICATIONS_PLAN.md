@@ -185,9 +185,9 @@ identifiable). Platform-wide: quiet hours for non-transactional messages, daily 
    only; suppression comes from a person's refusal, not from bounces. The DELIVERED / BOUNCED states
    stay in the design for the day the gateway offers a callback, and nothing depends on them.
 
-Assumed until said otherwise: campaigns are the platform's, through its maker-checker; a seller may run
-one to its own buyers with its own checker only behind the same organisation setting as wording.
-Non-transactional sending happens 08:00–20:00 East Africa Time with a daily cap per channel, both
-platform settings.
+5. **Campaigns are the platform's**, through its maker-checker; a seller may run one to its own buyers
+   with its own checker only behind the same organisation setting as wording.
+6. **Non-transactional sending happens 08:00–20:00 East Africa Time** with a daily cap per channel,
+   both platform settings.
 
 Nothing left to confirm before phase 1.
