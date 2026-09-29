@@ -28,8 +28,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * The terms a booking is made under, and the buyer's answer to them (lapsed-bookings plan §2.5).
@@ -57,7 +55,6 @@ public class BookingTermsService {
     public static final String TERMS_ACCEPTED = "ACCEPTED";
     public static final String TERMS_DECLINED = "DECLINED";
 
-    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{\\s*([a-zA-Z]+)\\s*}}");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("d MMMM yyyy");
     private static final ZoneId NAIROBI = ZoneId.of("Africa/Nairobi");
 
@@ -161,9 +158,8 @@ public class BookingTermsService {
         booking.setTermsState(TERMS_PRESENTED);
         bookings.save(booking);
 
-        notifier.toBuyer(booking, "Your booking terms for " + figures.get("home"),
-                "Before you pay anything for " + figures.get("home") + ", read the terms of your booking "
-                        + booking.getReference() + " and say whether you agree. Nothing is owed until you do.");
+        notifier.toBuyer(booking, "BOOKING_TERMS_PRESENTED",
+                Map.of("home", String.valueOf(figures.get("home")), "reference", booking.getReference()));
         return row;
     }
 
@@ -360,14 +356,7 @@ public class BookingTermsService {
 
     /** {@code {{name}}} → the figure; an unknown name stays visible, so a typo in the template shows. */
     static String render(String body, Map<String, Object> figures) {
-        Matcher m = PLACEHOLDER.matcher(body);
-        StringBuilder out = new StringBuilder();
-        while (m.find()) {
-            Object value = figures.get(m.group(1));
-            m.appendReplacement(out, Matcher.quoteReplacement(value == null ? m.group(0) : String.valueOf(value)));
-        }
-        m.appendTail(out);
-        return out.toString();
+        return com.hodi.common.util.Placeholders.render(body, figures);
     }
 
     private BookingTerms requireOpen(UnitBooking booking) {

@@ -396,9 +396,8 @@ public class BookingService {
     public BookingResponse acceptTerms(String bookingHashId) {
         UnitBooking booking = requireMine(bookingHashId);
         terms.accept(booking);
-        notifier.toBuyer(booking, "Your booking " + booking.getReference() + " is agreed",
-                "Thank you — you accepted the terms of your booking. Quote " + booking.getPayReference()
-                        + " whenever you pay.");
+        notifier.toBuyer(booking, "BOOKING_TERMS_ACCEPTED", java.util.Map.of("home", homeLabel(booking),
+                "reference", booking.getReference(), "payCode", booking.getPayReference()));
         return toResponse(booking);
     }
 
@@ -452,9 +451,9 @@ public class BookingService {
             String when = booking.getExpiresAt().atZoneSameInstant(java.time.ZoneId.of("Africa/Nairobi"))
                     .format(java.time.format.DateTimeFormatter.ofPattern("d MMMM"));
             boolean waiting = BookingTermsService.TERMS_PRESENTED.equals(booking.getTermsState());
-            notifier.toBuyer(booking, "Your hold on " + homeLabel(booking) + " ends on " + when,
-                    "Your booking " + booking.getReference() + " holds " + homeLabel(booking) + " until " + when + ". "
-                            + (waiting ? "The terms are still waiting for your answer; nothing can be paid until you accept them."
+            notifier.toBuyer(booking, "BOOKING_HOLD_EXPIRING", java.util.Map.of("home", homeLabel(booking),
+                    "reference", booking.getReference(), "when", when,
+                    "next", waiting ? "The terms are still waiting for your answer; nothing can be paid until you accept them."
                             : "Your first payment confirms it; after that the hold does not lapse."));
             booking.setExpiryReminderSentAt(now);
             repository.save(booking);

@@ -9,6 +9,7 @@ import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.notifications.NotificationService.About;
 import com.hodi.modules.leads.LeadDtos.*;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Enquiries: a buyer asks, a seller answers (M4, BRD FR035–FR040).
@@ -114,10 +116,9 @@ public class EnquiryService {
 
         audit.record(AppConstant.AUDIT_ENQUIRY_RAISED, "EnquiryTicket", ticket.getId(), null,
                 ticket.getReference() + " on " + property.getReference());
-        notifier.toSeller(property.getTenantId(),
-                "New enquiry about " + property.getTitle(),
-                buyer.fullName() + " has asked a question about " + property.getTitle() + ".",
-                "/app/enquiries?ref=" + ticket.getReference());
+        notifier.toSeller(property.getTenantId(), "ENQUIRY_RECEIVED",
+                Map.of("property", property.getTitle(), "buyer", buyer.fullName(), "reference", ticket.getReference()),
+                "/app/enquiries?ref=" + ticket.getReference(), new About("ENQUIRY", ticket.getId(), ticket.getReference()));
 
         return toResponse(ticket, true);
     }
@@ -156,10 +157,9 @@ public class EnquiryService {
         User buyer = users.findById(userId).orElseThrow();
         addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), request.message());
 
-        notifier.toSeller(ticket.getTenantId(),
-                "New message about " + ticket.getPropertyTitle(),
-                buyer.fullName() + " has added a message to enquiry " + ticket.getReference() + ".",
-                "/app/enquiries?ref=" + ticket.getReference());
+        notifier.toSeller(ticket.getTenantId(), "ENQUIRY_MESSAGE",
+                Map.of("property", ticket.getPropertyTitle(), "buyer", buyer.fullName(), "reference", ticket.getReference()),
+                "/app/enquiries?ref=" + ticket.getReference(), new About("ENQUIRY", ticket.getId(), ticket.getReference()));
         return toResponse(ticket, true);
     }
 
@@ -205,11 +205,10 @@ public class EnquiryService {
         }
         repository.save(ticket);
 
-        notifier.toBuyer(ticket.getUserId(),
-                "A reply about " + ticket.getPropertyTitle(),
-                ticket.getTenantName() + " has replied to your enquiry about " + ticket.getPropertyTitle()
-                        + ".",
-                "/account/conversations?tab=enquiries&ref=" + ticket.getReference());
+        notifier.toBuyer(ticket.getUserId(), "ENQUIRY_REPLIED",
+                Map.of("property", ticket.getPropertyTitle(), "seller", ticket.getTenantName(), "reference", ticket.getReference()),
+                "/account/conversations?tab=enquiries&ref=" + ticket.getReference(),
+                new About("ENQUIRY", ticket.getId(), ticket.getReference()), ticket.getTenantId());
         return toResponse(ticket, true);
     }
 

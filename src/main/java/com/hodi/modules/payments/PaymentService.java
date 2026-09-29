@@ -336,11 +336,11 @@ public class PaymentService {
             String balance = payment.getBalanceAfter() != null && payment.getBalanceAfter().signum() > 0
                     ? " Balance now " + currency + " " + MONEY.format(payment.getBalanceAfter()) + "."
                     : " Your account is settled. Thank you.";
-            String line = currency + " " + MONEY.format(payment.getAmount()) + " received for "
-                    + (payment.getUnitLabel() == null ? "your unit" : payment.getUnitLabel())
-                    + (payment.getDevelopmentName() == null ? "" : " at " + payment.getDevelopmentName()) + "." + balance
-                    + " Receipt " + payment.getReference() + ".";
-            notifier.toBuyer(booking, "PAYMENTS", "Payment received: " + payment.getReference(), line);
+            notifier.toBuyer(booking, "PAYMENT_RECEIVED", java.util.Map.of(
+                    "amount", currency + " " + MONEY.format(payment.getAmount()),
+                    "home", (payment.getUnitLabel() == null ? "your unit" : payment.getUnitLabel())
+                            + (payment.getDevelopmentName() == null ? "" : " at " + payment.getDevelopmentName()),
+                    "balance", balance.trim(), "receipt", payment.getReference(), "reference", booking.getReference()));
         } catch (RuntimeException e) {
             log.warn("Could not send the receipt for {}: {}", payment.getReference(), e.getMessage());
         }

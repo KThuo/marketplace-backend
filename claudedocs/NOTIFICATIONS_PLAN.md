@@ -240,3 +240,29 @@ Nothing left to confirm before phase 1.
   it is about; a contact is recorded without a user and masked; the retry's arithmetic — due, not yet,
   capped, and skipped never.
 
+### Phase 3 — the catalogue — done (29 September 2026)
+
+- `V20260929170000__what_the_platform_says_is_a_catalogue_the_platform_can_edit.sql`:
+  `notification_events` — 34 rows, one per notice a module sends (enquiries, viewings, offers, booking
+  terms, the hold reminder, the receipt, every valuation notice, the saved-search digest) with audience,
+  purpose, on/off, default channels, subject and line with placeholders, and the list of placeholders
+  the event fills; and `notification_event_overrides` — an organisation's own answer per event (off,
+  narrower channels, its own words), null meaning "as the platform says".
+- **The layering** — `NotificationCatalogue.apply`: the platform's row, then the organisation's
+  override (it may switch off and narrow, never switch on what the platform switched off, and reword
+  only when `notify.organisation.wording.enabled` — new setting, off by default — says so), then the
+  person's consent intersected. An event nobody catalogued is not sent, with a warning. A wording that
+  names a placeholder the event does not fill is refused with the list it does.
+- **The wording is out of Java.** The three notifiers now name an event and hand over the figures;
+  the notification service resolves it for the organisation whose business it is — the seller on an
+  offer, the booking's owner, the valuation's requester — fills it, and delivers as before. Nothing
+  that is said changed. One-time codes, resets and the panel welcome stay on the sensitive path.
+- **Settings → Notifications**, for two readers. The platform sees every event grouped by audience,
+  switches it on or off, sets default channels, and rewords it with a preview and the placeholders
+  listed. An organisation's administrator (`APP_SETTINGS_OVERRIDE`) sees the events that concern it —
+  what its buyers and its own staff receive — with the platform's answer beside its own.
+- Tests: `NotificationCatalogueIT` (4): the seed is complete and every placeholder a wording asks for is
+  one the event fills; the layering as a pure function; a filled event delivered, then switched off,
+  narrowed and reworded by the platform, a wording with a hole refused, an unknown code silent; an
+  organisation's override applying to its own events and refused for the platform's.
+

@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -24,6 +25,40 @@ import java.util.Map;
 public class NotificationController {
 
     private final NotificationService notifications;
+    private final NotificationCatalogue catalogue;
+
+    // ── the catalogue ─────────────────────────────────────────────────────────
+
+    public record CatalogueView(List<NotificationCatalogue.EventRow> events, boolean organisationsMayReword) {}
+
+    @GetMapping("/notifications/catalogue")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_VIEW')")
+    public ApiResponse<CatalogueView> catalogue() {
+        return ApiResponse.success(new CatalogueView(catalogue.all(), catalogue.organisationsMayReword()));
+    }
+
+    @PostMapping("/notifications/catalogue/{code}")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_UPDATE')")
+    @RequestAction("EDIT NOTIFICATION")
+    public ApiResponse<NotificationCatalogue.EventRow> saveEvent(@PathVariable String code,
+                                                                 @RequestBody NotificationCatalogue.SaveEventRequest request) {
+        return ApiResponse.success("Saved — from now on, this is what is said", catalogue.save(code, request));
+    }
+
+    /** The catalogue as the caller's organisation sees it, with its own answers. */
+    @GetMapping("/notifications/catalogue/mine")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_OVERRIDE')")
+    public ApiResponse<CatalogueView> mine() {
+        return ApiResponse.success(new CatalogueView(catalogue.mine(), catalogue.organisationsMayReword()));
+    }
+
+    @PostMapping("/notifications/catalogue/mine/{code}")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_OVERRIDE')")
+    @RequestAction("OVERRIDE NOTIFICATION")
+    public ApiResponse<NotificationCatalogue.EventRow> saveMine(@PathVariable String code,
+                                                                @RequestBody NotificationCatalogue.SaveOverrideRequest request) {
+        return ApiResponse.success("Saved for your organisation", catalogue.saveMine(code, request));
+    }
 
     // ── mine ──────────────────────────────────────────────────────────────────
 

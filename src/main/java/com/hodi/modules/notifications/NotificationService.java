@@ -4,6 +4,7 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.PagedResponse;
 import com.hodi.common.dto.PagedDataRequest;
 import com.hodi.common.exception.ResourceNotFoundException;
+import com.hodi.common.util.Placeholders;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.enums.ConfigKey;
 import com.hodi.infra.notify.MailTemplate;
@@ -28,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -61,6 +64,7 @@ public class NotificationService {
     private final NotificationRepository inbox;
     private final UserRepository users;
     private final ConsentService consent;
+    private final NotificationCatalogue catalogue;
     private final NotifyClient notify;
     private final MailTemplate mail;
     private final ConfigurationService configs;
@@ -84,16 +88,74 @@ public class NotificationService {
     /** Somebody with no account: the name and contact the sales office took. */
     public record Contact(String name, String email, String phone) {}
 
+    /**
+     * A catalogued event: the code names the words, the model fills them, and the organisation whose
+     * business it is may have overridden whether and where it goes.
+     */
+    public record Event(String code, Map<String, ?> model, String path, About about, Long orgTenantId, Long orgInstitutionId) {
+        public static Event of(String code, Map<String, ?> model, String path, About about) {
+            return new Event(code, model, path, about, null, null);
+        }
+        public Event forOrganisation(Long tenantId, Long institutionId) {
+            return new Event(code, model, path, about, tenantId, institutionId);
+        }
+    }
+
+    // ── delivering a catalogued event ─────────────────────────────────────────
+
+    /** A catalogued event to one user: resolved for its organisation, filled, then delivered like any notice. */
+    @Transactional
+    public void event(Long userId, Event event) {
+        resolveNotice(event).ifPresent(resolved -> toUser(userId, resolved.notice(), resolved.channels()));
+    }
+
+    @Transactional
+    public void event(List<Long> userIds, Event event) {
+        resolveNotice(event).ifPresent(resolved -> {
+            for (Long userId : new LinkedHashSet<>(userIds)) toUser(userId, resolved.notice(), resolved.channels());
+        });
+    }
+
+    @Transactional
+    public void event(Contact contact, Event event) {
+        resolveNotice(event).ifPresent(resolved -> toContact(contact, resolved.notice(), resolved.channels()));
+    }
+
+    private record ResolvedNotice(Notice notice, Set<String> channels) {}
+
+    /** The catalogue's answer for this event and organisation, or empty when it is off or unknown. */
+    private Optional<ResolvedNotice> resolveNotice(Event event) {
+        Optional<NotificationCatalogue.Resolved> resolved = catalogue.resolve(event.code(), event.orgTenantId(), event.orgInstitutionId());
+        if (resolved.isEmpty()) {
+            log.warn("Notification event {} is not in the catalogue; nothing sent", event.code());
+            return Optional.empty();
+        }
+        NotificationCatalogue.Resolved r = resolved.get();
+        if (!r.enabled() || r.channels().isEmpty()) return Optional.empty();
+        Map<String, Object> model = new java.util.HashMap<>();
+        if (event.model() != null) model.putAll(event.model());
+        model.putIfAbsent("platform", platformName());
+        return Optional.of(new ResolvedNotice(
+                new Notice(event.code(), r.purpose(), Placeholders.render(r.subject(), model), Placeholders.render(r.line(), model),
+                        event.path(), event.about()),
+                r.channels()));
+    }
+
     // ── delivering ────────────────────────────────────────────────────────────
 
     /** To one user, on the channels they have agreed to for the notice's purpose. */
     @Transactional
     public void toUser(Long userId, Notice notice) {
+        toUser(userId, notice, NotificationCatalogue.CHANNELS);
+    }
+
+    private void toUser(Long userId, Notice notice, Set<String> allowed) {
         if (userId == null) return;
         User user = users.findById(userId).orElse(null);
         if (user == null || !AppConstant.isLive(user.getStatus())) return;
         try {
-            Set<String> channels = consent.channelsFor(user.getId(), notice.purpose());
+            Set<String> channels = new LinkedHashSet<>(consent.channelsFor(user.getId(), notice.purpose()));
+            channels.retainAll(allowed);
             String link = publicUrl() + notice.path();
             if (channels.contains(AppConstant.CONSENT_CHANNEL_IN_APP)) {
                 inbox.save(Notification.builder()
@@ -126,15 +188,20 @@ public class NotificationService {
     /** To somebody without an account, by the contact on record. Transactional only: nobody consented to more. */
     @Transactional
     public void toContact(Contact contact, Notice notice) {
+        toContact(contact, notice, NotificationCatalogue.CHANNELS);
+    }
+
+    private void toContact(Contact contact, Notice notice, Set<String> allowed) {
         if (contact == null) return;
         try {
             String firstName = contact.name() == null ? "" : contact.name().trim().split("\\s+")[0];
             String link = publicUrl() + notice.path();
-            if (contact.email() != null && !contact.email().isBlank()) {
+            if (allowed.contains(AppConstant.CONSENT_CHANNEL_EMAIL) && contact.email() != null && !contact.email().isBlank()) {
                 attempt(queue(null, notice, AppConstant.CONSENT_CHANNEL_EMAIL, contact.email(),
                         mail.notice(firstName, notice.line(), "Open it on " + platformName(), link)));
             }
-            if (contact.phone() != null && !contact.phone().isBlank() && !"-".equals(contact.phone().trim())) {
+            if (allowed.contains(AppConstant.CONSENT_CHANNEL_SMS) && contact.phone() != null && !contact.phone().isBlank()
+                    && !"-".equals(contact.phone().trim())) {
                 attempt(queue(null, notice, AppConstant.CONSENT_CHANNEL_SMS, contact.phone(), sms(notice.line(), link)));
             }
         } catch (Exception e) {

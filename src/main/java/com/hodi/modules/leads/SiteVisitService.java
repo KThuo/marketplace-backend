@@ -9,6 +9,7 @@ import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.notifications.NotificationService.About;
 import com.hodi.modules.leads.LeadDtos.*;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
@@ -27,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Viewings: a buyer asks to come, a seller answers (M4, BRD FR041–FR044).
@@ -94,11 +96,10 @@ public class SiteVisitService {
 
         audit.record(AppConstant.AUDIT_VISIT_REQUESTED, "SiteVisit", visit.getId(), null,
                 visit.getReference() + " on " + property.getReference());
-        notifier.toSeller(property.getTenantId(),
-                "Viewing requested: " + property.getTitle(),
-                buyer.fullName() + " has asked to view " + property.getTitle() + " on "
-                        + when(request.requestedAt()) + ".",
-                "/app/viewings?ref=" + visit.getReference());
+        notifier.toSeller(property.getTenantId(), "VIEWING_REQUESTED",
+                Map.of("property", property.getTitle(), "buyer", buyer.fullName(), "when", when(request.requestedAt()),
+                        "reference", visit.getReference()),
+                "/app/viewings?ref=" + visit.getReference(), new About("VIEWING", visit.getId(), visit.getReference()));
 
         return toResponse(visit);
     }
@@ -136,10 +137,9 @@ public class SiteVisitService {
                         "Cancelled the viewing."),
                 AppConstant.VISIT_CANCELLED);
 
-        notifier.toSeller(visit.getTenantId(),
-                "Viewing cancelled: " + visit.getPropertyTitle(),
-                visit.getBuyerName() + " has cancelled the viewing of " + visit.getPropertyTitle() + ".",
-                "/app/viewings?ref=" + visit.getReference());
+        notifier.toSeller(visit.getTenantId(), "VIEWING_CANCELLED",
+                Map.of("property", visit.getPropertyTitle(), "buyer", visit.getBuyerName(), "reference", visit.getReference()),
+                "/app/viewings?ref=" + visit.getReference(), new About("VIEWING", visit.getId(), visit.getReference()));
         return toResponse(visit);
     }
 
@@ -235,8 +235,10 @@ public class SiteVisitService {
                 AppConstant.VISIT_CONFIRMED.equals(visit.getState()) ? visit.getSlotAt() : null,
                 visit.getTenantId(), visit.getTenantName(),
                 visit.getDecidedByUserId(), null);
-        notifier.toBuyer(visit.getUserId(), "About your viewing of " + visit.getPropertyTitle(), line,
-                "/account/conversations?tab=viewings&ref=" + visit.getReference());
+        notifier.toBuyer(visit.getUserId(), "VIEWING_DECIDED",
+                Map.of("property", visit.getPropertyTitle(), "outcome", line, "reference", visit.getReference()),
+                "/account/conversations?tab=viewings&ref=" + visit.getReference(),
+                new About("VIEWING", visit.getId(), visit.getReference()), visit.getTenantId());
         return toResponse(visit);
     }
 

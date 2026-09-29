@@ -4,6 +4,7 @@ import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
 import com.hodi.infra.notify.MailPalette;
 import com.hodi.infra.notify.MailTemplate;
+import com.hodi.modules.notifications.NotificationCatalogue;
 import com.hodi.modules.notifications.NotificationService;
 import com.hodi.infra.notify.NotifyResult;
 import com.hodi.modules.audit.AuditService;
@@ -58,6 +59,7 @@ public class SearchAlertRunner {
     private final ConsentService consent;
     private final UserRepository users;
     private final NotificationService notifications;
+    private final NotificationCatalogue catalogue;
     private final MailTemplate mail;
     private final ConfigurationService configs;
     private final AuditService audit;
@@ -86,7 +88,10 @@ public class SearchAlertRunner {
             return false;
         }
 
-        Set<String> channels = consent.channelsFor(alert.getUserId(), AppConstant.CONSENT_PROPERTY_ALERTS);
+        Set<String> channels = new java.util.LinkedHashSet<>(consent.channelsFor(alert.getUserId(), AppConstant.CONSENT_PROPERTY_ALERTS));
+        // The catalogue's say: whether the digest goes at all, and on which channels by default.
+        channels.retainAll(catalogue.resolve("ALERT_DIGEST", null, null)
+                .filter(NotificationCatalogue.Resolved::enabled).map(NotificationCatalogue.Resolved::channels).orElse(Set.of()));
         if (channels.isEmpty()) {
             // Recorded rather than silently dropped, so the buyer's own screen can say "saved, but you have
             // switched property alerts off" instead of leaving them to wonder why it is quiet.

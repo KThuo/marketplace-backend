@@ -1,13 +1,12 @@
 package com.hodi.modules.valuations;
 
-import com.hodi.common.AppConstant;
 import com.hodi.enums.ConfigKey;
 import com.hodi.infra.notify.MailTemplate;
 import com.hodi.infra.notify.NotifyClient;
 import com.hodi.modules.configurations.ConfigurationService;
 import com.hodi.modules.notifications.NotificationService;
 import com.hodi.modules.notifications.NotificationService.About;
-import com.hodi.modules.notifications.NotificationService.Notice;
+import com.hodi.modules.notifications.NotificationService.Event;
 import com.hodi.modules.profiles.UserProfileRepository;
 import com.hodi.modules.users.User;
 import lombok.RequiredArgsConstructor;
@@ -18,25 +17,18 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Tells the three parties to a valuation what the other two did (M5, plan §3.4).
  *
- * <h2>Who hears what</h2>
- *
- * <p>The valuer, when they are put on a job, when the report comes back for another look, when the job is
- * cancelled under them, and when their own cover or registration is about to lapse. The platform's people
- * who hold the relevant permission, when a job is raised or handed back (the assigners), when a report is
- * submitted (the reviewers), and when a valuer's cover lapses (the panel's managers). The requester — every
- * live person at the seller or the bank that commissioned it — when the valuer takes it on, books the
- * inspection, when the figure is approved, and when it is cancelled.
- *
- * <h2>The same two rules as the leads notifier</h2>
- *
- * <p>Transactional consent, asked every time. And best effort: nothing here throws, because a gateway that
- * is down must not stop a report being submitted — the row is the record and the message is a courtesy on
- * top of it. Failures are logged.
+ * <p>Thin: each method names the event and fills its figures; the catalogue holds the words and the
+ * requester organisation's say, the notification service asks consent, records, sends and retries. The
+ * valuer hears of assignment, a send-back, a cancellation, an overdue date and a coming lapse; the
+ * platform's holders of the relevant permission hear of a raise, a hand-back, a report and a lapsing
+ * valuer; the requester's staff hear that it was taken on, inspected, approved or cancelled.
  */
 @Slf4j
 @Component
@@ -45,8 +37,6 @@ public class ValuationNotifier {
 
     private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEEE d MMMM yyyy 'at' HH:mm");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ofPattern("d MMMM yyyy");
-
-    public static final String EVENT = "VALUATIONS";
 
     private final UserProfileRepository profiles;
     private final NotificationService notifications;
@@ -57,40 +47,35 @@ public class ValuationNotifier {
     // ── the valuer ────────────────────────────────────────────────────────────
 
     public void valuerAssigned(ValuationRequest job, ValuerProfile valuer) {
-        toValuer(valuer, job, "A valuation for you: " + job.getPropertyTitle(),
-                "You have been assigned to value " + job.getPropertyTitle() + " (" + job.getReference() + ")"
-                        + (job.getCounty() == null ? "" : " in " + job.getCounty())
-                        + (job.getDueOn() == null ? "" : ", due by " + DAY.format(job.getDueOn()))
-                        + ". Take it on, or hand it back with a reason.");
+        Map<String, Object> m = model(job);
+        m.put("details", (job.getCounty() == null ? "" : " in " + job.getCounty())
+                + (job.getDueOn() == null ? "" : ", due by " + DAY.format(job.getDueOn())));
+        toValuer(valuer, "VALUATION_ASSIGNED", m, jobPath(job), about(job), job);
     }
 
     public void valuerSentBack(ValuationRequest job, ValuerProfile valuer, String reason) {
-        toValuer(valuer, "Your report was sent back: " + job.getPropertyTitle(),
-                "The reviewer sent back your report on " + job.getPropertyTitle() + " (" + job.getReference() + ")"
-                        + (reason == null ? "." : ": “" + reason + "”.") + " Submit a corrected one.",
-                jobPath(job));
+        Map<String, Object> m = model(job);
+        m.put("reason", reasonSaid(reason));
+        toValuer(valuer, "VALUATION_SENT_BACK", m, jobPath(job), about(job), job);
     }
 
     public void valuerCancelled(ValuationRequest job, ValuerProfile valuer, String reason) {
-        toValuer(valuer, "Valuation cancelled: " + job.getPropertyTitle(),
-                "The valuation of " + job.getPropertyTitle() + " (" + job.getReference() + ") was cancelled"
-                        + (reason == null ? "." : ": “" + reason + "”.") + " Nothing more is needed from you.",
-                jobPath(job));
+        Map<String, Object> m = model(job);
+        m.put("reason", reasonSaid(reason));
+        toValuer(valuer, "VALUATION_CANCELLED_VALUER", m, jobPath(job), about(job), job);
     }
 
     /** Thirty days out, or whatever the setting says: to the valuer, and to whoever manages the panel. */
     public void lapseWarning(ValuerProfile valuer, LocalDate on, String what) {
-        String line = valuer.getFullName() + "'s " + what + " runs out on " + DAY.format(on)
-                + ". After that no work can be assigned to them until it is renewed on the panel.";
-        toValuer(valuer, "Your " + what + " runs out on " + DAY.format(on),
-                "Your " + what + " on the valuation panel runs out on " + DAY.format(on)
-                        + ". After that no work can be assigned to you until the panel's record is renewed.",
-                "/app/valuers");
-        toPlatform("VALUER_PANEL_MANAGE", valuer.getFullName() + "'s " + what + " runs out on " + DAY.format(on),
-                line, "/app/valuers");
+        Map<String, Object> m = new HashMap<>();
+        m.put("valuer", valuer.getFullName());
+        m.put("what", what);
+        m.put("on", DAY.format(on));
+        toValuer(valuer, "VALUER_LAPSE_WARNING", m, "/app/valuers", null, null);
+        toPlatform("VALUER_PANEL_MANAGE", "VALUER_LAPSE_WARNING_PANEL", m, "/app/valuers", null);
     }
 
-    /** A new panel member's credential, which they must change on first sign-in. */
+    /** A new panel member's credential, which they must change on first sign-in. Sensitive: not catalogued, not logged with a body. */
     public void welcome(User valuer, String username, String temporaryPassword) {
         try {
             String link = publicUrl() + "/login";
@@ -110,116 +95,115 @@ public class ValuationNotifier {
     // ── the platform ──────────────────────────────────────────────────────────
 
     public void platformRaised(ValuationRequest job) {
-        toPlatform("VALUATIONS_ASSIGN", "Valuation to assign: " + job.getPropertyTitle(),
-                requester(job) + " asked for a valuation of " + job.getPropertyTitle() + " (" + job.getReference()
-                        + ")" + (job.getCounty() == null ? "" : " in " + job.getCounty())
-                        + (job.getDueOn() == null ? "" : ", wanted by " + DAY.format(job.getDueOn()))
-                        + ". It needs a valuer.", jobPath(job), about(job));
+        Map<String, Object> m = model(job);
+        m.put("details", (job.getCounty() == null ? "" : " in " + job.getCounty())
+                + (job.getDueOn() == null ? "" : ", wanted by " + DAY.format(job.getDueOn())));
+        toPlatform("VALUATIONS_ASSIGN", "VALUATION_RAISED", m, jobPath(job), about(job));
     }
 
     public void platformHandedBack(ValuationRequest job, String who, String reason) {
-        toPlatform("VALUATIONS_ASSIGN", "Valuation handed back: " + job.getPropertyTitle(),
-                who + " handed back " + job.getPropertyTitle() + " (" + job.getReference() + ")"
-                        + (reason == null ? "." : ": “" + reason + "”.") + " It needs another valuer.",
-                jobPath(job));
+        Map<String, Object> m = model(job);
+        m.put("valuer", who);
+        m.put("reason", reasonSaid(reason));
+        toPlatform("VALUATIONS_ASSIGN", "VALUATION_HANDED_BACK", m, jobPath(job), about(job));
     }
 
     public void platformReported(ValuationRequest job, String figure) {
-        toPlatform("VALUATIONS_APPROVE", "Valuation report to review: " + job.getPropertyTitle(),
-                job.getValuerName() + " valued " + job.getPropertyTitle() + " (" + job.getReference() + ") at "
-                        + figure + ". The figure counts once it is reviewed and approved.", jobPath(job), about(job));
+        Map<String, Object> m = model(job);
+        m.put("figure", figure);
+        toPlatform("VALUATIONS_APPROVE", "VALUATION_REPORTED", m, jobPath(job), about(job));
     }
 
     /** The due date passed: the valuer on it, if any, and the assigners either way. */
     public void overdue(ValuationRequest job, ValuerProfile valuer) {
-        String line = job.getPropertyTitle() + " (" + job.getReference() + ") was due by "
-                + DAY.format(job.getDueOn()) + " and is still " + (job.isUnassigned() ? "unassigned." : "open.");
-        if (valuer != null) {
-            toValuer(valuer, job, "Overdue: " + job.getPropertyTitle(), "Your valuation of " + line);
-        }
-        toPlatform("VALUATIONS_ASSIGN", "Overdue valuation: " + job.getPropertyTitle(), line, jobPath(job), about(job));
+        Map<String, Object> m = model(job);
+        m.put("due", DAY.format(job.getDueOn()));
+        m.put("state", job.isUnassigned() ? "unassigned" : "open");
+        if (valuer != null) toValuer(valuer, "VALUATION_OVERDUE_VALUER", m, jobPath(job), about(job), job);
+        toPlatform("VALUATIONS_ASSIGN", "VALUATION_OVERDUE", m, jobPath(job), about(job));
     }
 
     // ── the requester ─────────────────────────────────────────────────────────
 
     public void requesterAccepted(ValuationRequest job) {
-        toRequester(job, "Your valuation is under way: " + job.getPropertyTitle(),
-                job.getValuerName() + " has taken on the valuation of " + job.getPropertyTitle() + " ("
-                        + job.getReference() + ")" + (job.getDueOn() == null ? "." : ", due by "
-                        + DAY.format(job.getDueOn()) + "."));
+        Map<String, Object> m = model(job);
+        m.put("due", job.getDueOn() == null ? "" : ", due by " + DAY.format(job.getDueOn()));
+        toRequester(job, "VALUATION_ACCEPTED", m);
     }
 
     public void requesterInspection(ValuationRequest job) {
-        toRequester(job, "Inspection booked: " + job.getPropertyTitle(),
-                job.getValuerName() + " will inspect " + job.getPropertyTitle() + " (" + job.getReference()
-                        + ") on " + when(job.getInspectionAt()) + ".");
+        Map<String, Object> m = model(job);
+        m.put("when", when(job.getInspectionAt()));
+        toRequester(job, "VALUATION_INSPECTION", m);
     }
 
     public void requesterApproved(ValuationRequest job, String figure) {
-        toRequester(job, "Valuation approved: " + job.getPropertyTitle(),
-                "The valuation of " + job.getPropertyTitle() + " (" + job.getReference() + ") has been reviewed "
-                        + "and approved at " + figure + ". The report is on the job.");
+        Map<String, Object> m = model(job);
+        m.put("figure", figure);
+        toRequester(job, "VALUATION_APPROVED", m);
     }
 
     public void requesterCancelled(ValuationRequest job, String reason) {
-        toRequester(job, "Valuation cancelled: " + job.getPropertyTitle(),
-                "The valuation of " + job.getPropertyTitle() + " (" + job.getReference() + ") was cancelled"
-                        + (reason == null ? "." : ": “" + reason + "”."));
+        Map<String, Object> m = model(job);
+        m.put("reason", reasonSaid(reason));
+        toRequester(job, "VALUATION_CANCELLED", m);
     }
 
     // ── fan-out ───────────────────────────────────────────────────────────────
 
-    private void toValuer(ValuerProfile valuer, String subject, String line, String path) {
+    private void toValuer(ValuerProfile valuer, String code, Map<String, ?> model, String path, About about, ValuationRequest job) {
         if (valuer == null || valuer.getUserId() == null) return;
-        notifications.toUser(valuer.getUserId(), Notice.transactional(EVENT, subject, line, path, null));
-    }
-
-    private void toValuer(ValuerProfile valuer, ValuationRequest job, String subject, String line) {
-        if (valuer == null || valuer.getUserId() == null) return;
-        notifications.toUser(valuer.getUserId(), Notice.transactional(EVENT, subject, line, jobPath(job), about(job)));
+        notifications.event(valuer.getUserId(), Event.of(code, model, path, about)
+                .forOrganisation(job == null ? null : job.getTenantId(), job == null ? null : job.getInstitutionId()));
     }
 
     /** Everybody at the organisation that commissioned it — the seller's staff, or the bank's. */
-    private void toRequester(ValuationRequest job, String subject, String line) {
+    private void toRequester(ValuationRequest job, String code, Map<String, ?> model) {
         List<Long> staff = job.getTenantId() != null
                 ? profiles.findLiveUserIdsByTenant(job.getTenantId())
                 : job.getInstitutionId() != null
                         ? profiles.findLiveUserIdsByInstitution(job.getInstitutionId())
                         : List.of();
         if (staff.isEmpty()) {
-            log.warn("Valuation {} has no requester staff to notify about: {}", job.getReference(), subject);
+            log.warn("Valuation {} has no requester staff to notify about {}", job.getReference(), code);
             return;
         }
-        notifications.toUsers(staff, Notice.transactional(EVENT, subject, line, jobPath(job), about(job)));
+        notifications.event(staff, Event.of(code, model, jobPath(job), about(job)).forOrganisation(job.getTenantId(), job.getInstitutionId()));
     }
 
     /** The platform's people who hold the permission the notice is for. */
-    private void toPlatform(String permission, String subject, String line, String path) {
-        toPlatform(permission, subject, line, path, null);
-    }
-
-    private void toPlatform(String permission, String subject, String line, String path, About about) {
+    private void toPlatform(String permission, String code, Map<String, ?> model, String path, About about) {
         List<Long> holders = profiles.findLivePlatformUserIdsHolding(permission);
         if (holders.isEmpty()) {
-            log.warn("Nobody on the platform holds {} to be told: {}", permission, subject);
+            log.warn("Nobody on the platform holds {} to be told about {}", permission, code);
             return;
         }
-        notifications.toUsers(holders, Notice.transactional(EVENT, subject, line, path, about));
+        notifications.event(holders, Event.of(code, model, path, about));
+    }
+
+    // ── words ─────────────────────────────────────────────────────────────────
+
+    private static Map<String, Object> model(ValuationRequest job) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("property", job.getPropertyTitle());
+        m.put("reference", job.getReference());
+        m.put("valuer", job.getValuerName() == null ? "The valuer" : job.getValuerName());
+        m.put("requester", job.getTenantName() != null ? job.getTenantName()
+                : job.getInstitutionName() != null ? job.getInstitutionName() : "A requester");
+        return m;
     }
 
     private static About about(ValuationRequest job) {
         return new About("VALUATION", job.getId(), job.getReference());
     }
 
-    // ── words ─────────────────────────────────────────────────────────────────
-
     private static String jobPath(ValuationRequest job) {
         return "/app/valuations/" + job.getReference();
     }
 
-    private static String requester(ValuationRequest job) {
-        return job.getTenantName() != null ? job.getTenantName()
-                : job.getInstitutionName() != null ? job.getInstitutionName() : "A requester";
+    /** "" or ": “the reason”" — the template ends the sentence itself. */
+    private static String reasonSaid(String reason) {
+        return reason == null || reason.isBlank() ? "" : ": \u201c" + reason.trim() + "\u201d";
     }
 
     private static String when(OffsetDateTime at) {

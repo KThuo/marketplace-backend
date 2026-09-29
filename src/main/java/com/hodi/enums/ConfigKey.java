@@ -212,6 +212,12 @@ public enum ConfigKey {
     NOTIFY_SMS_ENABLED(
             "notify.sms.enabled", "BOOLEAN", "NOTIFY", "false",
             "SMS enabled", "Master switch for outbound SMS.", false, true),
+    NOTIFY_ORGANISATION_WORDING_ENABLED(
+            "notify.organisation.wording.enabled", "BOOLEAN", "NOTIFY", "false",
+            "Organisations may reword their notifications",
+            "When on, a seller's or the bank's administrator may reword the messages their own staff and "
+                    + "buyers receive; the platform's wording is the fallback. Off, they may only switch events "
+                    + "off or choose channels.", false, false),
     NOTIFY_RETRY_MAX_ATTEMPTS(
             "notify.retry.max.attempts", "INTEGER", "NOTIFY", "5",
             "Times a failed send is tried again",

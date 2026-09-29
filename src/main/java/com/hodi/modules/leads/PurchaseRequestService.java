@@ -33,6 +33,7 @@ import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 
@@ -137,12 +138,11 @@ public class PurchaseRequestService {
 
         audit.record(AppConstant.AUDIT_OFFER_SUBMITTED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " on " + property.getReference());
-        notifier.toSeller(property.getTenantId(),
-                "Offer on " + property.getTitle(),
-                buyer.fullName() + " has offered " + money(request.offerAmount(), property.getCurrency())
-                        + " for " + property.getTitle() + " (asking "
-                        + money(property.getPrice(), property.getCurrency()) + ").",
-                "/app/offers?ref=" + offer.getReference());
+        notifier.toSeller(property.getTenantId(), "OFFER_RECEIVED",
+                Map.of("property", property.getTitle(), "buyer", buyer.fullName(),
+                        "amount", money(request.offerAmount(), property.getCurrency()),
+                        "asking", money(property.getPrice(), property.getCurrency()), "reference", offer.getReference()),
+                "/app/offers/" + offer.getReference(), about(offer));
 
         return toResponse(offer);
     }
@@ -175,9 +175,8 @@ public class PurchaseRequestService {
         thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(),
                 offer.getBuyerName(), "Withdrew the offer.", AppConstant.PURCHASE_WITHDRAWN, "WITHDRAWN", null);
 
-        notifier.toSeller(offer.getTenantId(),
-                "Offer withdrawn: " + offer.getPropertyTitle(),
-                offer.getBuyerName() + " has withdrawn their offer on " + offer.getPropertyTitle() + ".",
+        notifier.toSeller(offer.getTenantId(), "OFFER_WITHDRAWN",
+                Map.of("property", offer.getPropertyTitle(), "buyer", offer.getBuyerName(), "reference", offer.getReference()),
                 "/app/offers?ref=" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
@@ -216,9 +215,9 @@ public class PurchaseRequestService {
         thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), request.message(), offer.getState());
         offer.setUpdatedBy(AuthContext.username());
         repository.save(offer);
-        notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(),
-                offer.getTenantName() + " has replied about your offer on " + offer.getPropertyTitle() + ".",
-                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
+        notifier.toBuyer(offer.getUserId(), "OFFER_REPLIED",
+                Map.of("property", offer.getPropertyTitle(), "seller", offer.getTenantName(), "reference", offer.getReference()),
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer), offer.getTenantId());
         return toResponse(offer);
     }
 
@@ -244,10 +243,10 @@ public class PurchaseRequestService {
         String line = "Countered at " + money(request.amount(), offer.getCurrency()) + ".";
         thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(),
                 EnquiryService.blankTo(request.note(), line), offer.getState(), "COUNTER", request.amount());
-        notifier.toBuyer(offer.getUserId(), "A counter on your offer for " + offer.getPropertyTitle(),
-                offer.getTenantName() + " has come back at " + money(request.amount(), offer.getCurrency())
-                        + " on " + offer.getPropertyTitle() + ". Accept it or counter from your offers.",
-                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
+        notifier.toBuyer(offer.getUserId(), "OFFER_COUNTERED",
+                Map.of("property", offer.getPropertyTitle(), "seller", offer.getTenantName(),
+                        "amount", money(request.amount(), offer.getCurrency()), "reference", offer.getReference()),
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer), offer.getTenantId());
         return toResponse(offer);
     }
 
@@ -267,9 +266,9 @@ public class PurchaseRequestService {
         thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(), offer.getBuyerName(),
                 "Accepted the counter of " + money(figure, offer.getCurrency()) + ".", offer.getState(),
                 "ACCEPTED_COUNTER", figure);
-        notifier.toSeller(offer.getTenantId(), "Counter accepted: " + offer.getPropertyTitle(),
-                offer.getBuyerName() + " has accepted your counter of " + money(figure, offer.getCurrency())
-                        + " on " + offer.getPropertyTitle() + ". Accept the offer to proceed.",
+        notifier.toSeller(offer.getTenantId(), "OFFER_COUNTER_ACCEPTED",
+                Map.of("property", offer.getPropertyTitle(), "buyer", offer.getBuyerName(),
+                        "amount", money(figure, offer.getCurrency()), "reference", offer.getReference()),
                 "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
@@ -286,9 +285,9 @@ public class PurchaseRequestService {
         String line = "Offered " + money(request.amount(), offer.getCurrency()) + " instead.";
         thread.recordAsBuyer(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), offer.getUserId(), offer.getBuyerName(),
                 EnquiryService.blankTo(request.note(), line), offer.getState(), "COUNTER", request.amount());
-        notifier.toSeller(offer.getTenantId(), "A new figure on an offer: " + offer.getPropertyTitle(),
-                offer.getBuyerName() + " now offers " + money(request.amount(), offer.getCurrency()) + " for "
-                        + offer.getPropertyTitle() + ".",
+        notifier.toSeller(offer.getTenantId(), "OFFER_REVISED",
+                Map.of("property", offer.getPropertyTitle(), "buyer", offer.getBuyerName(),
+                        "amount", money(request.amount(), offer.getCurrency()), "reference", offer.getReference()),
                 "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
@@ -318,8 +317,8 @@ public class PurchaseRequestService {
                 request.message(), offer.getState());
         offer.setUpdatedBy(AuthContext.username());
         repository.save(offer);
-        notifier.toSeller(offer.getTenantId(), "New message on an offer: " + offer.getPropertyTitle(),
-                offer.getBuyerName() + " has added a message to their offer on " + offer.getPropertyTitle() + ".",
+        notifier.toSeller(offer.getTenantId(), "OFFER_MESSAGE",
+                Map.of("property", offer.getPropertyTitle(), "buyer", offer.getBuyerName(), "reference", offer.getReference()),
                 "/app/offers/" + offer.getReference(), about(offer));
         return toResponse(offer);
     }
@@ -394,8 +393,9 @@ public class PurchaseRequestService {
 
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " " + offer.getState());
-        notifier.toBuyer(offer.getUserId(), "About your offer on " + offer.getPropertyTitle(), line,
-                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer));
+        notifier.toBuyer(offer.getUserId(), "OFFER_DECIDED",
+                Map.of("property", offer.getPropertyTitle(), "outcome", line, "reference", offer.getReference()),
+                "/account/conversations?tab=offers&ref=" + offer.getReference(), about(offer), offer.getTenantId());
         return toResponse(offer);
     }
 
@@ -456,8 +456,10 @@ public class PurchaseRequestService {
         thread.record(AppConstant.LEAD_PURCHASE_REQUEST, offer.getId(), line, offer.getState());
         audit.record(AppConstant.AUDIT_OFFER_DECIDED, "PurchaseRequest", offer.getId(), null,
                 offer.getReference() + " booked as " + booking.getReference());
-        notifier.toBuyer(offer.getUserId(), "Your offer on " + offer.getPropertyTitle() + " is now a booking",
-                line, "/account/bookings", about(offer));
+        notifier.toBuyer(offer.getUserId(), "OFFER_BOOKED",
+                Map.of("property", offer.getPropertyTitle(), "seller", offer.getTenantName(), "booking", booking.getReference(),
+                        "reference", offer.getReference()),
+                "/account/bookings", about(offer), offer.getTenantId());
         log.info("Offer {} converted to booking {} by {}", offer.getReference(), booking.getReference(),
                 AuthContext.username());
         return toResponse(offer);
