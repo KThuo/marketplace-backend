@@ -1,6 +1,9 @@
 package com.hodi.modules.sellerops;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
+import com.hodi.modules.bookings.UnitBookingRepository;
+import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.agents.AgentProfile;
 import com.hodi.modules.agents.AgentProfileRepository;
@@ -57,6 +60,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class CommissionReportsIT {
 
     @Autowired ReportService reports;
+    @Autowired UnitBookingRepository bookingRows;
     @Autowired CommissionService commissions;
     @Autowired BookingService bookings;
     @Autowired PaymentService paymentService;
@@ -179,6 +183,7 @@ class CommissionReportsIT {
     private BookingResponse sell(String agentRef) {
         asSeller();
         BookingResponse booked = bookings.create(HashIdUtil.encodeId(development.getId()), request(agentRef));
+        agree(booked);
         paymentService.receive(new ReceiveRequest(booked.id(), PRICE, null, AppConstant.PAY_CHEQUE, null,
                 "A7K2", null, null, null, null));
         return bookings.complete(HashIdUtil.encodeId(development.getId()), booked.id());
@@ -225,5 +230,13 @@ class CommissionReportsIT {
                 tenant == null ? List.of() : List.of(tenant), platform, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

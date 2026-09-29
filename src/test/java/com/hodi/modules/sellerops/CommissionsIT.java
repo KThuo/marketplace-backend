@@ -1,6 +1,7 @@
 package com.hodi.modules.sellerops;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.enums.ConfigKey;
@@ -207,6 +208,7 @@ class CommissionsIT {
     @DisplayName("the introducer is named while the booking is live and frozen once it completes")
     void introducerIsFrozenOnceCompleted() {
         BookingResponse booked = bookings.create(devId(), request(null));
+        agree(booked);
         assertNull(booked.introducedByAgentRef());
 
         BookingResponse named = bookings.setIntroducer(booked.id(), new IntroducerRequest(agent.getReference()));
@@ -234,6 +236,7 @@ class CommissionsIT {
                 .reference(RrnGenerator.generate("AG")).userId(agent.getUserId())
                 .profileId(freeProfileId()).fullName("Not Yet Agent").state(AgentState.PENDING).build());
         BookingResponse booked = bookings.create(devId(), request(null));
+        agree(booked);
 
         HodiException e = assertThrows(HodiException.class,
                 () -> bookings.setIntroducer(booked.id(), new IntroducerRequest(pending.getReference())));
@@ -277,6 +280,7 @@ class CommissionsIT {
 
     private BookingResponse sell(String agentRef) {
         BookingResponse booked = bookings.create(devId(), request(agentRef));
+        agree(booked);
         pay(booked);
         return bookings.complete(devId(), booked.id());
     }
@@ -339,5 +343,13 @@ class CommissionsIT {
                 tenant == null ? List.of() : List.of(tenant), platform, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

@@ -96,4 +96,10 @@ public interface UnitBookingRepository
     @Query("select b from UnitBooking b where b.state = 'RESERVED' and b.status <> 5 "
             + "and b.expiresAt is not null and b.expiresAt < :now order by b.expiresAt")
     List<UnitBooking> findLapsed(@Param("now") OffsetDateTime now);
+
+    /** Holds that lapse before the horizon and have not been reminded. */
+    @Query("select b from UnitBooking b where b.state = 'RESERVED' and b.status <> 5 "
+            + "and b.expiresAt is not null and b.expiresAt > :now and b.expiresAt < :horizon "
+            + "and b.expiryReminderSentAt is null order by b.expiresAt")
+    List<UnitBooking> findExpiringUnreminded(@Param("now") OffsetDateTime now, @Param("horizon") OffsetDateTime horizon);
 }

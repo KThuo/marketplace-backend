@@ -1,6 +1,9 @@
 package com.hodi.infra.coop;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
+import com.hodi.modules.bookings.UnitBookingRepository;
+import com.hodi.modules.bookings.UnitBooking;
 import com.hodi.modules.properties.Property;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.infra.coop.CoopIpnDtos.IpnPayload;
@@ -60,6 +63,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PaymentIntentIT {
 
     @Autowired CoopIpnService service;
+    @Autowired UnitBookingRepository bookingRows;
     @Autowired BookingService bookings;
     @Autowired CoopStatementRepository statements;
     @Autowired PaymentAccountRepository accounts;
@@ -126,6 +130,7 @@ class PaymentIntentIT {
                 new CreateBookingRequest(HashIdUtil.encodeId(unit.getId()), "Asha Mwangi",
                         "+254 712 345 678", null, null, new BigDecimal("9500000"),
                         new BigDecimal("950000"), null, 14, null, null));
+        agree(booking);
     }
 
     /**
@@ -147,6 +152,8 @@ class PaymentIntentIT {
                 + "(select id from developments where name = 'Intent Heights')");
         jdbc.update("delete from coop_statements where account_identifier like 'INT%'");
         jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
+                + "where development_id in (select id from developments where name = 'Intent Heights'))");
+        jdbc.update("delete from booking_terms where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = 'Intent Heights'))");
         jdbc.update("delete from unit_bookings where development_id in "
                 + "(select id from developments where name = 'Intent Heights')");
@@ -173,6 +180,8 @@ class PaymentIntentIT {
             jdbc.update("delete from coop_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
             jdbc.update("delete from booking_instalments where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?)", development.getId());
+            jdbc.update("delete from booking_terms where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
             jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id = ?", development.getId());
@@ -426,5 +435,13 @@ class PaymentIntentIT {
         assertTrue(waiting.getProcessingReason().contains("person"),
                 "and the row says what is waiting on whom");
         assertEquals(0, paymentsOnTheBooking(), "nothing is credited on a payment nobody confirmed");
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

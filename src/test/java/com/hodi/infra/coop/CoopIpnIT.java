@@ -145,6 +145,8 @@ class CoopIpnIT {
         jdbc.update("delete from coop_statements where account_identifier like 'TILL%'");
         jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = 'Paying Heights'))");
+        jdbc.update("delete from booking_terms where booking_id in (select id from unit_bookings "
+                + "where development_id in (select id from developments where name = 'Paying Heights'))");
         jdbc.update("delete from unit_bookings where development_id in "
                 + "(select id from developments where name = 'Paying Heights')");
         jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id in "
@@ -168,6 +170,8 @@ class CoopIpnIT {
             jdbc.update("delete from coop_statements where payment_account_id = ? "
                     + "or account_identifier = ?", till.getId(), account);
             jdbc.update("delete from booking_instalments where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?)", development.getId());
+            jdbc.update("delete from booking_terms where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
             jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id = ?", development.getId());

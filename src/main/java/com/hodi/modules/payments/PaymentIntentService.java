@@ -93,6 +93,7 @@ public class PaymentIntentService {
         UserPrincipal caller = AuthContext.require();
         UnitBooking booking = readable(request.bookingId(), caller);
         assertMayAsk(caller, booking);
+        com.hodi.modules.bookings.BookingTermsService.assertMayPay(booking, !caller.isBuyer());
 
         BigDecimal amount = request.amount();
         BalanceRow balance = balances.forBooking(booking.getId()).orElse(null);

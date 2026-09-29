@@ -49,6 +49,7 @@ public class DevelopmentMoneySettingsService {
     private final DevelopmentRepository developments;
     private final DevelopmentVisibility visibility;
     private final ConfigurationService configs;
+    private final com.hodi.modules.bookings.BookingPolicyService policies;
     private final AuditService audit;
 
     /**
@@ -71,7 +72,19 @@ public class DevelopmentMoneySettingsService {
             BigDecimal agentCommissionPercent,
             String agentCommissionPaidBy,
             BigDecimal defaultBankCommissionPercent,
-            BigDecimal defaultAgentCommissionPercent) {}
+            BigDecimal defaultAgentCommissionPercent,
+            /** What a booking here is refunded or revived under. Null fields mean the platform default. */
+            String refundPenaltyBasis,
+            BigDecimal refundPenaltyRate,
+            BigDecimal refundPenaltyCap,
+            BigDecimal refundPenaltyBankSharePercent,
+            Integer refundWithinDays,
+            Integer reviveWithinDays,
+            String bookingPolicyNote,
+            /** The platform's defaults for the same, so the card can say what a blank means. */
+            com.hodi.modules.bookings.BookingPolicyService.BookingPolicy platformPolicy,
+            /** The policy in force here today, defaults applied. */
+            com.hodi.modules.bookings.BookingPolicyService.BookingPolicy effectivePolicy) {}
 
     /**
      * The three commission fields are optional: absent or null means "the platform default", which is what a
@@ -82,9 +95,22 @@ public class DevelopmentMoneySettingsService {
             @NotBlank(message = "Say who manages the spending") String spendingManagedBy,
             BigDecimal bankCommissionPercent,
             BigDecimal agentCommissionPercent,
-            String agentCommissionPaidBy) {
+            String agentCommissionPaidBy,
+            String refundPenaltyBasis,
+            BigDecimal refundPenaltyRate,
+            BigDecimal refundPenaltyCap,
+            BigDecimal refundPenaltyBankSharePercent,
+            Integer refundWithinDays,
+            Integer reviveWithinDays,
+            String bookingPolicyNote) {
         public SaveMoneySettingsRequest(String collectionMode, String spendingManagedBy) {
-            this(collectionMode, spendingManagedBy, null, null, null);
+            this(collectionMode, spendingManagedBy, null, null, null, null, null, null, null, null, null, null);
+        }
+        public SaveMoneySettingsRequest(String collectionMode, String spendingManagedBy,
+                                        BigDecimal bankCommissionPercent, BigDecimal agentCommissionPercent,
+                                        String agentCommissionPaidBy) {
+            this(collectionMode, spendingManagedBy, bankCommissionPercent, agentCommissionPercent, agentCommissionPaidBy,
+                    null, null, null, null, null, null, null);
         }
     }
 
@@ -108,12 +134,32 @@ public class DevelopmentMoneySettingsService {
         String agentPaidBy = request.agentCommissionPaidBy() == null || request.agentCommissionPaidBy().isBlank()
                 ? null : oneOf(request.agentCommissionPaidBy(), AGENT_FEE_BEARERS, "Who pays the agent");
 
+        String basis = request.refundPenaltyBasis() == null || request.refundPenaltyBasis().isBlank() ? null
+                : oneOf(request.refundPenaltyBasis(), com.hodi.modules.bookings.BookingPolicyService.BASES,
+                        "The refund penalty's basis", "PERCENT_OF_PAID, PERCENT_OF_DEPOSIT or FIXED");
+        BigDecimal penaltyRate = com.hodi.modules.bookings.BookingPolicyService.BASIS_FIXED.equals(basis)
+                ? amount(request.refundPenaltyRate(), "The refund penalty")
+                : rate(request.refundPenaltyRate(), "The refund penalty");
+        BigDecimal penaltyCap = amount(request.refundPenaltyCap(), "The refund penalty's cap");
+        BigDecimal bankShare = rate(request.refundPenaltyBankSharePercent(), "The bank's share of the penalty");
+        Integer refundDays = days(request.refundWithinDays(), "The refund window");
+        Integer reviveDays = days(request.reviveWithinDays(), "The revival window");
+        String note = request.bookingPolicyNote() == null || request.bookingPolicyNote().isBlank() ? null
+                : request.bookingPolicyNote().trim();
+
         String before = snapshot(development);
         development.setCollectionMode(collection);
         development.setSpendingManagedBy(spending);
         development.setBankCommissionPercent(bankRate);
         development.setAgentCommissionPercent(agentRate);
         development.setAgentCommissionPaidBy(agentPaidBy);
+        development.setRefundPenaltyBasis(basis);
+        development.setRefundPenaltyRate(penaltyRate);
+        development.setRefundPenaltyCap(penaltyCap);
+        development.setRefundPenaltyBankSharePercent(bankShare);
+        development.setRefundWithinDays(refundDays);
+        development.setReviveWithinDays(reviveDays);
+        development.setBookingPolicyNote(note);
         development.setUpdatedBy(AuthContext.username());
         developments.save(development);
         /*
@@ -146,7 +192,29 @@ public class DevelopmentMoneySettingsService {
         return new MoneySettings(HashIdUtil.encodeId(d.getId()), d.getCollectionMode(), d.getSpendingManagedBy(),
                 caller.isPlatformStaff(), visibility.mayManageSpending(d, caller),
                 d.getBankCommissionPercent(), d.getAgentCommissionPercent(), d.getAgentCommissionPaidBy(),
-                percent(ConfigKey.COMMISSION_RATE_PERCENT), percent(ConfigKey.AGENT_COMMISSION_RATE_PERCENT));
+                percent(ConfigKey.COMMISSION_RATE_PERCENT), percent(ConfigKey.AGENT_COMMISSION_RATE_PERCENT),
+                d.getRefundPenaltyBasis(), d.getRefundPenaltyRate(), d.getRefundPenaltyCap(),
+                d.getRefundPenaltyBankSharePercent(), d.getRefundWithinDays(), d.getReviveWithinDays(),
+                d.getBookingPolicyNote(), policies.platformDefaults(), policies.policyFor(d));
+    }
+
+    /** Null stays null. Anything else is an amount of money, not negative. */
+    private static BigDecimal amount(BigDecimal value, String what) {
+        if (value == null) return null;
+        if (value.signum() < 0) throw new HodiException(what + " cannot be negative.", HttpStatus.BAD_REQUEST);
+        return value.setScale(2, java.math.RoundingMode.HALF_UP);
+    }
+
+    private static Integer days(Integer value, String what) {
+        if (value == null) return null;
+        if (value < 0 || value > 3650) throw new HodiException(what + " is between 0 and 3650 days.", HttpStatus.BAD_REQUEST);
+        return value;
+    }
+
+    private static String oneOf(String value, Set<String> allowed, String what, String choices) {
+        String v = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!allowed.contains(v)) throw new HodiException(what + " must be " + choices + ".", HttpStatus.BAD_REQUEST);
+        return v;
     }
 
     /** The platform default as a number, or zero when what is configured is not one. */
@@ -192,6 +260,12 @@ public class DevelopmentMoneySettingsService {
         return "collection=" + d.getCollectionMode() + " spending=" + d.getSpendingManagedBy()
                 + " bankRate=" + (d.getBankCommissionPercent() == null ? "default" : d.getBankCommissionPercent())
                 + " agentRate=" + (d.getAgentCommissionPercent() == null ? "default" : d.getAgentCommissionPercent())
-                + " agentPaidBy=" + d.agentFeeBorneBy();
+                + " agentPaidBy=" + d.agentFeeBorneBy()
+                + " refundPenalty=" + (d.getRefundPenaltyBasis() == null ? "default" : d.getRefundPenaltyBasis())
+                + "/" + (d.getRefundPenaltyRate() == null ? "default" : d.getRefundPenaltyRate())
+                + " cap=" + (d.getRefundPenaltyCap() == null ? "default" : d.getRefundPenaltyCap())
+                + " bankShare=" + (d.getRefundPenaltyBankSharePercent() == null ? "default" : d.getRefundPenaltyBankSharePercent())
+                + " refundDays=" + (d.getRefundWithinDays() == null ? "default" : d.getRefundWithinDays())
+                + " reviveDays=" + (d.getReviveWithinDays() == null ? "default" : d.getReviveWithinDays());
     }
 }

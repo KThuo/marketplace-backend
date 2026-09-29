@@ -253,6 +253,41 @@ public enum ConfigKey {
      * than a build-time choice so the day it does exist, going live is a new class and an edit here — with
      * the way back being the same edit, which is what makes trying it a reversible decision.
      */
+    // What a booking is made under: the refund penalty and the windows, overridable per development.
+    BOOKING_REFUND_PENALTY_BASIS(
+            "booking.refund.penalty.basis", "STRING", "PAYMENTS", "PERCENT_OF_PAID",
+            "How a refund penalty is worked out",
+            "PERCENT_OF_PAID, PERCENT_OF_DEPOSIT or FIXED. What the seller keeps back when a lapsed or "
+                    + "cancelled booking is refunded. A development may set its own.", false, false),
+    BOOKING_REFUND_PENALTY_RATE(
+            "booking.refund.penalty.rate", "STRING", "PAYMENTS", "0",
+            "Refund penalty: the percent, or the fixed amount",
+            "Read as the basis says. Zero keeps nothing back.", false, false),
+    BOOKING_REFUND_PENALTY_CAP(
+            "booking.refund.penalty.cap", "STRING", "PAYMENTS", "",
+            "Refund penalty cap",
+            "The penalty never exceeds this amount. Blank for no cap.", false, false),
+    BOOKING_REFUND_PENALTY_BANK_SHARE_PERCENT(
+            "booking.refund.penalty.bank.share.percent", "STRING", "PAYMENTS", "0",
+            "The bank's share of a refund penalty (%)",
+            "The rest is the owner's.", false, false),
+    BOOKING_REFUND_WITHIN_DAYS(
+            "booking.refund.within.days", "INTEGER", "PAYMENTS", "0",
+            "Days after closing within which a refund may be asked for",
+            "Zero means any time.", false, false),
+    BOOKING_REVIVE_WITHIN_DAYS(
+            "booking.revive.within.days", "INTEGER", "PAYMENTS", "30",
+            "Days after lapsing within which a booking may be revived",
+            "Zero means any time. After that the buyer books again.", false, false),
+    BOOKING_POLICY_NOTE(
+            "booking.policy.note", "STRING", "PAYMENTS", "",
+            "The seller's note on the booking terms",
+            "Shown to the buyer, in their words, on every booking's terms unless the development has its own.",
+            false, false),
+    BOOKING_EXPIRY_REMINDER_DAYS(
+            "booking.expiry.reminder.days", "INTEGER", "PAYMENTS", "3",
+            "Days before a hold lapses to remind the buyer",
+            "The reminder says the terms are waiting when they are. Zero switches it off.", false, false),
     VALUATION_LENDING_BASIS(
             "valuation.lending.basis", "STRING", "AFFORDABILITY", "FORCED_SALE",
             "Which valuation figure the bank lends against",

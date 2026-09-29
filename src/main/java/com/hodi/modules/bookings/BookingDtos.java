@@ -140,7 +140,9 @@ public final class BookingDtos {
             String introducedByAgentRef,
             String introducedByAgentName,
             /** The latest completed valuation of the home, with what the bank lends against, or null. */
-            com.hodi.modules.valuations.LendingValueService.ValuationFigures valuation) {}
+            com.hodi.modules.valuations.LendingValueService.ValuationFigures valuation,
+            /** NONE, PRESENTED, ACCEPTED or DECLINED: where the buyer's agreement to the terms stands. */
+            String termsState) {}
 
     /**
      * A sale made off the platform, or a booking completed by hand.

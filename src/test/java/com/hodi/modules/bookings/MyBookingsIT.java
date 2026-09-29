@@ -93,6 +93,7 @@ class MyBookingsIT {
         bookingRaw = HashIdUtil.decodeId(booking.id());
         UnitBooking row = rows.findById(bookingRaw).orElseThrow();
         row.setBuyerUserId(buyer);
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
         rows.saveAndFlush(row);
         payments.receive(new ReceiveRequest(booking.id(), new BigDecimal("100000"), null, AppConstant.PAY_CASH,
                 null, null, null, null, null, null));

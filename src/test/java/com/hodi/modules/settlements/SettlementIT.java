@@ -1,6 +1,7 @@
 package com.hodi.modules.settlements;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
 import com.hodi.common.dto.PagedDataRequest;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
@@ -299,6 +300,7 @@ class SettlementIT {
                 new CreateBookingRequest(HashIdUtil.encodeId(unit.getId()), "Asha Mwangi", "+254712000111",
                         "asha@example.invalid", "12345678", PRICE, null, AppConstant.PLAN_LUMP_SUM, 14, null,
                         List.of(new InstalmentLine("All of it", LocalDate.now(), PRICE)), agentRef));
+        agree(booked);
         paymentService.receive(new ReceiveRequest(booked.id(), PRICE, null, AppConstant.PAY_CHEQUE, null,
                 "A7K2", null, null, null, null));
         return bookings.complete(HashIdUtil.encodeId(development.getId()), booked.id());
@@ -369,5 +371,13 @@ class SettlementIT {
                 tenant == null ? List.of() : List.of(tenant), platform, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

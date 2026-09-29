@@ -1,6 +1,7 @@
 package com.hodi.modules.agents;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.exception.ResourceNotFoundException;
 import com.hodi.common.util.RrnGenerator;
@@ -241,6 +242,7 @@ class AgentAttributionIT {
     @DisplayName("an agent sees the bookings they brought and what each has earned them")
     void anAgentSeesTheirOwn() {
         BookingResponse booked = bookings.create(HashIdUtil.encodeId(development.getId()), request(agent.getReference()));
+        agree(booked);
 
         asAgent(agent);
         List<IntroductionResponse> before = earnings.myIntroductions();
@@ -314,5 +316,13 @@ class AgentAttributionIT {
                 tenant == null ? List.of() : List.of(tenant), platform, true);
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities()));
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

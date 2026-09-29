@@ -215,3 +215,40 @@ agreed. Nothing that worsens the buyer's position takes effect until accepted.
    account — with the signed form in the vault required, and a confirm offered when they sign in.
 
 Nothing left to confirm before phase 1.
+
+## 6. Progress
+
+### Phase 1 — policy and terms — done (29 September 2026)
+
+- `V20260929110000__a_booking_is_made_under_terms_the_buyer_agreed_to.sql`: the refund policy columns on
+  `developments` (basis, rate, cap, bank share, refund and revive windows, the note); `booking_terms_templates`
+  seeded with version 1; `booking_terms` (booking, template version, the figures as filled, presented /
+  accepted / declined, channel, the signed form's vault document, the buyer's later confirmation);
+  `unit_bookings.terms_state` (NONE for everything made before, PRESENTED, ACCEPTED, DECLINED) and
+  `expiry_reminder_sent_at`.
+- **The policy** — `BookingPolicyService`: eight platform settings (`booking.refund.penalty.basis / rate /
+  cap / bank.share.percent`, `booking.refund.within.days`, `booking.revive.within.days`,
+  `booking.policy.note`, `booking.expiry.reminder.days`), each overridable per development through the
+  money settings, with the arithmetic (`penaltyOn`: percent of paid, percent of deposit or fixed, capped,
+  never above what was paid) and the sentence a buyer reads. The money settings card shows the policy
+  in force, says when it is the platform's, and edits it beside the commission rates.
+- **The terms** — `BookingTermsService`: one versioned template at the platform (Settings → Booking
+  terms: read, write a new version with the placeholders listed and a preview; old versions kept), one
+  page rendered for a booking from its own kept figures and for a listing from today's policy
+  (`GET /public/properties/{ref}/terms`, folded under the finance panel on every listing). Presented in
+  the transaction that creates a live booking, with the buyer told by email and SMS — through their
+  account, or the contact on the booking when they have none. A completed sale recorded by hand is not
+  presented.
+- **The answer** — the buyer accepts or declines on their booking in the portal, where "Pay" is withheld
+  until they accept and a banner says why; declining cancels the booking with their reason and releases
+  the home, nothing owed. The sales office records a signed form for a buyer without an account — the
+  upload is required, goes into the vault against the booking, and is the acceptance; a buyer who later
+  signs in sees it and may confirm. `assertMayPay` refuses a portal prompt or a staff-recorded payment
+  against PRESENTED or DECLINED terms with a sentence that says what to do; bookings made before terms
+  existed are not gated. Money that arrives through the bank's statement still lands — it is money.
+- **The reminder** — the hourly expiry sweeper now tells each buyer once, `booking.expiry.reminder.days`
+  before a hold lapses, that the terms are waiting when they are.
+- Tests: `BookingTermsIT` (5): presented and filled from the policy, refused until accepted, then paid and
+  agreed; declined; signed on paper and confirmed; the arithmetic under each basis and the listing's page;
+  template versions. Every fixture that pays against a fresh booking now accepts the terms first.
+

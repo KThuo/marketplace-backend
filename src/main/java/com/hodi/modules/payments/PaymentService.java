@@ -102,6 +102,8 @@ public class PaymentService {
         access.assertMayWrite(home, caller);
         Development development = access.developmentOf(home);
         assertOpen(booking);
+        // Money against terms the buyer has not accepted is money nobody agreed to take.
+        com.hodi.modules.bookings.BookingTermsService.assertMayPay(booking, true);
 
         LocalDate paidOn = request.paidOn() == null ? LocalDate.now() : request.paidOn();
         if (paidOn.isAfter(LocalDate.now())) {

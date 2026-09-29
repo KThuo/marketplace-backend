@@ -93,6 +93,8 @@ public class BookingService {
     private final com.hodi.modules.agents.IntroducerService introducers;
     private final AuditService audit;
     private final com.hodi.modules.valuations.LendingValueService lendingValues;
+    private final BookingTermsService terms;
+    private final BookingNotifier notifier;
 
     // ── reading ───────────────────────────────────────────────────────────────
 
@@ -361,7 +363,100 @@ public class BookingService {
         audit.record(AppConstant.ACTION_CREATE, "UnitBooking", saved.getId(), null, snapshot(saved));
         log.info("{} booked for {} as {} ({})", labelOf(property), saved.getBuyerName(), saved.getReference(),
                 state.toLowerCase());
+        // The terms, before a shilling: a live booking is presented; a sale recorded by hand has nothing to agree.
+        if (!completed) terms.present(saved, property, development);
         return saved;
+    }
+
+    // ── the terms ─────────────────────────────────────────────────────────────
+
+    /** The terms on a booking the caller may read, staff side. */
+    @Transactional(readOnly = true)
+    public BookingTermsService.TermsView termsOf(String bookingHashId) {
+        UnitBooking booking = requireReadable(bookingHashId);
+        boolean mayManage = AuthContext.hasAuthority("BOOKINGS_MANAGE");
+        if (mayManage) {
+            try {
+                access.assertMayWrite(access.propertyOf(booking), AuthContext.require());
+            } catch (HodiException e) {
+                mayManage = false;
+            }
+        }
+        return terms.view(booking, false, mayManage);
+    }
+
+    /** The terms on the buyer's own booking. */
+    @Transactional(readOnly = true)
+    public BookingTermsService.TermsView myTerms(String bookingHashId) {
+        return terms.view(requireMine(bookingHashId), true, false);
+    }
+
+    @Transactional
+    public BookingResponse acceptTerms(String bookingHashId) {
+        UnitBooking booking = requireMine(bookingHashId);
+        terms.accept(booking);
+        notifier.toBuyer(booking, "Your booking " + booking.getReference() + " is agreed",
+                "Thank you — you accepted the terms of your booking. Quote " + booking.getPayReference()
+                        + " whenever you pay.");
+        return toResponse(booking);
+    }
+
+    /** The buyer says no: the booking closes as cancelled with their reason, and the home is released. */
+    @Transactional
+    public BookingResponse declineTerms(String bookingHashId, BookingTermsService.DeclineRequest request) {
+        UnitBooking booking = requireMine(bookingHashId);
+        terms.markDeclined(booking, request.reason().trim());
+        return toResponse(close(booking, AppConstant.BOOKING_CANCELLED, "Buyer declined the terms: " + request.reason().trim()));
+    }
+
+    @Transactional
+    public BookingResponse confirmTerms(String bookingHashId) {
+        UnitBooking booking = requireMine(bookingHashId);
+        terms.confirm(booking);
+        return toResponse(booking);
+    }
+
+    /** The sales office records the signed form for a buyer without an account. */
+    @Transactional
+    public BookingResponse recordTermsOnPaper(String bookingHashId, org.springframework.web.multipart.MultipartFile signed) {
+        UnitBooking booking = requireWritable(bookingHashId);
+        terms.acceptOnPaper(booking, access.propertyOf(booking), signed);
+        return toResponse(booking);
+    }
+
+    /** The signed form, for staff who may read the booking, or the buyer whose it is. */
+    @Transactional
+    public com.hodi.modules.kyc.DocumentService.Fetched signedTerms(String bookingHashId) {
+        UserPrincipal caller = AuthContext.require();
+        UnitBooking booking = caller.isBuyer() ? requireMine(bookingHashId) : requireReadable(bookingHashId);
+        return terms.signedForm(booking);
+    }
+
+    // ── the reminder before a hold lapses ─────────────────────────────────────
+
+    /** Buyers whose hold lapses within the horizon and who have not been told. Each is told once. */
+    @Transactional
+    public int remindExpiring(int daysAhead) {
+        if (daysAhead <= 0) return 0;
+        OffsetDateTime now = OffsetDateTime.now();
+        int sent = 0;
+        for (UnitBooking booking : repository.findExpiringUnreminded(now, now.plusDays(daysAhead))) {
+            String when = booking.getExpiresAt().atZoneSameInstant(java.time.ZoneId.of("Africa/Nairobi"))
+                    .format(java.time.format.DateTimeFormatter.ofPattern("d MMMM"));
+            boolean waiting = BookingTermsService.TERMS_PRESENTED.equals(booking.getTermsState());
+            notifier.toBuyer(booking, "Your hold on " + homeLabel(booking) + " ends on " + when,
+                    "Your booking " + booking.getReference() + " holds " + homeLabel(booking) + " until " + when + ". "
+                            + (waiting ? "The terms are still waiting for your answer; nothing can be paid until you accept them."
+                            : "Your first payment confirms it; after that the hold does not lapse."));
+            booking.setExpiryReminderSentAt(now);
+            repository.save(booking);
+            sent++;
+        }
+        return sent;
+    }
+
+    private String homeLabel(UnitBooking booking) {
+        return units.findById(booking.getPropertyId()).map(BookingService::labelOf).orElse("your home");
     }
 
     /**
@@ -775,7 +870,8 @@ public class BookingService {
                 introducer.map(com.hodi.modules.agents.AgentProfile::getReference).orElse(null),
                 introducer.map(com.hodi.modules.agents.AgentProfile::getFullName).orElse(null),
                 lendingValues.latestFor(b.getPropertyId(),
-                        b.getPriceAgreed() != null ? b.getPriceAgreed() : home == null ? null : home.getPrice()).orElse(null));
+                        b.getPriceAgreed() != null ? b.getPriceAgreed() : home == null ? null : home.getPrice()).orElse(null),
+                b.getTermsState());
     }
 
     private InstalmentResponse toInstalment(BookingInstalment i) {

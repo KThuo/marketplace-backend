@@ -102,6 +102,8 @@ class BookingExpiryIT {
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from booking_instalments where booking_id in "
                     + "(select id from unit_bookings where development_id = ?)", development.getId());
+            jdbc.update("delete from booking_terms where booking_id in "
+                    + "(select id from unit_bookings where development_id = ?)", development.getId());
             jdbc.update("delete from unit_bookings where development_id = ?", development.getId());
             jdbc.update("delete from properties where listing_kind = 'UNIT' and development_id = ?", development.getId());
             jdbc.update("delete from development_unit_types where development_id = ?", development.getId());

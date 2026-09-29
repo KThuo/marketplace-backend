@@ -47,6 +47,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class HouseBookingIT {
 
     @Autowired BookingService bookings;
+    @Autowired UnitBookingRepository bookingRows;
     @Autowired PaymentService payments;
     @Autowired PropertyService properties;
     @Autowired DevelopmentUnitRepository rows;
@@ -99,6 +100,7 @@ class HouseBookingIT {
     @DisplayName("a house is booked on its own row, paid for, and completes to SOLD")
     void bookPayComplete() {
         BookingResponse booked = bookings.createForProperty(hash(), booking(new BigDecimal("30000000")));
+        agree(booked);
         assertEquals(AppConstant.BOOKING_RESERVED, booked.state());
         assertNull(booked.developmentName(), "a house has no project");
         assertEquals("4-bed maisonette, Karen", booked.propertyTitle());
@@ -171,5 +173,13 @@ class HouseBookingIT {
         assertThrows(ResourceNotFoundException.class, () -> bookings.createForProperty(hash(), booking(null)));
         assertThrows(ResourceNotFoundException.class, () -> bookings.find(booked.id()));
         assertThrows(ResourceNotFoundException.class, () -> bookings.forProperty(hash()));
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

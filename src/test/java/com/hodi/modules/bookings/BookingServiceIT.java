@@ -134,6 +134,7 @@ class BookingServiceIT {
     @DisplayName("booking a unit reserves it and puts the buyer on the unit for the table to read")
     void bookingReservesTheUnit() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
 
         assertNotNull(saved.id());
         assertEquals(AppConstant.BOOKING_RESERVED, saved.state());
@@ -236,6 +237,7 @@ class BookingServiceIT {
     @DisplayName("agreeing clears the expiry, because a commitment does not run out")
     void agreeingClearsTheExpiry() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
         BookingResponse agreed = service.agree(devId(), saved.id());
 
         assertEquals(AppConstant.BOOKING_AGREED, agreed.state());
@@ -250,6 +252,7 @@ class BookingServiceIT {
     @DisplayName("the first payment agrees a reserved booking: the clock stops and the home is reserved, not held")
     void theFirstPaymentAgreesTheBooking() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
         assertEquals(AppConstant.BOOKING_RESERVED, saved.state());
         assertNotNull(saved.expiresAt());
 
@@ -276,6 +279,7 @@ class BookingServiceIT {
                 new InstalmentLine("Deposit", LocalDate.now().minusDays(30), new BigDecimal("950000")),
                 new InstalmentLine("Second", LocalDate.now().plusDays(30), new BigDecimal("4275000")),
                 new InstalmentLine("Final", LocalDate.now().plusDays(90), new BigDecimal("4275000")))));
+        agree(saved);
 
         paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("950000"),
                 LocalDate.now().minusDays(28), AppConstant.PAY_CHEQUE, null,
@@ -295,6 +299,7 @@ class BookingServiceIT {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("Deposit", LocalDate.now().minusDays(30), new BigDecimal("950000")),
                 new InstalmentLine("Final", LocalDate.now().plusDays(90), new BigDecimal("8550000")))));
+        agree(saved);
 
         BookingResponse after = service.find(devId(), saved.id());
         assertEquals(0, after.overdue().compareTo(new BigDecimal("950000")),
@@ -308,6 +313,7 @@ class BookingServiceIT {
     void completingRefusedWithABalance() {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("All of it", LocalDate.now(), new BigDecimal("9500000")))));
+        agree(saved);
 
         HodiException e = assertThrows(HodiException.class, () -> service.complete(devId(), saved.id()));
         assertTrue(e.getMessage().contains("9500000"), e.getMessage());
@@ -321,6 +327,7 @@ class BookingServiceIT {
     void completingSellsTheUnit() {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("All of it", LocalDate.now(), new BigDecimal("9500000")))));
+        agree(saved);
         paymentService.receive(new ReceiveRequest(saved.id(), new BigDecimal("9500000"), null,
                 AppConstant.PAY_CHEQUE, null, "A7K2", null, null, null, null));
 
@@ -339,6 +346,7 @@ class BookingServiceIT {
     void reschedulingKeepsTheOldPlan() {
         BookingResponse saved = service.create(devId(), booking(List.of(
                 new InstalmentLine("March", LocalDate.now().plusDays(10), new BigDecimal("9500000")))));
+        agree(saved);
 
         List<InstalmentResponse> revised = service.reschedule(devId(), saved.id(),
                 new RescheduleRequest(List.of(
@@ -367,6 +375,7 @@ class BookingServiceIT {
     @DisplayName("a booked unit cannot be held, sold or released through the unit path")
     void unitPathRefusesABookedUnit() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
 
         /*
          * The whole point of the boundary. Two writers of a unit's sale state is how a unit ends up sold with
@@ -388,6 +397,7 @@ class BookingServiceIT {
     @DisplayName("once the booking is closed the unit path works again")
     void unitPathWorksOnceFreed() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
         service.cancel(devId(), saved.id(), new CloseBookingRequest("Withdrawn."));
 
         var held = unitService.reserve(devId(), unitId(), new DevelopmentUnitDtos.ReserveUnitRequest(
@@ -401,6 +411,7 @@ class BookingServiceIT {
     @DisplayName("an expired reservation reads as expired before any sweep has run")
     void expiryIsDerivedNotSwept() {
         BookingResponse saved = service.create(devId(), booking(null));
+        agree(saved);
         expire(saved.id());
 
         UnitBooking reloaded = bookings.findById(HashIdUtil.decodeId(saved.id())).orElseThrow();
@@ -418,4 +429,12 @@ class BookingServiceIT {
      * finds nothing and returns false, and an assertion that it returned false then passes while proving
      * nothing at all. That is worse than a failing test, and it is what the first draft of this file did.
      */
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookings.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookings.saveAndFlush(row);
+    }
 }

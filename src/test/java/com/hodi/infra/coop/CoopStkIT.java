@@ -202,7 +202,8 @@ class CoopStkIT {
                 List.of(new InstalmentLine("Deposit", LocalDate.now().minusDays(10), new BigDecimal("950000")),
                         new InstalmentLine("Balance", LocalDate.now().plusDays(90), new BigDecimal("8550000")))));
         bookingRaw = HashIdUtil.decodeId(booking.id());
-        jdbc.update("update unit_bookings set buyer_user_id = ? where id = ?", buyerUser, bookingRaw);
+        // The buyer accepted the terms: every prompt here is about what happens after that.
+        jdbc.update("update unit_bookings set buyer_user_id = ?, terms_state = 'ACCEPTED' where id = ?", buyerUser, bookingRaw);
 
         // The seller's own prompt account, approved: the operator code Co-op issued. The seller's, rather
         // than the platform's, because this database may already hold a platform account and the rule
@@ -249,6 +250,8 @@ class CoopStkIT {
                 + "(select reference from payment_intents where property_id in (select id from properties "
                 + "where development_id in (select id from developments where name = ?)))", DEVELOPMENT);
         jdbc.update("delete from booking_instalments where booking_id in (select id from unit_bookings "
+                + "where development_id in (select id from developments where name = ?))", DEVELOPMENT);
+        jdbc.update("delete from booking_terms where booking_id in (select id from unit_bookings "
                 + "where development_id in (select id from developments where name = ?))", DEVELOPMENT);
         jdbc.update("delete from unit_bookings where development_id in "
                 + "(select id from developments where name = ?)", DEVELOPMENT);

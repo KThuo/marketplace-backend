@@ -34,9 +34,17 @@ import java.util.List;
 public class BookingExpirySweeper {
 
     private final BookingService bookings;
+    private final com.hodi.modules.configurations.ConfigurationService configs;
 
     @Scheduled(cron = "${hodi.bookings.expiry-cron:0 10 * * * *}")
     public void sweep() {
+        try {
+            int reminded = bookings.remindExpiring(configs.getInt(
+                    com.hodi.enums.ConfigKey.BOOKING_EXPIRY_REMINDER_DAYS, 3));
+            if (reminded > 0) log.info("Bookings: {} buyers reminded that their hold is about to lapse", reminded);
+        } catch (Exception e) {
+            log.warn("Could not send hold reminders: {}", e.getMessage());
+        }
         List<Long> due = bookings.findLapsedIds();
         if (due.isEmpty()) return;
 

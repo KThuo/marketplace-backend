@@ -1,6 +1,7 @@
 package com.hodi.modules.payments;
 
 import com.hodi.common.AppConstant;
+import com.hodi.modules.bookings.BookingTermsService;
 import com.hodi.modules.properties.Property;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
@@ -101,7 +102,9 @@ class PaymentServiceIT {
                 new BigDecimal("9500000"), new BigDecimal("950000"), AppConstant.PLAN_INSTALMENTS, 14, null,
                 List.of(new InstalmentLine("Deposit", LocalDate.now().minusDays(10), new BigDecimal("950000")),
                         new InstalmentLine("Balance", LocalDate.now().plusDays(90),
-                                new BigDecimal("8550000")))));    }
+                                new BigDecimal("8550000")))));
+        agree(booking);
+    }
 
     private void signIn(Long tenant, String... permissions) {
         User user = User.builder().id(1L).username("pay-test").password("x")
@@ -378,5 +381,13 @@ class PaymentServiceIT {
         assertEquals(types.findByCode(AppConstant.PAY_CASH).orElseThrow().getName(),
                 queries.detail(viaTill.id()).payment().arrivedAs());
         assertNotNull(queries.detail(viaTill.id()).booking(), "the receipt carries the booking as it stands");
+    }
+
+    /** The buyer accepted the terms: every fixture here is about what happens after that. */
+    private void agree(BookingResponse b) {
+        // Through the entity, not JDBC: the booking is already in the persistence context and would read stale.
+        UnitBooking row = bookingRows.findById(HashIdUtil.decodeId(b.id())).orElseThrow();
+        row.setTermsState(BookingTermsService.TERMS_ACCEPTED);
+        bookingRows.saveAndFlush(row);
     }
 }

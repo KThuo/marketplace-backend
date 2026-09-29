@@ -147,6 +147,18 @@ public class Development {
      */
     @Column(name = "agent_commission_paid_by", length = 8) private String agentCommissionPaidBy;
 
+    /**
+     * What a booking here is made under when refunded or revived (lapsed-bookings plan §2.2). Null means the
+     * platform default; what a buyer agreed to is kept on their booking's terms, not read from here.
+     */
+    @Column(name = "refund_penalty_basis", length = 20) private String refundPenaltyBasis;
+    @Column(name = "refund_penalty_rate", precision = 15, scale = 3) private BigDecimal refundPenaltyRate;
+    @Column(name = "refund_penalty_cap", precision = 15, scale = 2) private BigDecimal refundPenaltyCap;
+    @Column(name = "refund_penalty_bank_share_percent", precision = 6, scale = 3) private BigDecimal refundPenaltyBankSharePercent;
+    @Column(name = "refund_within_days") private Integer refundWithinDays;
+    @Column(name = "revive_within_days") private Integer reviveWithinDays;
+    @Column(name = "booking_policy_note", columnDefinition = "TEXT") private String bookingPolicyNote;
+
     public static final String AGENT_PAID_BY_SELLER = "SELLER";
     public static final String AGENT_PAID_BY_BANK = "BANK";
 
