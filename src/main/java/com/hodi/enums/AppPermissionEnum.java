@@ -150,6 +150,11 @@ public enum AppPermissionEnum {
     SELLERS_VIEW("See seller applications", AppModuleEnum.TENANTS, true),
     SELLERS_DECIDE("Approve or refuse a seller application", AppModuleEnum.TENANTS, true),
 
+    // ── CAMPAIGNS ─────────────────────────────────────────────────────────────
+    CAMPAIGNS_VIEW("See campaigns and what they sent", AppModuleEnum.CAMPAIGNS),
+    CAMPAIGNS_MANAGE("Write a campaign and submit it for approval", AppModuleEnum.CAMPAIGNS),
+    CAMPAIGNS_APPROVE("Approve a campaign before it is sent", AppModuleEnum.CAMPAIGNS),
+
     // ── SETTINGS ──────────────────────────────────────────────────────────────
     APP_SETTINGS_VIEW("See settings", AppModuleEnum.APP_SETTINGS),
     APP_SETTINGS_UPDATE("Change global settings", AppModuleEnum.APP_SETTINGS, true),

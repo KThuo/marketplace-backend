@@ -27,6 +27,16 @@ public class NotificationController {
     private final NotificationService notifications;
     private final NotificationCatalogue catalogue;
     private final ReminderRuleService reminders;
+    private final UnsubscribeService unsubscribe;
+
+    // ── the way out, for anybody with the link ────────────────────────────────
+
+    /** Records the refusal a signed link stands for. Public: it must work from a phone without signing in. */
+    @PostMapping("/public/unsubscribe")
+    public ApiResponse<Map<String, String>> unsubscribe(@RequestBody Map<String, String> body) {
+        String purpose = unsubscribe.unsubscribe(body == null ? null : body.get("token"));
+        return ApiResponse.success("You will not receive these messages any more.", Map.of("purpose", purpose));
+    }
 
     // ── the reminders ─────────────────────────────────────────────────────────
 

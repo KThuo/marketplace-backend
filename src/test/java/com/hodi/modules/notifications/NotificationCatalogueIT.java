@@ -48,7 +48,7 @@ class NotificationCatalogueIT {
     @DisplayName("every event a module sends is catalogued, with the placeholders its wording asks for")
     void seeded() {
         List<EventRow> all = catalogue.all();
-        assertEquals(43, all.size(), "the whole inventory, one row per notice a module or a reminder sends");
+        assertEquals(44, all.size(), "the whole inventory, one row per notice a module, a reminder or a campaign sends");
         for (EventRow row : all) {
             for (String name : com.hodi.common.util.Placeholders.namesIn(row.subject() + " " + row.line())) {
                 assertTrue(row.placeholders().contains(name) || row.composed(),

@@ -113,6 +113,18 @@ public class MailTemplate {
     }
 
     /**
+     * A campaign: the author's paragraphs, a button when they gave one, and the caller's footer with the
+     * way out — the one kind of message that must carry it.
+     */
+    public String campaign(String firstName, List<String> paragraphs, String ctaLabel, String href, String footerHtml) {
+        MailPalette palette = palette();
+        StringBuilder body = new StringBuilder(1024).append(greeting(palette, firstName));
+        for (String p : paragraphs) body.append(paragraph(palette, p));
+        if (ctaLabel != null && !ctaLabel.isBlank() && href != null && !href.isBlank()) body.append(button(palette, ctaLabel, href));
+        return shell(palette, body.toString(), footerHtml(palette, null) + footerHtml);
+    }
+
+    /**
      * A list of things, each with its own link.
      *
      * <p>{@code footerHtml} is the caller's, because a digest is the one kind of message somebody can turn

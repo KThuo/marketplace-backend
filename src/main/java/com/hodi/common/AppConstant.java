@@ -167,6 +167,7 @@ public final class AppConstant {
     public static final String APPROVAL_ENTITY_BENEFICIARY = "BENEFICIARY";
     /** A valuation report, checked by the platform before its figure counts. */
     public static final String APPROVAL_ENTITY_VALUATION = "VALUATION";
+    public static final String APPROVAL_ENTITY_CAMPAIGN  = "CAMPAIGN";
     public static final String APPROVAL_ACTION_REPORT = "REPORT";
     public static final String APPROVAL_ACTION_SEND = "SEND";
 
@@ -372,6 +373,8 @@ public final class AppConstant {
     public static final String CONSENT_SOURCE_PREFERENCES  = "PREFERENCES";
     /** An account somebody else created: the opening position, never a marketing consent. */
     public static final String CONSENT_SOURCE_ONBOARDING   = "ONBOARDING";
+    /** The one-click link at the foot of a promotional message, which works without signing in. */
+    public static final String CONSENT_SOURCE_UNSUBSCRIBE  = "UNSUBSCRIBE_LINK";
 
     // ── Saved searches (M2, BRD FR022–FR024) ─────────────────────────────────
     /** As soon as the dispatcher next polls — a poll a buyer cannot tell apart from a push. */

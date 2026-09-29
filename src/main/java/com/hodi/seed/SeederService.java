@@ -858,6 +858,8 @@ public class SeederService {
                 "SITE_VISITS_VIEW", "SITE_VISITS_DECIDE", "SITE_VISITS_COMPLETE",
                 "PURCHASE_REQUESTS_VIEW", "PURCHASE_REQUESTS_DECIDE",
                 "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUATIONS_REQUEST",
+                // Writing to their own buyers, when the platform allows organisations to; checked by a second person.
+                "CAMPAIGNS_VIEW", "CAMPAIGNS_MANAGE", "CAMPAIGNS_APPROVE",
                 // What people said about them, and the right of reply (M7).
                 "RATINGS_VIEW", "RATINGS_REPLY",
                 // Their own week (M12), and what they pay for and owe (M13).

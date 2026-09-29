@@ -514,6 +514,11 @@ public enum AppModuleEnum {
             "SUPER_ADMIN,SUPPORT_ADMIN,PLATFORM_AUDITOR,SELLER_OWNER,LISTING_MANAGER,SALES_AGENT,AGENT,"
                     + "BANK_ADMIN,MORTGAGE_OFFICER,CREDIT_ANALYST"),
 
+    CAMPAIGNS("CAMPAIGNS", "Campaigns",
+            "Newsletters and offers to buyers who agreed to hear from us, checked before they go",
+            true, 94,
+            "SUPER_ADMIN,SELLER_OWNER,BANK_ADMIN"),
+
     REPORTS("REPORTS", "Reports",
             "The figures behind the platform, scoped to whoever is asking",
             true, 95,

@@ -218,6 +218,22 @@ public enum ConfigKey {
             "When on, a seller's or the bank's administrator may reword the messages their own staff and "
                     + "buyers receive; the platform's wording is the fallback. Off, they may only switch events "
                     + "off or choose channels.", false, false),
+    NOTIFY_CAMPAIGN_WINDOW_START(
+            "notify.campaign.window.start", "STRING", "NOTIFY", "08:00",
+            "Campaigns are sent from this time (East Africa Time)",
+            "No marketing at two in the morning. Transactional messages are not held.", false, false),
+    NOTIFY_CAMPAIGN_WINDOW_END(
+            "notify.campaign.window.end", "STRING", "NOTIFY", "20:00",
+            "Campaigns are sent until this time (East Africa Time)",
+            "A campaign still going at the end of the window resumes the next morning.", false, false),
+    NOTIFY_CAMPAIGN_DAILY_CAP(
+            "notify.campaign.daily.cap", "INTEGER", "NOTIFY", "2000",
+            "Campaign messages per channel per day",
+            "Across every campaign. What does not fit today goes tomorrow.", false, false),
+    NOTIFY_CAMPAIGN_BATCH_SIZE(
+            "notify.campaign.batch.size", "INTEGER", "NOTIFY", "100",
+            "Campaign recipients per minute",
+            "The sweep sends this many each minute while the window is open.", false, false),
     NOTIFY_RETRY_MAX_ATTEMPTS(
             "notify.retry.max.attempts", "INTEGER", "NOTIFY", "5",
             "Times a failed send is tried again",

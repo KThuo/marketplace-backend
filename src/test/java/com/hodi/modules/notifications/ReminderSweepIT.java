@@ -200,6 +200,8 @@ class ReminderSweepIT {
         return sentRows.findByRuleCodeAndSubjectTypeAndSubjectIdAndSubjectKey(rule, type, id, key).map(ReminderSent::getTimes).orElse(0);
     }
 
+    private int nextUnit = 2;
+
     private Long book(List<InstalmentLine> plan) {
         signInAsPlatform();
         BookingResponse booking = bookings.create(HashIdUtil.encodeId(development.getId()), new CreateBookingRequest(
@@ -215,7 +217,7 @@ class ReminderSweepIT {
         unit = units.save(Property.builder()
                 .listingKind("UNIT").propertyType("APARTMENT").title("Unit")
                 .reference(RrnGenerator.generate("UN")).developmentId(development.getId())
-                .unitTypeId(home.getUnitTypeId()).unitLabel("R-1-0" + (System.nanoTime() % 9))
+                .unitTypeId(home.getUnitTypeId()).unitLabel("R-1-" + String.format("%02d", nextUnit++))
                 .saleState(AppConstant.UNIT_AVAILABLE).constructionStatus(AppConstant.BUILD_PLANNED).build());
         return id;
     }

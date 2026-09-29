@@ -292,3 +292,42 @@ Nothing left to confirm before phase 1.
   unanswered said, said again as the rule repeats, and silent once answered; the layering and the
   "said once / again every N days" arithmetic as pure functions.
 
+### Phase 5 — campaigns — done (29 September 2026)
+
+- `V20260929210000__a_campaign_is_written_checked_and_sent_inside_the_window.sql`: `campaigns` (owner —
+  the platform, or an organisation — title, audience filters by county and joining date, channels,
+  subject, body, a button, state DRAFT | SUBMITTED | APPROVED | SENDING | SENT | CANCELLED, when to
+  send, the counts), `campaign_sends` (a row per recipient, fixed at approval), and a CAMPAIGN event in
+  the catalogue that decides on/off and the channels a campaign may use.
+- **Whose campaign**: the platform's go to every live buyer with promotional consent on at least one of
+  the chosen channels, narrowed by county (their saved searches or enquiries) or by when they joined. An
+  organisation's go only to its own buyers — the people who enquired about, offered on or booked its
+  homes — and only behind `notify.organisation.wording.enabled` (decision 5). New module CAMPAIGNS with
+  `CAMPAIGNS_VIEW`, `CAMPAIGNS_MANAGE`, `CAMPAIGNS_APPROVE`; the seller owner template carries all three.
+- **Checked before it goes**: submitting is an approval (`CampaignApprovalHandler`); the checker sees
+  the words, the audience count and the channels, and the author cannot approve their own. At approval
+  the audience is fixed as a row per recipient, so the number the checker saw is the number it goes to.
+  A cancellation before the end stops what has not gone.
+- **Sent inside the window**: `CampaignSender` every minute, under an advisory lock, between
+  `notify.campaign.window.start` and `.end` (08:00–20:00 East Africa Time by default), at
+  `notify.campaign.batch.size` a minute and no more than `notify.campaign.daily.cap` a day across every
+  campaign. Each recipient goes through the notification service: consent asked again at the moment of
+  sending, the campaign's channels within the catalogue's, a log row per channel, an inbox line when
+  in-app is on. A "send me a test" goes to the author alone, now.
+- **The way out**: every promotional email and text carries a link with a signed token
+  (`UnsubscribeService`, HMAC over the user and the purpose with the platform's secret) that lands on a
+  public page, records a refusal of the purpose on every channel with source UNSUBSCRIBE_LINK, and
+  signs nobody in. A forged or transactional token is refused.
+- Screens: Campaigns under Platform (and for an organisation's administrator): list with state,
+  audience and outcome; the editor with the audience count as you write; one campaign's page with the
+  words as the checker reads them, submit, approve or send back, cancel, and test; the approvals queue
+  labels it; the public unsubscribe page.
+- Tests: `CampaignsIT` (3): the audience is who agreed and the refuser is not in it; the author submits
+  and cannot approve; a second person approves and the audience is fixed; a buyer who changed their
+  mind between approval and their turn is sent to on the channel they still allow; the window's
+  arithmetic; the email carries the way out. The unsubscribe token round trip, its idempotence, a forged
+  token and a transactional one refused. An organisation refused until the platform opens the door.
+
+The plan is complete. Not walked in the browser: the session was expired throughout; every screen was
+built against the endpoints the tests exercise.
+
