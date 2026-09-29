@@ -130,11 +130,19 @@ plan, the penalty and the refund window, that a cancellation is final, what revi
 told to the buyer before they commit, and their answer is kept. Transparency is the requirement
 (decision 3); an agreement nobody can produce later is not one.
 
-**The terms** are a snapshot, not a link to live settings: `booking_terms` (booking, version, the terms
-as structured fields — price, deposit due, plan, hold days and expiry, penalty basis/rate/cap, refund
-window, revive window, "cancellation is final", the seller's policy note — plus the rendered text the
-buyer saw, when it was presented, and the outcome: accepted at / declined at, by whom, through which
-channel). A policy change after the booking changes nothing for it; the row says what was agreed.
+**The terms** are one page, filled for any booking or listing. A **terms template** lives at the
+platform (`booking_terms_templates`: version, the text with placeholders, active from), editable with a
+new version each time; one page, `/app/terms/booking/{booking}` and `/terms/listing/{reference}` on the
+public side, renders the active version with the live figures — price, deposit due, plan, hold days and
+expiry, penalty basis/rate/cap, refund and revive windows, "cancellation is final", the seller's policy
+note. Nothing is duplicated: the policy is read from the development's money settings, the figures from
+the booking.
+
+**What acceptance keeps** is small: `booking_terms` (booking, template version, the filled values as they
+were that day, presented at, accepted at / declined at, by whom, through which channel — portal, or on
+paper with the vault document). The booking keeps linking to the same page, which renders *that* version
+with *those* values, so a later change to the rate or the wording does not rewrite what the buyer
+agreed. The record is the version and the numbers; the page is the presentation.
 
 **When they are presented:**
 
@@ -144,9 +152,11 @@ channel). A policy change after the booking changes nothing for it; the row says
 - A booking made **by the sales office** for a walk-in buyer: the buyer is sent the terms (email and
   SMS link, to the booking in the portal — a buyer with no account is invited to make one, as an offer's
   buyer is today). Until accepted, the same rule: no portal payment, and a payment recorded by staff
-  against an unaccepted booking is refused unless staff record acceptance **on paper** — a checkbox
-  saying the buyer signed the printed terms, with the signed form uploaded to the vault against the
-  booking. The audit says which way it was accepted.
+  against an unaccepted booking is refused unless staff record acceptance **on paper** — the buyer
+  signed the printed terms, and the signed form is uploaded to the vault against the booking; the upload
+  is required, not a checkbox. The audit says which way it was accepted. When that buyer later has an
+  account, the portal shows the terms as "accepted on paper on <date>" with the form, and offers a
+  confirm — welcome, not required.
 - **Declined**: the booking is cancelled with the reason "Buyer declined the terms", the home released,
   nothing owed either way — a declined hold has no penalty, because nothing was committed.
 - **Not answered** within the hold: it lapses as any hold does; the reminder before expiry says the
@@ -195,11 +205,13 @@ agreed. Nothing that worsens the buyer's position takes effect until accepted.
 5. Following from 3: everything that can affect the buyer is presented before they commit, and their
    acceptance or refusal is kept (§2.5).
 
-## 5. Still to confirm
+6. **The terms are a page, not a copy** — a versioned platform template filled with live figures for any
+   booking or listing; acceptance keeps the version and the figures, nothing more.
+7. **The refund is paid to a provided account**, typed on the request or the proposal and checked with
+   Co-op, whoever holds it.
+8. **Revival** goes straight to AGREED when money stands on the booking, else to RESERVED with a fresh
+   hold.
+9. **Both kinds of acceptance count**: the buyer's own in the portal, and on paper for a buyer without an
+   account — with the signed form in the vault required, and a confirm offered when they sign in.
 
-1. **The refund's payee.** Always the buyer named on the booking, to an account typed on the form — or
-   may it go to a third party (a parent who paid), with a reason?
-2. **Revival's state.** Straight to AGREED when money stands on it (the design), or always back to
-   RESERVED with a fresh hold?
-3. **Acceptance on paper.** Is a staff checkbox with the signed form in the vault enough, or must the
-   buyer's own acceptance in the portal (or an SMS code) be the only kind that counts?
+Nothing left to confirm before phase 1.
