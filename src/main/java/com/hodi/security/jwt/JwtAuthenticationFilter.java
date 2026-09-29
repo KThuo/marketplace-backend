@@ -127,6 +127,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     principal, null, principal.getAuthorities());
             auth.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
             SecurityContextHolder.getContext().setAuthentication(auth);
+            /*
+             * Onto the log line, beside the trace id, for the rest of this request. The trace id is what
+             * finds every line an action wrote; the username is what says who wrote it, and an audit row
+             * quotes both — so a line in the file and a row in the trail point at each other. Cleared with
+             * the rest of the MDC when the request ends (ActionIdFilter).
+             */
+            org.slf4j.MDC.put(com.hodi.common.AppConstant.MDC_USERNAME, principal.getUsername());
+            if (principal.getTenantId() != null) {
+                org.slf4j.MDC.put(com.hodi.common.AppConstant.MDC_TENANT, String.valueOf(principal.getTenantId()));
+            }
         } catch (JwtException | IllegalArgumentException e) {
             // Expired, malformed, wrong issuer, or missing a required claim: leave the context
             // unauthenticated and let the entry point answer 401. The client's refresh flow takes it

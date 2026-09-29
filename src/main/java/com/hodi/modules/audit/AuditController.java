@@ -13,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -90,6 +91,53 @@ public class AuditController {
         var page = repository.findAll(spec,
                 request.toPageable(Sort.by(Sort.Direction.DESC, "createdAt")));
         return ApiResponse.success(PagedResponse.from(page, AuditController::toResponse));
+    }
+
+    /**
+     * One row in full: what was there before, what was there after, and the fields that differ.
+     *
+     * <p>The payloads are what the sanitizer stored — anything that looked like a credential was already
+     * redacted before the row was written — and travel as the JSON strings they are; the client lays them
+     * out. {@code actionId} is the trace: the same value is on every log line the action wrote, with the
+     * user beside it, which is how a row here becomes a search in the file.
+     */
+    public record AuditDetail(AuditResponse row, String beforePayload, String afterPayload,
+                              java.util.List<String> changedFields) {}
+
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAuthority('AUDIT_VIEW')")
+    @Transactional(readOnly = true)
+    public ApiResponse<AuditDetail> find(@PathVariable String id) {
+        AuditLog row = repository.findOne(SearchSpecs.allOf(
+                        SearchSpecs.eq("id", HashIdUtil.decodeId(id)),
+                        TenantScope.restrict("tenantId")))
+                .orElseThrow(() -> new com.hodi.common.exception.ResourceNotFoundException("Audit entry", id));
+        return ApiResponse.success(toDetail(row));
+    }
+
+    /** One of the caller's own rows, in full — the same rule as {@link #mine}: their own history is theirs. */
+    @GetMapping("/mine/{id}")
+    @PreAuthorize("isAuthenticated()")
+    @Transactional(readOnly = true)
+    public ApiResponse<AuditDetail> findMine(@PathVariable String id) {
+        Long me = com.hodi.security.principal.AuthContext.require().getUserId();
+        AuditLog row = repository.findOne(SearchSpecs.allOf(
+                        SearchSpecs.eq("id", HashIdUtil.decodeId(id)),
+                        SearchSpecs.eq("actorUserId", me)))
+                .orElseThrow(() -> new com.hodi.common.exception.ResourceNotFoundException("Audit entry", id));
+        return ApiResponse.success(toDetail(row));
+    }
+
+    private static AuditDetail toDetail(AuditLog row) {
+        java.util.List<String> changed = new java.util.ArrayList<>();
+        String raw = row.getChangedFields();
+        if (raw != null && raw.length() > 2) {
+            for (String f : raw.substring(1, raw.length() - 1).split(",")) {
+                String name = f.trim().replaceAll("^\"|\"$", "");
+                if (!name.isEmpty()) changed.add(name);
+            }
+        }
+        return new AuditDetail(toResponse(row), row.getBeforePayload(), row.getAfterPayload(), changed);
     }
 
     private static AuditResponse toResponse(AuditLog row) {
