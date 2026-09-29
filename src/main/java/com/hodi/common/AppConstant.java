@@ -355,6 +355,8 @@ public final class AppConstant {
     // there are three of them and not thirty.
     public static final String CONSENT_CHANNEL_EMAIL = "EMAIL";
     public static final String CONSENT_CHANNEL_SMS   = "SMS";
+    /** The bell and the page: a message the person opens, never one pushed at them. */
+    public static final String CONSENT_CHANNEL_IN_APP = "IN_APP";
 
     /**
      * Messages that carry out something the person asked for: a reset link, a viewing confirmation, a
@@ -368,6 +370,8 @@ public final class AppConstant {
     /** How an answer was obtained. Evidence about the evidence. */
     public static final String CONSENT_SOURCE_REGISTRATION = "REGISTRATION";
     public static final String CONSENT_SOURCE_PREFERENCES  = "PREFERENCES";
+    /** An account somebody else created: the opening position, never a marketing consent. */
+    public static final String CONSENT_SOURCE_ONBOARDING   = "ONBOARDING";
 
     // ── Saved searches (M2, BRD FR022–FR024) ─────────────────────────────────
     /** As soon as the dispatcher next polls — a poll a buyer cannot tell apart from a push. */

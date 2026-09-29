@@ -11,6 +11,8 @@ public interface ConsentRepository extends JpaRepository<ConsentPreference, Long
 
     List<ConsentPreference> findByUserIdOrderByPurposeAscChannelAsc(Long userId);
 
+    boolean existsByUserId(Long userId);
+
     Optional<ConsentPreference> findByUserIdAndChannelAndPurpose(Long userId, String channel, String purpose);
 
     /**

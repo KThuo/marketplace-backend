@@ -45,7 +45,7 @@ public class ConsentService {
 
     /** Every combination a person can hold a position on. The grid the preferences screen renders. */
     public static final List<String> CHANNELS =
-            List.of(AppConstant.CONSENT_CHANNEL_EMAIL, AppConstant.CONSENT_CHANNEL_SMS);
+            List.of(AppConstant.CONSENT_CHANNEL_EMAIL, AppConstant.CONSENT_CHANNEL_SMS, AppConstant.CONSENT_CHANNEL_IN_APP);
     public static final List<String> PURPOSES = List.of(
             AppConstant.CONSENT_TRANSACTIONAL,
             AppConstant.CONSENT_PROPERTY_ALERTS,
@@ -211,8 +211,19 @@ public class ConsentService {
      * <p>Empty means send nothing. Not "fall back to email" — an empty result is a recorded refusal, and the
      * only correct handling of it is silence.
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public Set<String> channelsFor(Long userId, String purpose) {
+        if (userId == null) return Set.of();
+        if (!repository.existsByUserId(userId)) {
+            // A person nobody ever asked. Until 29 September 2026 an account created by somebody else — a
+            // seller's owner, an administrator, a valuer — had no rows, and every notice to them was dropped
+            // as if refused. The honest position is the opening one: transactional and in-app granted, the
+            // rest refused, marked as assumed.
+            log.warn("User {} had no consent position; recording the opening one", userId);
+            for (String channel : CHANNELS) {
+                for (String p : PURPOSES) materialise(userId, channel, p);
+            }
+        }
         return Set.copyOf(repository.grantedChannels(userId, purpose));
     }
 
@@ -228,23 +239,44 @@ public class ConsentService {
      */
     @Transactional
     public void captureAtRegistration(Long userId, boolean propertyAlerts) {
+        capture(userId, propertyAlerts, AppConstant.CONSENT_SOURCE_REGISTRATION, "self-registration");
+    }
+
+    /**
+     * Records the opening position of an account somebody else created — a seller's owner, a platform user,
+     * a valuer, an agent, a vendor.
+     *
+     * <p>Transactional and in-app granted, because they are how the platform tells this person about the
+     * work they were given an account for; alerts and marketing refused, because nobody asked them. The
+     * source says it was onboarding, so their history reads right.
+     */
+    @Transactional
+    public void captureAtOnboarding(Long userId) {
+        if (repository.existsByUserId(userId)) return;
+        capture(userId, false, AppConstant.CONSENT_SOURCE_ONBOARDING,
+                AuthContext.current().map(p -> p.getUsername()).orElse(AppConstant.USERNAME_SYSTEM));
+    }
+
+    private void capture(Long userId, boolean propertyAlerts, String source, String by) {
         String ip = remoteIp();
         String userAgent = userAgent();
         for (String channel : CHANNELS) {
             for (String purpose : PURPOSES) {
                 boolean granted = AppConstant.CONSENT_TRANSACTIONAL.equals(purpose)
+                        // In-app is a page the person opens, so it is on unless they switch it off.
+                        || AppConstant.CONSENT_CHANNEL_IN_APP.equals(channel)
                         || (AppConstant.CONSENT_PROPERTY_ALERTS.equals(purpose) && propertyAlerts);
                 repository.save(ConsentPreference.builder()
                         .userId(userId)
                         .channel(channel)
                         .purpose(purpose)
                         .granted(granted)
-                        .source(AppConstant.CONSENT_SOURCE_REGISTRATION)
+                        .source(source)
                         .capturedAt(OffsetDateTime.now())
                         .capturedIp(ip)
                         .capturedUserAgent(userAgent)
-                        .createdBy("self-registration")
-                        .updatedBy("self-registration")
+                        .createdBy(by)
+                        .updatedBy(by)
                         .build());
             }
         }
@@ -260,7 +292,8 @@ public class ConsentService {
      * name for a position nobody was asked about.
      */
     private ConsentPreference materialise(Long userId, String channel, String purpose) {
-        boolean mandatory = AppConstant.CONSENT_TRANSACTIONAL.equals(purpose);
+        boolean mandatory = AppConstant.CONSENT_TRANSACTIONAL.equals(purpose)
+                || AppConstant.CONSENT_CHANNEL_IN_APP.equals(channel);
         return repository.save(ConsentPreference.builder()
                 .userId(userId)
                 .channel(channel)

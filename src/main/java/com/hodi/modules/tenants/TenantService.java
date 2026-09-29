@@ -74,6 +74,7 @@ public class TenantService {
     public static final String OWNER_GROUP_NAME = "Organisation Owner";
 
     private final TenantRepository repository;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final UserRepository users;
     private final UserProfileRepository profiles;
     private final com.hodi.modules.properties.PropertyRepository propertiesRepo;
@@ -419,6 +420,7 @@ public class TenantService {
         passwords.applyTo(owner, temporary);
         owner.setMustChangePassword(true);
         User saved = users.save(owner);
+        consent.captureAtOnboarding(saved.getId());
         // The profile is what attaches them to this organisation as its owner.
         userProfiles.provisionFirst(saved.getId(), ownerType, group, tenant.getId(), tenant.getName(),
                 null, null);

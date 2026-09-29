@@ -76,6 +76,7 @@ import java.util.stream.Collectors;
 public class SellerApplicationService {
 
     private final SellerApplicationRepository repository;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final SellerIdentityCheckRepository checks;
     private final SellerApplicationDocumentRepository documents;
     private final KycRequirementRepository requirements;
@@ -133,6 +134,7 @@ public class SellerApplicationService {
                 .build();
         passwords.applyTo(user, request.password());
         User saved = users.save(user);
+        consent.captureAtOnboarding(saved.getId());
 
         /*
          * No group and no organisation.

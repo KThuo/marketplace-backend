@@ -191,3 +191,24 @@ identifiable). Platform-wide: quiet hours for non-transactional messages, daily 
    both platform settings.
 
 Nothing left to confirm before phase 1.
+
+## 6. Progress
+
+### Phase 1 — consent for everyone — done (29 September 2026)
+
+- `V20260929130000__everyone_has_a_position_on_consent_and_in_app_is_a_channel.sql`: IN_APP joins the
+  channel CHECK; every live user without rows gets the opening position (transactional and in-app
+  granted, the rest refused, source BACKFILL), which restores every staff notice that was silently
+  dropped.
+- Every onboarding path — a seller's owner, a platform user, a valuer, an agent, a vendor, a seller
+  applicant, the seeded administrator — records the opening position through
+  `ConsentService.captureAtOnboarding` (source ONBOARDING, idempotent). `channelsFor`, the question every
+  sender asks, records the opening position and warns when it finds a person nobody ever asked, instead
+  of returning silence.
+- In-app is the third column of the consent grid: granted by default for every purpose, refusable for
+  alerts and marketing, never for transactional. The "What we send you" page shows it and is now in the
+  staff menu under Mine, at `/app/notifications`, as well as in the buyer's account.
+- Tests: `ConsentForEveryoneIT` (3): the opening position from onboarding; a sender finding nothing
+  records the position rather than dropping the notice; the grid with in-app on, refusable, and refused
+  for transactional.
+

@@ -96,6 +96,7 @@ public class UserService {
     private static final String TEMP_ALPHABET = UPPER + LOWER + DIGITS;
 
     private final UserRepository repository;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final UserProfileRepository profiles;
     private final UserProfileService userProfiles;
     private final UserTypeRepository userTypes;
@@ -339,6 +340,7 @@ public class UserService {
         user.setMustChangePassword(true);
 
         User saved = repository.save(user);
+        consent.captureAtOnboarding(saved.getId());
         UserProfile profile = userProfiles.provisionFirst(saved.getId(), type, group,
                 affiliation.tenantId(), affiliation.tenantName(),
                 affiliation.institutionId(), affiliation.institutionName());

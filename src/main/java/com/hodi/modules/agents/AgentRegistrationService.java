@@ -57,6 +57,7 @@ import java.time.LocalDate;
 public class AgentRegistrationService {
 
     private final AgentProfileRepository agents;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final UserRepository users;
     private final UserTypeRepository userTypes;
     private final UserGroupRepository userGroups;
@@ -142,6 +143,7 @@ public class AgentRegistrationService {
                 .build();
         passwords.applyTo(user, request.password());
         User saved = users.save(user);
+        consent.captureAtOnboarding(saved.getId());
 
         UserProfile profile = userProfiles.provisionFirst(
                 saved.getId(), agentType, agentGroup, null, null, null, null);

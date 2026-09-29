@@ -62,6 +62,7 @@ public class VendorService {
     public static final String VENDOR_GROUP_NAME = "Vendor";
 
     private final VendorProfileRepository vendors;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final VendorCategoryService categories;
     private final CatalogueItemRepository items;
     private final UserRepository users;
@@ -186,6 +187,7 @@ public class VendorService {
                 .build();
         passwords.applyTo(user, request.password());
         User saved = users.save(user);
+        consent.captureAtOnboarding(saved.getId());
 
         UserProfile profile = userProfiles.provisionFirst(
                 saved.getId(), vendorType, vendorGroup, null, null, null, null);

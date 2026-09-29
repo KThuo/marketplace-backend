@@ -68,6 +68,7 @@ public class SeederService {
     private static final String VENDOR_GROUP = "Vendor";
 
     private final UserTypeRepository userTypes;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final AppModuleRepository appModules;
     private final PermissionRepository permissions;
     private final UserGroupRepository userGroups;
@@ -992,6 +993,7 @@ public class SeederService {
         // The profile is what makes them a super administrator. Without it the row can authenticate and
         // resolve nothing — no actor class, no user type, no permissions.
         userProfiles.provisionFirst(admin.getId(), type, group, null, null, null, null);
+        consent.captureAtOnboarding(admin.getId());
         log.warn("Created bootstrap admin '{}' — sign in and change the password immediately",
                 bootstrapUsername);
         return true;

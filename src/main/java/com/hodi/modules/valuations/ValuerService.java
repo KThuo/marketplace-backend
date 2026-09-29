@@ -59,6 +59,7 @@ public class ValuerService {
     public static final String VALUER_GROUP_NAME = "Valuer";
 
     private final ValuerProfileRepository repository;
+    private final com.hodi.modules.consent.ConsentService consent;
     private final ValuationRequestRepository requests;
     private final UserRepository users;
     private final UserProfileRepository profiles;
@@ -216,6 +217,7 @@ public class ValuerService {
         // They chose nothing: the platform issued this credential, so it has to be replaced on first use.
         valuer.setMustChangePassword(true);
         User savedUser = users.save(valuer);
+        consent.captureAtOnboarding(savedUser.getId());
 
         // No organisation, by definition — see the class note.
         UserProfile profile = userProfiles.provisionFirst(
