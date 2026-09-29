@@ -10,6 +10,11 @@ import com.hodi.common.util.SearchSpecs;
 import com.hodi.modules.approvals.ApprovalService;
 import com.hodi.modules.approvals.ChangeSet;
 import com.hodi.modules.audit.AuditService;
+import com.hodi.modules.kyc.DocumentService;
+import com.hodi.modules.kyc.VaultDocument;
+import com.hodi.modules.kyc.VaultDocumentRepository;
+import com.hodi.modules.operations.CalendarService;
+import com.hodi.modules.operations.OperationsConstants;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
 import com.hodi.security.principal.AuthContext;
@@ -26,6 +31,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -77,6 +83,10 @@ public class ValuationService {
     private final PropertyRepository properties;
     private final ApprovalService approvals;
     private final AuditService audit;
+    private final ValuationNotifier notifier;
+    private final CalendarService calendar;
+    private final DocumentService documents;
+    private final VaultDocumentRepository vaultDocuments;
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -90,7 +100,9 @@ public class ValuationService {
             String conditionNote,
             String assumptions,
             String comparables,
+            /** The signed report in the vault, once attached: its reference and the file's own name. */
             String documentReference,
+            String documentName,
             OffsetDateTime submittedAt) {}
 
     /** One thing that happened to the job, for its timeline. */
@@ -117,6 +129,8 @@ public class ValuationService {
             String declinedReason,
             String cancelledReason,
             OffsetDateTime completedAt,
+            /** When the valuer will be on site, once booked. */
+            OffsetDateTime inspectionAt,
             /** Present once the valuer has answered. Null before that, for everybody. */
             ReportResponse report,
             OffsetDateTime createdAt,
@@ -131,6 +145,9 @@ public class ValuationService {
             boolean mayReport,
             boolean mayApprove,
             boolean mayCancel,
+            /** The valuer on it may book the inspection; and may attach the signed report to a submitted one. */
+            boolean mayInspect,
+            boolean mayAttachReport,
             /** How many times it has been handed back. */
             int handBacks,
             /** The timeline, oldest first. Empty on a list; filled when one job is read. */
@@ -155,6 +172,8 @@ public class ValuationService {
             BigDecimal feeAmount) {}
 
     public record DeclineRequest(@NotBlank(message = "Say why") String reason) {}
+
+    public record InspectionRequest(@NotNull(message = "When will you be on site?") OffsetDateTime at) {}
 
     public record SubmitReportRequest(
             @NotNull(message = "A market value is required")
@@ -226,6 +245,7 @@ public class ValuationService {
         event(job, ValuationEvent.RAISED, blankToNull(request.note()));
         audit.record(AppConstant.ACTION_CREATE, "ValuationRequest", job.getId(), null,
                 job.getReference() + " on " + job.getPropertyReference() + " for " + job.getPurpose());
+        notifier.platformRaised(job);
         return toResponse(job);
     }
 
@@ -274,6 +294,7 @@ public class ValuationService {
         event(job, ValuationEvent.ASSIGNED, valuer.getFullName() + (manual ? ", chosen by name" : ", chosen by the panel"));
         audit.record(AppConstant.AUDIT_VALUATION_ASSIGN, "ValuationRequest", job.getId(), null,
                 job.getReference() + " → " + valuer.getReference() + " (" + job.getAssignmentMethod() + ")");
+        notifier.valuerAssigned(job, valuer);
         return toResponse(job);
     }
 
@@ -338,6 +359,7 @@ public class ValuationService {
         ValuationRequest saved = requests.save(job);
         event(saved, ValuationEvent.ACCEPTED, null);
         audit.record(AppConstant.ACTION_UPDATE, "ValuationRequest", saved.getId(), null, saved.getReference() + " accepted");
+        notifier.requesterAccepted(saved);
         return toResponse(saved);
     }
 
@@ -358,6 +380,12 @@ public class ValuationService {
 
         String who = job.getValuerName();
         releaseValuer(job);
+        // The appointment was theirs; the next valuer books their own, and the diary entry goes with it.
+        if (job.getInspectionAt() != null) {
+            job.setInspectionAt(null);
+            calendar.project(OperationsConstants.SOURCE_VALUATION, job.getId(), job.getReference(),
+                    null, null, null, null, null, null, null, null);
+        }
         job.setDeclinedReason(request.reason().trim());
         job.setValuerProfileId(null);
         job.setValuerName(null);
@@ -369,6 +397,7 @@ public class ValuationService {
         event(saved, ValuationEvent.HANDED_BACK, request.reason().trim());
         audit.record(AppConstant.ACTION_UPDATE, "ValuationRequest", saved.getId(), who,
                 saved.getReference() + " handed back: " + request.reason().trim());
+        notifier.platformHandedBack(saved, who, request.reason().trim());
         return toResponse(saved);
     }
 
@@ -404,7 +433,8 @@ public class ValuationService {
                 .insuranceValue(request.insuranceValue())
                 .currency(job.getCurrency())
                 .methodology(methodology(request.methodology()))
-                .inspectedOn(request.inspectedOn())
+                .inspectedOn(request.inspectedOn() != null ? request.inspectedOn()
+                        : job.getInspectionAt() == null ? null : job.getInspectionAt().toLocalDate())
                 .conditionNote(blankToNull(request.conditionNote()))
                 .assumptions(blankToNull(request.assumptions()))
                 .comparables(blankToNull(request.comparables()))
@@ -446,6 +476,7 @@ public class ValuationService {
         event(job, ValuationEvent.REPORTED, "Market value " + money(request.marketValue(), job.getCurrency()));
         audit.record(AppConstant.AUDIT_VALUATION_REPORT, "ValuationRequest", job.getId(), null,
                 job.getReference() + " valued at " + request.marketValue() + " " + job.getCurrency() + ", awaiting review");
+        notifier.platformReported(job, money(request.marketValue(), job.getCurrency()));
         return toResponse(job);
     }
 
@@ -485,6 +516,10 @@ public class ValuationService {
         event(job, ValuationEvent.APPROVED, blankToNull(note));
         audit.record(AppConstant.AUDIT_VALUATION_REVIEW, "ValuationRequest", job.getId(), null,
                 job.getReference() + " approved by " + checker);
+        calendar.closeProjection(OperationsConstants.SOURCE_VALUATION, job.getId(), false);
+        String figure = reports.findByRequestId(job.getId())
+                .map(r -> money(r.getMarketValue(), r.getCurrency())).orElse("the submitted figure");
+        notifier.requesterApproved(job, figure);
         log.info("Valuation {} approved by {}", job.getReference(), checker);
     }
 
@@ -507,6 +542,7 @@ public class ValuationService {
         event(job, ValuationEvent.SENT_BACK, blankToNull(reason));
         audit.record(AppConstant.AUDIT_VALUATION_REVIEW, "ValuationRequest", job.getId(), null,
                 job.getReference() + " sent back by " + checker + (reason == null ? "" : ": " + reason));
+        valuerOf(job).ifPresent(valuer -> notifier.valuerSentBack(job, valuer, blankToNull(reason)));
         log.info("Valuation {} sent back by {}", job.getReference(), checker);
     }
 
@@ -561,6 +597,7 @@ public class ValuationService {
             throw new HodiException("The report is in and awaiting review; decide on it rather than cancelling "
                     + "the job.", HttpStatus.CONFLICT);
         }
+        Optional<ValuerProfile> valuer = valuerOf(job);
         releaseValuer(job);
         job.setState(AppConstant.VALUATION_CANCELLED);
         job.setCancelledReason(request == null ? null : blankToNull(request.reason()));
@@ -569,7 +606,107 @@ public class ValuationService {
         event(saved, ValuationEvent.CANCELLED, saved.getCancelledReason());
         audit.record(AppConstant.ACTION_UPDATE, "ValuationRequest", saved.getId(), null,
                 saved.getReference() + " cancelled" + (saved.getCancelledReason() == null ? "" : ": " + saved.getCancelledReason()));
+        calendar.closeProjection(OperationsConstants.SOURCE_VALUATION, saved.getId(), true);
+        valuer.ifPresent(v -> notifier.valuerCancelled(saved, v, saved.getCancelledReason()));
+        // The requester hears of it when somebody else cancelled; their own cancellation is not news to them.
+        if (AuthContext.current().map(UserPrincipal::isPlatformStaff).orElse(false)) {
+            notifier.requesterCancelled(saved, saved.getCancelledReason());
+        }
         return toResponse(saved);
+    }
+
+    // ── the inspection and the signed report ──────────────────────────────────
+
+    /**
+     * The valuer books when they will be on site.
+     *
+     * <p>A time on the job, projected into the requester's diary and told to them — a seller wants to know
+     * when somebody will be walking through the house. Re-booking overwrites; the diary follows.
+     */
+    @Transactional
+    public ValuationResponse scheduleInspection(String reference, InspectionRequest request) {
+        ValuationRequest job = loadForValuer(reference);
+        if (!job.isWithValuer()) {
+            throw new HodiException("That job is not open for an inspection.", HttpStatus.CONFLICT);
+        }
+        if (request.at().isBefore(OffsetDateTime.now().minusHours(1))) {
+            throw new HodiException("An inspection is booked for a time still to come.", HttpStatus.BAD_REQUEST);
+        }
+        job.setInspectionAt(request.at());
+        job.setUpdatedBy(AuthContext.username());
+        ValuationRequest saved = requests.save(job);
+
+        UserPrincipal caller = AuthContext.require();
+        calendar.project(OperationsConstants.SOURCE_VALUATION, saved.getId(), saved.getReference(),
+                "Valuation inspection: " + saved.getPropertyTitle(),
+                saved.getReference() + " for " + (saved.getTenantName() != null ? saved.getTenantName()
+                        : saved.getInstitutionName()) + " — " + saved.getValuerName(),
+                saved.getPropertyTitle() + (saved.getCounty() == null ? "" : ", " + saved.getCounty()),
+                request.at(), saved.getTenantId(), saved.getTenantName(),
+                caller.getUserId(), caller.getFullName());
+
+        event(saved, ValuationEvent.INSPECTION, "On site " + request.at().toString());
+        audit.record(AppConstant.ACTION_UPDATE, "ValuationRequest", saved.getId(), null,
+                saved.getReference() + " inspection booked for " + request.at());
+        notifier.requesterInspection(saved);
+        return toResponse(saved);
+    }
+
+    /**
+     * The signed report, into the vault.
+     *
+     * <p>Attached by the valuer to a report they have submitted and that is still awaiting review — after
+     * approval nothing on the report changes, the document included. Replacing one archives nothing: the
+     * newer document is the one referenced, and the vault's own audit says what was read when.
+     *
+     * <p>Sight of it follows the job, not an ACL: the requester, the bank and the platform read it through
+     * {@link #reportDocument}, which applies {@link ValuationScope} and then reads on trust.
+     */
+    @Transactional
+    public ValuationResponse attachReportDocument(String reference, MultipartFile file) {
+        ValuationRequest job = loadForValuer(reference);
+        if (!job.isAwaitingReview()) {
+            throw new HodiException("The signed report is attached to a submitted report awaiting review.",
+                    HttpStatus.CONFLICT);
+        }
+        ValuationReport report = reports.findByRequestId(job.getId())
+                .orElseThrow(() -> new HodiException("Submit the figures first.", HttpStatus.CONFLICT));
+        if (file == null || file.isEmpty()) {
+            throw new HodiException("Choose the signed report to attach.", HttpStatus.BAD_REQUEST);
+        }
+        String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        boolean pdf = "application/pdf".equalsIgnoreCase(file.getContentType()) || name.endsWith(".pdf");
+        if (!pdf) {
+            throw new HodiException("The signed report is a PDF.", HttpStatus.BAD_REQUEST);
+        }
+
+        VaultDocument stored = documents.store(file, "valuations", "VALUATION_REPORT",
+                "Valuation report " + job.getReference(), job.getTenantId(), AuthContext.userId(),
+                report.getInspectedOn(), null, "VALUATIONS_APPROVE");
+        report.setDocumentId(stored.getId());
+        report.setDocumentReference(stored.getReference());
+        report.setUpdatedBy(AuthContext.username());
+        report.setUpdatedAt(OffsetDateTime.now());
+        reports.save(report);
+
+        event(job, ValuationEvent.DOCUMENTED, stored.getOriginalName());
+        audit.record(AppConstant.ACTION_UPDATE, "ValuationRequest", job.getId(), null,
+                job.getReference() + " signed report attached: " + stored.getReference());
+        return toResponse(job);
+    }
+
+    /** The signed report's bytes, for anyone the job is visible to. */
+    @Transactional
+    public DocumentService.Fetched reportDocument(String reference) {
+        ValuationRequest job = load(reference);
+        ValuationReport report = reports.findByRequestId(job.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Report", reference));
+        if (report.getDocumentId() == null) {
+            throw new ResourceNotFoundException("Signed report", reference);
+        }
+        VaultDocument document = vaultDocuments.findById(report.getDocumentId())
+                .orElseThrow(() -> new ResourceNotFoundException("Signed report", reference));
+        return documents.readTrusted(document, "valuation " + job.getReference());
     }
 
     /** One row of the timeline, in the same transaction as the change it records. */
@@ -603,6 +740,11 @@ public class ValuationService {
             throw new HodiException("That job is not assigned to you.", HttpStatus.FORBIDDEN);
         }
         return job;
+    }
+
+    /** The valuer on the job, if one is. */
+    private Optional<ValuerProfile> valuerOf(ValuationRequest job) {
+        return job.getValuerProfileId() == null ? Optional.empty() : valuers.findById(job.getValuerProfileId());
     }
 
     /** The caller's own panel row, if they have one. */
@@ -651,7 +793,10 @@ public class ValuationService {
                 .map(r -> new ReportResponse(r.getMarketValue(), r.getForcedSaleValue(),
                         r.getInsuranceValue(), r.getCurrency(), r.getMethodology(), r.getInspectedOn(),
                         r.getConditionNote(), r.getAssumptions(), r.getComparables(),
-                        r.getDocumentReference(), r.getSubmittedAt()))
+                        r.getDocumentReference(),
+                        r.getDocumentId() == null ? null
+                                : vaultDocuments.findById(r.getDocumentId()).map(VaultDocument::getOriginalName).orElse(null),
+                        r.getSubmittedAt()))
                 .orElse(null);
 
         String valuerReference = job.getValuerProfileId() == null ? null
@@ -669,6 +814,8 @@ public class ValuationService {
         boolean mayReport = mayDecline;
         boolean mayApprove = platform && AuthContext.hasAuthority("VALUATIONS_APPROVE") && job.isAwaitingReview();
         boolean mayCancel = AuthContext.hasAuthority("VALUATIONS_CANCEL") && job.isOpen() && !job.isAwaitingReview() && !myJob;
+        boolean mayInspect = myJob && AuthContext.hasAuthority("VALUATIONS_WORK") && job.isWithValuer();
+        boolean mayAttachReport = myJob && AuthContext.hasAuthority("VALUATIONS_WORK") && job.isAwaitingReview();
         int handBacks = (int) events.countByRequestIdAndAction(job.getId(), ValuationEvent.HANDED_BACK);
 
         return new ValuationResponse(
@@ -678,9 +825,10 @@ public class ValuationService {
                 job.getPurpose(), job.getState(), job.getValuerName(), valuerReference,
                 job.getAssignedAt(), job.getAssignmentMethod(), job.getDueOn(), job.getFeeAmount(),
                 job.getCurrency(), job.getRequesterNote(), job.getDeclinedReason(),
-                job.getCancelledReason(), job.getCompletedAt(), report, job.getCreatedAt(),
+                job.getCancelledReason(), job.getCompletedAt(), job.getInspectionAt(), report, job.getCreatedAt(),
                 job.getSubmittedAt(), job.getReviewedBy(), job.getReviewedAt(), job.getReviewNote(),
-                mayAssign, mayAccept, mayDecline, mayReport, mayApprove, mayCancel, handBacks, timeline);
+                mayAssign, mayAccept, mayDecline, mayReport, mayApprove, mayCancel, mayInspect, mayAttachReport,
+                handBacks, timeline);
     }
 
     private static String purpose(String requested) {

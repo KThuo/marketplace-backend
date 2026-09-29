@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,4 +29,14 @@ public interface ValuerProfileRepository
     @Query("select v from ValuerProfile v where v.onPanel = true and v.status <> 4 and v.status <> 5 "
             + "order by v.openAssignments asc, v.lastAssignedAt asc nulls first")
     List<ValuerProfile> findAvailable();
+
+    /**
+     * Panel members whose cover or registration runs out on or before the horizon.
+     *
+     * <p>Whether each has already been warned about that date is the service's question, because it is a
+     * comparison between two columns of the same row and reads better said in Java than in JPQL.
+     */
+    @Query("select v from ValuerProfile v where v.onPanel = true and v.status <> 4 and v.status <> 5 "
+            + "and (v.piExpiresOn <= :horizon or v.registeredUntil <= :horizon)")
+    List<ValuerProfile> findLapsingBy(@Param("horizon") LocalDate horizon);
 }

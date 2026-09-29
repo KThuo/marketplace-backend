@@ -5,6 +5,8 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 
 public interface ValuationRequestRepository
@@ -27,4 +29,9 @@ public interface ValuationRequestRepository
     @Query("select count(r) from ValuationRequest r where r.valuerProfileId = :valuerProfileId "
             + "and r.state in ('ASSIGNED', 'IN_PROGRESS') and r.status <> 5")
     long countOpenForValuer(@Param("valuerProfileId") Long valuerProfileId);
+
+    /** Open jobs whose due date has passed and nobody has yet been told. */
+    @Query("select r from ValuationRequest r where r.dueOn < :today and r.overdueNoticedOn is null "
+            + "and r.state in ('REQUESTED', 'ASSIGNED', 'IN_PROGRESS') and r.status <> 5 order by r.dueOn asc")
+    List<ValuationRequest> findOverdueUnnoticed(@Param("today") LocalDate today);
 }

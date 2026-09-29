@@ -77,6 +77,19 @@ public interface UserProfileRepository
     List<Long> findLiveUserIdsByInstitution(@Param("institutionId") Long institutionId);
 
     /**
+     * The platform's own people who hold one permission — the reviewers, the assigners, the panel's managers.
+     *
+     * <p>Through the group rather than the resolver, because this is a fan-out for a notice, not an access
+     * decision: a live platform profile whose live group grants the action. The module axis does not apply to
+     * the platform, so nothing is lost by not consulting it here.
+     */
+    @Query("select distinct p.userId from UserProfile p, com.hodi.modules.usergroups.UserGroup g "
+            + "join g.permissions perm where g.id = p.userGroupId and perm.actionCode = :actionCode "
+            + "and p.tenantId is null and p.institutionId is null and p.profileType = 'PLATFORM' "
+            + "and p.status not in (4, 5) and g.status not in (4, 5) and perm.status not in (4, 5)")
+    List<Long> findLivePlatformUserIdsHolding(@Param("actionCode") String actionCode);
+
+    /**
      * Every live profile of one seller organisation.
      *
      * <p>KYC's writer: a decision about an organisation's pack lands on all of its people, not only the one

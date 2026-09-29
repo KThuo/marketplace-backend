@@ -53,6 +53,8 @@ public class ValuerProfile {
     @Column(name = "open_assignments", nullable = false) @Builder.Default private Integer openAssignments = 0;
     @Column(name = "completed_count", nullable = false) @Builder.Default private Integer completedCount = 0;
     @Column(name = "last_assigned_at") private OffsetDateTime lastAssignedAt;
+    /** The expiry date the last lapse warning was about, so the sweep says it once. */
+    @Column(name = "lapse_warned_for") private LocalDate lapseWarnedFor;
 
     @Column(nullable = false) @Builder.Default private Integer status = AppConstant.STATUS_ACTIVE;
     @Column(name = "status_flag", nullable = false, length = 32)
@@ -104,6 +106,18 @@ public class ValuerProfile {
                 .filter(s -> !s.isEmpty())
                 .map(String::toUpperCase)
                 .collect(Collectors.toSet());
+    }
+
+    /**
+     * The first of cover and registration to run out, or null when neither has a date.
+     *
+     * <p>What the lapse warning is about: a valuer whose cover ends in May and registration in June is warned
+     * about May, and about June when its turn comes.
+     */
+    public LocalDate nextLapseOn() {
+        if (piExpiresOn == null) return registeredUntil;
+        if (registeredUntil == null) return piExpiresOn;
+        return piExpiresOn.isBefore(registeredUntil) ? piExpiresOn : registeredUntil;
     }
 
     /** Assignable right now: on the panel, live, registered and covered. */

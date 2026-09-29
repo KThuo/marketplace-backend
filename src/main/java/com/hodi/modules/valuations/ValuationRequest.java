@@ -65,6 +65,10 @@ public class ValuationRequest {
     @Column(name = "reviewed_at") private OffsetDateTime reviewedAt;
     @Column(name = "review_note", columnDefinition = "TEXT") private String reviewNote;
     @Column(name = "completed_at") private OffsetDateTime completedAt;
+    /** When the valuer will be on site; projected into the diary. */
+    @Column(name = "inspection_at") private OffsetDateTime inspectionAt;
+    /** The day the sweep said this job was overdue. Said once. */
+    @Column(name = "overdue_noticed_on") private LocalDate overdueNoticedOn;
 
     /** Two people assigning at once: the second save fails rather than both succeeding. */
     @Version @Column(nullable = false) private Integer version;
@@ -92,6 +96,11 @@ public class ValuationRequest {
     /** The report is in and awaiting the platform's review. */
     public boolean isAwaitingReview() {
         return AppConstant.VALUATION_SUBMITTED.equals(state);
+    }
+
+    /** In a valuer's hands: assigned or taken on, not yet reported. */
+    public boolean isWithValuer() {
+        return AppConstant.VALUATION_ASSIGNED.equals(state) || AppConstant.VALUATION_IN_PROGRESS.equals(state);
     }
 
     /** Waiting for a valuer. Either never assigned, or the last one said no. */

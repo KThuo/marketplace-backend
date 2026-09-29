@@ -66,6 +66,7 @@ public class ValuerService {
     private final UserGroupRepository userGroups;
     private final com.hodi.modules.profiles.UserProfileService userProfiles;
     private final PasswordService passwords;
+    private final ValuationNotifier notifier;
     private final AuditService audit;
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
@@ -241,6 +242,8 @@ public class ValuerService {
 
         audit.record(AppConstant.ACTION_CREATE, "ValuerProfile", panel.getId(), null,
                 panel.getReference() + " " + panel.getFullName());
+        // Emailed as well as shown: the administrator on the screen is not the person who needs it.
+        notifier.welcome(savedUser, savedUser.getUsername(), temporary);
         return new OnboardedValuer(toResponse(panel), savedUser.getUsername(), temporary);
     }
 

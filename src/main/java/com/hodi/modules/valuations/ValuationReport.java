@@ -38,6 +38,8 @@ public class ValuationReport {
     @Column(columnDefinition = "TEXT") private String assumptions;
     @Column(columnDefinition = "TEXT") private String comparables;
 
+    /** The signed report in the vault: its id for the join, its reference for the screen. */
+    @Column(name = "document_id") private Long documentId;
     @Column(name = "document_reference", length = 16) private String documentReference;
 
     @Column(name = "submitted_at", nullable = false)

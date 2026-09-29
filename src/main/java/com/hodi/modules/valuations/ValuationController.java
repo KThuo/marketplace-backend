@@ -110,6 +110,40 @@ public class ValuationController {
         return ApiResponse.success("Report submitted", valuations.submitReport(reference, request));
     }
 
+    @PostMapping("/api/v1/valuations/{reference}/inspection")
+    @PreAuthorize("hasAuthority('VALUATIONS_WORK')")
+    @RequestAction("BOOK VALUATION INSPECTION")
+    public ApiResponse<ValuationResponse> inspection(@PathVariable String reference,
+                                                     @Valid @RequestBody InspectionRequest request) {
+        return ApiResponse.success("Inspection booked", valuations.scheduleInspection(reference, request));
+    }
+
+    @PostMapping(value = "/api/v1/valuations/{reference}/report/document",
+            consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasAuthority('VALUATIONS_WORK')")
+    @RequestAction("ATTACH SIGNED VALUATION REPORT")
+    public ApiResponse<ValuationResponse> attachReport(
+            @PathVariable String reference,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ApiResponse.success("Signed report attached", valuations.attachReportDocument(reference, file));
+    }
+
+    /** The signed report, streamed to anyone the job is visible to. Never cached: it is the bank's evidence. */
+    @GetMapping("/api/v1/valuations/{reference}/report/document")
+    @PreAuthorize("hasAuthority('VALUATIONS_VIEW')")
+    public org.springframework.http.ResponseEntity<byte[]> reportDocument(@PathVariable String reference) {
+        com.hodi.modules.kyc.DocumentService.Fetched fetched = valuations.reportDocument(reference);
+        return org.springframework.http.ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.parseMediaType(
+                        fetched.contentType() == null ? "application/pdf" : fetched.contentType()))
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION,
+                        org.springframework.http.ContentDisposition.attachment()
+                                .filename(fetched.fileName() == null ? "valuation-report.pdf" : fetched.fileName())
+                                .build().toString())
+                .header(org.springframework.http.HttpHeaders.CACHE_CONTROL, "no-store, no-cache, must-revalidate, private")
+                .body(fetched.bytes());
+    }
+
     // ── the panel ─────────────────────────────────────────────────────────────
 
     @GetMapping("/api/v1/valuers/list")

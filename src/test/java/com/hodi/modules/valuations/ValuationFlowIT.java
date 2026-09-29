@@ -4,6 +4,10 @@ import com.hodi.common.AppConstant;
 import com.hodi.common.exception.HodiException;
 import com.hodi.common.util.RrnGenerator;
 import com.hodi.modules.approvals.ApprovalService;
+import com.hodi.modules.kyc.DocumentService;
+import com.hodi.modules.operations.CalendarEntry;
+import com.hodi.modules.operations.CalendarEntryRepository;
+import com.hodi.modules.operations.OperationsConstants;
 import com.hodi.modules.profiles.UserProfile;
 import com.hodi.modules.properties.Property;
 import com.hodi.modules.properties.PropertyRepository;
@@ -19,11 +23,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -48,6 +54,8 @@ class ValuationFlowIT {
     @Autowired ValuerProfileRepository valuers;
     @Autowired PropertyRepository properties;
     @Autowired ApprovalService approvals;
+    @Autowired ValuationSweep sweep;
+    @Autowired CalendarEntryRepository diary;
     @Autowired JdbcTemplate jdbc;
 
     private static final BigDecimal PRICE = new BigDecimal("12000000");
@@ -257,6 +265,118 @@ class ValuationFlowIT {
         assertEquals("Sale fell through", gone.cancelledReason());
         assertEquals(0, valuers.findById(wanjiru.getId()).orElseThrow().getOpenAssignments());
         assertEquals("CANCELLED", gone.events().isEmpty() ? valuations.find(raised.reference()).events().get(2).action() : gone.events().get(2).action());
+    }
+
+    // ── the inspection and the signed report ──────────────────────────────────
+
+    @Test
+    @DisplayName("the inspection goes in the diary and the signed report into the vault, for those the job is visible to")
+    void inspectionAndSignedReport() {
+        ValuationResponse raised = valuations.raise(new RaiseRequest(home.getReference(), "MORTGAGE", null, null, null));
+        asBank();
+        valuations.assign(raised.reference(), new AssignRequest(wanjiru.getReference(), null, null));
+        Long jobId = requests.findByReference(raised.reference()).orElseThrow().getId();
+
+        asValuer(wanjiru);
+        OffsetDateTime onSite = OffsetDateTime.now().plusDays(3).withHour(10).withMinute(0).withSecond(0).withNano(0);
+        ValuationResponse booked = valuations.scheduleInspection(raised.reference(), new InspectionRequest(onSite));
+        assertEquals(onSite.toInstant(), booked.inspectionAt().toInstant());
+        CalendarEntry entry = diary.findBySourceTypeAndSourceId(OperationsConstants.SOURCE_VALUATION, jobId).orElseThrow();
+        assertEquals(OperationsConstants.ENTRY_SCHEDULED, entry.getState());
+        assertEquals(tenantId, entry.getTenantId(), "in the seller's diary — it is their house");
+        assertEquals(wanjiru.getUserId(), entry.getOwnerUserId());
+
+        HodiException past = assertThrows(HodiException.class, () -> valuations.scheduleInspection(raised.reference(),
+                new InspectionRequest(OffsetDateTime.now().minusDays(2))));
+        assertTrue(past.getMessage().contains("still to come"));
+
+        MockMultipartFile signed = new MockMultipartFile("file", "report.pdf", "application/pdf",
+                "%PDF-1.4 signed".getBytes(StandardCharsets.UTF_8));
+        HodiException early = assertThrows(HodiException.class, () -> valuations.attachReportDocument(raised.reference(), signed));
+        assertTrue(early.getMessage().contains("submitted report"), "figures first, then the file");
+
+        ValuationResponse submitted = valuations.submitReport(raised.reference(), new SubmitReportRequest(
+                new BigDecimal("11000000"), null, null, null, null, null, null, null, null));
+        assertEquals(onSite.toLocalDate(), submitted.report().inspectedOn(), "the booked inspection is the inspection date");
+        assertTrue(submitted.mayAttachReport());
+        assertThrows(HodiException.class, () -> valuations.attachReportDocument(raised.reference(),
+                new MockMultipartFile("file", "report.docx", "application/octet-stream", new byte[]{1})), "a PDF");
+        ValuationResponse attached = valuations.attachReportDocument(raised.reference(), signed);
+        assertNotNull(attached.report().documentReference());
+        assertEquals("report.pdf", attached.report().documentName());
+        assertTrue(attached.events().isEmpty(), "a write returns the job without the timeline");
+        assertTrue(valuations.find(raised.reference()).events().stream().map(EventResponse::action).toList()
+                .containsAll(List.of("INSPECTION", "DOCUMENTED")));
+
+        asSeller(tenantId);
+        DocumentService.Fetched read = valuations.reportDocument(raised.reference());
+        assertEquals("report.pdf", read.fileName());
+        assertEquals("%PDF-1.4 signed", new String(read.bytes(), StandardCharsets.UTF_8));
+
+        asSeller(otherTenantId);
+        assertThrows(Exception.class, () -> valuations.reportDocument(raised.reference()), "not their job");
+
+        asBank();
+        valuations.review(raised.reference(), new ReviewRequest("APPROVED", null));
+        assertEquals(OperationsConstants.ENTRY_DONE,
+                diary.findBySourceTypeAndSourceId(OperationsConstants.SOURCE_VALUATION, jobId).orElseThrow().getState());
+    }
+
+    @Test
+    @DisplayName("a hand-back takes the appointment out of the diary; a cancellation marks it cancelled")
+    void theDiaryFollowsTheJob() {
+        ValuationResponse first = valuations.raise(new RaiseRequest(home.getReference(), "SALE", null, null, null));
+        ValuationResponse second = valuations.raise(new RaiseRequest(home.getReference(), "SALE", null, null, null));
+        asBank();
+        valuations.assign(first.reference(), new AssignRequest(wanjiru.getReference(), null, null));
+        valuations.assign(second.reference(), new AssignRequest(wanjiru.getReference(), null, null));
+        Long firstId = requests.findByReference(first.reference()).orElseThrow().getId();
+        Long secondId = requests.findByReference(second.reference()).orElseThrow().getId();
+
+        asValuer(wanjiru);
+        valuations.scheduleInspection(first.reference(), new InspectionRequest(OffsetDateTime.now().plusDays(1)));
+        valuations.scheduleInspection(second.reference(), new InspectionRequest(OffsetDateTime.now().plusDays(2)));
+        ValuationResponse handedBack = valuations.decline(first.reference(), new DeclineRequest("Conflict of interest"));
+        assertNull(handedBack.inspectionAt());
+        assertTrue(diary.findBySourceTypeAndSourceId(OperationsConstants.SOURCE_VALUATION, firstId).isEmpty(),
+                "the next valuer books their own");
+
+        asBank();
+        valuations.cancel(second.reference(), new DeclineRequest("Sold privately"));
+        assertEquals(OperationsConstants.ENTRY_CANCELLED,
+                diary.findBySourceTypeAndSourceId(OperationsConstants.SOURCE_VALUATION, secondId).orElseThrow().getState());
+    }
+
+    // ── the sweep ─────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("the sweep says overdue once, and warns of a lapse once per expiry date")
+    void theSweepSaysItOnce() {
+        ValuationResponse raised = valuations.raise(new RaiseRequest(home.getReference(), "SALE",
+                LocalDate.now().minusDays(1), null, null));
+        asBank();
+        valuations.assign(raised.reference(), new AssignRequest(wanjiru.getReference(), null, null));
+        Long jobId = requests.findByReference(raised.reference()).orElseThrow().getId();
+
+        // Cover ending inside the notice; registration well after.
+        wanjiru.setPiExpiresOn(LocalDate.now().plusDays(10));
+        valuers.save(wanjiru);
+
+        sweep.pass(LocalDate.now());
+        assertEquals(LocalDate.now(), requests.findById(jobId).orElseThrow().getOverdueNoticedOn());
+        assertEquals(LocalDate.now().plusDays(10), valuers.findById(wanjiru.getId()).orElseThrow().getLapseWarnedFor());
+        assertNull(valuers.findById(otieno.getId()).orElseThrow().getLapseWarnedFor(), "a year away is not a warning");
+
+        // Tomorrow: nothing new to say.
+        sweep.pass(LocalDate.now().plusDays(1));
+        assertEquals(LocalDate.now(), requests.findById(jobId).orElseThrow().getOverdueNoticedOn(), "said once");
+        assertEquals(LocalDate.now().plusDays(10), valuers.findById(wanjiru.getId()).orElseThrow().getLapseWarnedFor());
+
+        // Renewed to a later date, and that date comes into the notice: warned again, about the new date.
+        wanjiru.setPiExpiresOn(LocalDate.now().plusDays(25));
+        valuers.save(wanjiru);
+        sweep.pass(LocalDate.now());
+        assertEquals(LocalDate.now().plusDays(25), valuers.findById(wanjiru.getId()).orElseThrow().getLapseWarnedFor());
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────

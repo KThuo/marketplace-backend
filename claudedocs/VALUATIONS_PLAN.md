@@ -179,5 +179,44 @@ Also asked for: the list as a paginated table, and a details page with everythin
   resubmitted; the cover rule by name and by the panel; hand-back remembered and the next valuer starting
   clean; scope for a seller, another seller and a valuer, and the panel filters; cancellation.
 
-Left for phases 4 and 5: notifications, the signed report through the vault, the calendar appointment, and
-the figure reaching affordability and LTV under `valuation.lending.basis`.
+### Phase 4 — done (29 September 2026)
+
+- `V20260929070000__a_valuation_tells_everyone_and_keeps_its_signed_report.sql`: `inspection_at` and
+  `overdue_noticed_on` on the job, `document_id` on the report, `lapse_warned_for` on the valuer.
+- **Everybody is told** — `ValuationNotifier`, on the leads pattern (transactional consent, best effort,
+  never in the way). The valuer hears of assignment, a send-back, a cancellation under them, an overdue due
+  date and a coming lapse of their cover or registration. The platform's holders of the relevant permission
+  hear of a raise and a hand-back (`VALUATIONS_ASSIGN`), a submitted report (`VALUATIONS_APPROVE`), an
+  overdue job (`VALUATIONS_ASSIGN`) and a lapsing valuer (`VALUER_PANEL_MANAGE`) — found through their
+  group by `UserProfileRepository.findLivePlatformUserIdsHolding`. The requester's staff — the seller's or
+  the bank's — hear that the valuer took it on, booked the inspection, that the figure was approved, and of
+  a cancellation by somebody else. Onboarding emails the temporary password to the new panel member as
+  well as showing it to the administrator (a sensitive send, masked in the logs). Notices link to the job.
+- **The sweep** — `ValuationSweep`, daily at 06:20 under an advisory lock: an open job past its due date is
+  said to be overdue once (`overdue_noticed_on`); a valuer whose cover or registration ends within
+  `valuation.lapse.warning.days` (new config, default 30) is warned once per expiry date
+  (`lapse_warned_for`), so a renewal that moves the date earns a fresh warning when its turn comes.
+- **The inspection** — `POST /valuations/{ref}/inspection {at}` for the valuer on an assigned or in-progress
+  job; the time is on the job, projected into the requester's diary (`CalendarService`, source
+  `VALUATION`, owned by the valuer), told to the requester, and used as the report's inspection date when
+  the form leaves it blank. Booking again moves it. A hand-back removes the diary entry (the next valuer
+  books their own); approval marks it done; cancellation marks it cancelled.
+- **The signed report** — `POST /valuations/{ref}/report/document` (multipart, PDF only) attaches the signed
+  PDF to a submitted report awaiting review, through `DocumentService.store` (folder `valuations`, code
+  `VALUATION_REPORT`, granted to the requester's organisation, the valuer and `VALUATIONS_APPROVE`
+  holders); `GET /valuations/{ref}/report/document` streams it to anyone the job is visible to, through
+  `ValuationScope` and a trusted read with the job as the basis, uncached. The report carries the
+  document's reference and file name.
+- Screens: the report form takes the PDF and uploads it after the figures (a failed upload keeps the
+  figures and says to attach from the job); the job's page shows the inspection, offers "Book / Move the
+  inspection" to the valuer, downloads the signed report for everyone who may see the job, and lets the
+  valuer attach or replace it while the report awaits review. Two new timeline entries: inspection booked,
+  signed report attached.
+- Tests: `ValuationFlowIT` grew to 9 — the inspection into the diary and the PDF into the vault, read by
+  the requester and refused to another seller, the entry closed on approval; the diary following a
+  hand-back and a cancellation; the sweep saying overdue once and warning about a lapse once per date.
+- Not walked in the browser: the valuer's own actions (book, attach) need a valuer login; the platform
+  side (inspection row, download row) was checked on the job's page.
+
+Left for phase 5: the figure reaching affordability and LTV under `valuation.lending.basis`, and linking a
+completed valuation to the booking or offer it was for.

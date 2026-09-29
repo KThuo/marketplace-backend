@@ -26,6 +26,10 @@ public class ValuationEvent {
     public static final String APPROVED = "APPROVED";
     public static final String SENT_BACK = "SENT_BACK";
     public static final String CANCELLED = "CANCELLED";
+    /** The valuer booked the inspection. */
+    public static final String INSPECTION = "INSPECTION";
+    /** The signed report was attached. */
+    public static final String DOCUMENTED = "DOCUMENTED";
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
