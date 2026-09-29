@@ -53,15 +53,21 @@ public class UnsubscribeService {
     /** Records the refusal the token stands for. Idempotent; a stale link still lands on "you are unsubscribed". */
     @Transactional
     public String unsubscribe(String token) {
-        String[] parts = token == null ? new String[0] : token.split("\\.", 2);
-        if (parts.length != 2) throw new HodiException("That link is not one we recognise.", HttpStatus.BAD_REQUEST);
-        String payload = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
-        if (!MessageDigest.isEqual(sign(payload), Base64.getUrlDecoder().decode(parts[1]))) {
+        String payload;
+        Long userId;
+        String purpose;
+        try {
+            String[] parts = token == null ? new String[0] : token.trim().split("\\.", 2);
+            if (parts.length != 2) throw new IllegalArgumentException("shape");
+            payload = new String(Base64.getUrlDecoder().decode(parts[0]), StandardCharsets.UTF_8);
+            if (!MessageDigest.isEqual(sign(payload), Base64.getUrlDecoder().decode(parts[1]))) throw new IllegalArgumentException("signature");
+            String[] fields = payload.split(":", 2);
+            userId = Long.valueOf(fields[0]);
+            purpose = fields[1];
+        } catch (RuntimeException e) {
+            // A truncated paste, a forged link, or nonsense: the same sentence for all three, and never a 500.
             throw new HodiException("That link is not one we recognise.", HttpStatus.BAD_REQUEST);
         }
-        String[] fields = payload.split(":", 2);
-        Long userId = Long.valueOf(fields[0]);
-        String purpose = fields[1];
         if (AppConstant.CONSENT_TRANSACTIONAL.equals(purpose) || !ConsentService.PURPOSES.contains(purpose)) {
             throw new HodiException("That kind of message cannot be switched off from a link.", HttpStatus.BAD_REQUEST);
         }
