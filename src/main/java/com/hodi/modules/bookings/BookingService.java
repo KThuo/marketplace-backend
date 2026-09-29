@@ -96,6 +96,7 @@ public class BookingService {
     private final BookingTermsService terms;
     private final BookingNotifier notifier;
     private final com.hodi.modules.notifications.NotificationService notifications;
+    private final com.hodi.modules.notifications.ReminderRuleService reminders;
 
     // ── reading ───────────────────────────────────────────────────────────────
 
@@ -441,13 +442,17 @@ public class BookingService {
 
     // ── the reminder before a hold lapses ─────────────────────────────────────
 
-    /** Buyers whose hold lapses within the horizon and who have not been told. Each is told once. */
+    /**
+     * Buyers whose hold lapses within the HOLD_EXPIRING rule's days — the platform's, or their seller's own —
+     * and who have not been told. Each is told once.
+     */
     @Transactional
-    public int remindExpiring(int daysAhead) {
-        if (daysAhead <= 0) return 0;
+    public int remindExpiring() {
         OffsetDateTime now = OffsetDateTime.now();
         int sent = 0;
-        for (UnitBooking booking : repository.findExpiringUnreminded(now, now.plusDays(daysAhead))) {
+        for (UnitBooking booking : repository.findExpiringUnreminded(now, now.plusDays(60))) {
+            var rule = reminders.resolve("HOLD_EXPIRING", booking.getTenantId(), booking.getInstitutionId());
+            if (!rule.enabled() || rule.days() <= 0 || booking.getExpiresAt().isAfter(now.plusDays(rule.days()))) continue;
             String when = booking.getExpiresAt().atZoneSameInstant(java.time.ZoneId.of("Africa/Nairobi"))
                     .format(java.time.format.DateTimeFormatter.ofPattern("d MMMM"));
             boolean waiting = BookingTermsService.TERMS_PRESENTED.equals(booking.getTermsState());

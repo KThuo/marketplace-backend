@@ -294,10 +294,6 @@ public enum ConfigKey {
             "The seller's note on the booking terms",
             "Shown to the buyer, in their words, on every booking's terms unless the development has its own.",
             false, false),
-    BOOKING_EXPIRY_REMINDER_DAYS(
-            "booking.expiry.reminder.days", "INTEGER", "PAYMENTS", "3",
-            "Days before a hold lapses to remind the buyer",
-            "The reminder says the terms are waiting when they are. Zero switches it off.", false, false),
     VALUATION_LENDING_BASIS(
             "valuation.lending.basis", "STRING", "AFFORDABILITY", "FORCED_SALE",
             "Which valuation figure the bank lends against",
@@ -518,12 +514,6 @@ public enum ConfigKey {
      * development does not name its own rate. Zero — the default — means no agent line is raised unless a
      * development says otherwise. Copied onto the line when raised, like the platform's.
      */
-    VALUATION_LAPSE_WARNING_DAYS(
-            "valuation.lapse.warning.days", "INTEGER", "GENERAL", "30",
-            "Days' notice before a valuer's cover or registration lapses",
-            "The daily sweep warns the valuer and the panel's managers this many days before professional "
-                    + "indemnity cover or professional registration runs out, once per expiry date.",
-            false, false),
     AGENT_COMMISSION_RATE_PERCENT(
             "commission.agent.rate.percent", "STRING", "GENERAL", "0",
             "Agent commission rate (%)",

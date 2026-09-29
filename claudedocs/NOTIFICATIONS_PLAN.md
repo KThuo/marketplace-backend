@@ -266,3 +266,29 @@ Nothing left to confirm before phase 1.
   narrowed and reworded by the platform, a wording with a hole refused, an unknown code silent; an
   organisation's override applying to its own events and refused for the platform's.
 
+### Phase 4 — reminders as rules — done (29 September 2026)
+
+- `V20260929190000__reminders_are_rules_the_platform_sets_and_an_organisation_may_tune.sql`:
+  `reminder_rules` (eight: an instalment due, money overdue, a hold about to lapse, a viewing coming up,
+  an enquiry unanswered, a decision waiting, a document expiring, a valuer's lapse — each with days,
+  whether it repeats and every how many, on/off), `reminder_rule_overrides` (an organisation's own
+  days or off), `reminder_sent` (said once per rule, subject and key, with when and how many times),
+  and nine catalogued events the rules send, reworded like the rest.
+- **The sweep** — `ReminderSweep`, daily at 07:05 under an advisory lock, one pass per rule: an
+  instalment falling due in the rule's days and not yet covered by what was paid (through the balance
+  view); money overdue, said the rule's days after the earliest uncovered due date and again as the
+  rule repeats; a confirmed viewing the rule's days away, to the buyer and to the seller's staff; an
+  open enquiry whose last word was the buyer's, keyed on that message so a new one starts the count
+  again; a pending approval, to the organisation's or the platform's holders of the deciding
+  permission; a vault document expiring within the rule's days, to the organisation or the person.
+  Every rule is resolved for the organisation whose thing it is, so a seller's own days apply to its
+  own bookings and enquiries.
+- The hold-expiry reminder and the valuer's lapse warning now read their days from the same rules;
+  their two private settings are gone.
+- **Settings → Notifications** gains a Reminders card at the top: the platform sets days and repeat and
+  switches rules off; an organisation sees the platform's answer beside its own and tunes its own.
+- Tests: `ReminderSweepIT` (4): an instalment due said once and money overdue said again a week
+  later; an organisation moving the days and switching a rule off for its own bookings; an enquiry
+  unanswered said, said again as the rule repeats, and silent once answered; the layering and the
+  "said once / again every N days" arithmetic as pure functions.
+

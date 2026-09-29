@@ -1,7 +1,5 @@
 package com.hodi.modules.valuations;
 
-import com.hodi.enums.ConfigKey;
-import com.hodi.modules.configurations.ConfigurationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,7 +30,7 @@ public class ValuationSweep {
     private final ValuationRequestRepository requests;
     private final ValuerProfileRepository valuers;
     private final ValuationNotifier notifier;
-    private final ConfigurationService configs;
+    private final com.hodi.modules.notifications.ReminderRuleService reminders;
     private final TransactionTemplate newTransaction;
     private final JdbcTemplate jdbc;
 
@@ -62,8 +60,9 @@ public class ValuationSweep {
         }
 
         int warned = 0;
-        LocalDate horizon = today.plusDays(Math.max(0, configs.getInt(ConfigKey.VALUATION_LAPSE_WARNING_DAYS)));
-        for (ValuerProfile valuer : valuers.findLapsingBy(horizon)) {
+        var lapse = reminders.resolve("VALUER_LAPSE", null, null);
+        LocalDate horizon = today.plusDays(Math.max(0, lapse.enabled() ? lapse.days() : -1));
+        for (ValuerProfile valuer : lapse.enabled() ? valuers.findLapsingBy(horizon) : java.util.List.<ValuerProfile>of()) {
             try {
                 LocalDate on = valuer.nextLapseOn();
                 if (on == null || on.equals(valuer.getLapseWarnedFor())) continue;

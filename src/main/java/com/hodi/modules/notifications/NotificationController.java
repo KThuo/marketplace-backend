@@ -26,6 +26,37 @@ public class NotificationController {
 
     private final NotificationService notifications;
     private final NotificationCatalogue catalogue;
+    private final ReminderRuleService reminders;
+
+    // ── the reminders ─────────────────────────────────────────────────────────
+
+    @GetMapping("/notifications/reminders")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_VIEW')")
+    public ApiResponse<List<ReminderRuleService.RuleRow>> reminderRules() {
+        return ApiResponse.success(reminders.all());
+    }
+
+    @PostMapping("/notifications/reminders/{code}")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_UPDATE')")
+    @RequestAction("EDIT REMINDER RULE")
+    public ApiResponse<ReminderRuleService.RuleRow> saveRule(@PathVariable String code,
+                                                             @RequestBody ReminderRuleService.SaveRuleRequest request) {
+        return ApiResponse.success("Saved", reminders.save(code, request));
+    }
+
+    @GetMapping("/notifications/reminders/mine")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_OVERRIDE')")
+    public ApiResponse<List<ReminderRuleService.RuleRow>> myReminderRules() {
+        return ApiResponse.success(reminders.mine());
+    }
+
+    @PostMapping("/notifications/reminders/mine/{code}")
+    @PreAuthorize("hasAuthority('APP_SETTINGS_OVERRIDE')")
+    @RequestAction("OVERRIDE REMINDER RULE")
+    public ApiResponse<ReminderRuleService.RuleRow> saveMyRule(@PathVariable String code,
+                                                               @RequestBody ReminderRuleService.SaveOverrideRequest request) {
+        return ApiResponse.success("Saved for your organisation", reminders.saveMine(code, request));
+    }
 
     // ── the catalogue ─────────────────────────────────────────────────────────
 

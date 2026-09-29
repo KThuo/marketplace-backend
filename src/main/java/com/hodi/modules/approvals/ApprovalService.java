@@ -70,6 +70,11 @@ public class ApprovalService {
                 ApprovalHandler::entityType, Function.identity(), (a, b) -> a));
     }
 
+    /** The permission that decides one kind of thing, for a reminder to find who holds it. */
+    public java.util.Optional<String> decidePermissionFor(String entityType) {
+        return java.util.Optional.ofNullable(byType().get(entityType)).map(ApprovalHandler::decidePermission);
+    }
+
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
     public record ApprovalResponse(

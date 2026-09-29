@@ -24,6 +24,11 @@ public interface SiteVisitRepository
     boolean existsByReference(String reference);
 
     /** The buyer's own confirmed viewings still ahead of them. Read by the assistant (M11). */
+    /** Confirmed viewings inside a window — the day-before reminder's list. */
+    @Query("select v from SiteVisit v where v.state = 'CONFIRMED' and v.status <> 5 "
+            + "and v.slotAt >= :from and v.slotAt < :to order by v.slotAt")
+    List<SiteVisit> findConfirmedBetween(@Param("from") java.time.OffsetDateTime from, @Param("to") java.time.OffsetDateTime to);
+
     @Query("select count(v) from SiteVisit v where v.userId = :userId "
             + "and v.state = 'CONFIRMED' and v.slotAt > :now and v.status <> 5")
     long countUpcomingForUser(@Param("userId") Long userId,

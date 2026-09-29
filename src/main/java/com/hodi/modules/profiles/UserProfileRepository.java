@@ -89,6 +89,14 @@ public interface UserProfileRepository
             + "and p.status not in (4, 5) and g.status not in (4, 5) and perm.status not in (4, 5)")
     List<Long> findLivePlatformUserIdsHolding(@Param("actionCode") String actionCode);
 
+    /** An organisation's people who hold one permission — its checkers, for a reminder that a decision waits. */
+    @Query("select distinct p.userId from UserProfile p, com.hodi.modules.usergroups.UserGroup g "
+            + "join g.permissions perm where g.id = p.userGroupId and perm.actionCode = :actionCode "
+            + "and ((:tenantId is not null and p.tenantId = :tenantId) or (:institutionId is not null and p.institutionId = :institutionId)) "
+            + "and p.status not in (4, 5) and g.status not in (4, 5) and perm.status not in (4, 5)")
+    List<Long> findLiveOrganisationUserIdsHolding(@Param("tenantId") Long tenantId, @Param("institutionId") Long institutionId,
+                                                  @Param("actionCode") String actionCode);
+
     /**
      * Every live profile of one seller organisation.
      *

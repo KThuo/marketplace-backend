@@ -23,6 +23,10 @@ public interface ApprovalWorkflowRepository
                                            @Param("id") Long entityId,
                                            @Param("action") String action);
 
+    /** Everything still waiting, oldest first — the reminder's list. */
+    @Query("select w from ApprovalWorkflow w where w.state = 'PENDING' and w.submittedAt <= :before order by w.submittedAt asc")
+    java.util.List<ApprovalWorkflow> findPendingSubmittedBefore(@Param("before") java.time.OffsetDateTime before);
+
     @Query("select count(w) from ApprovalWorkflow w where w.state = 'PENDING' "
             + "and (:tenantId is null or w.tenantId = :tenantId) "
             + "and (:institutionId is null or w.institutionId = :institutionId)")

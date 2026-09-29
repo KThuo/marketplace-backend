@@ -24,6 +24,11 @@ public interface EnquiryTicketRepository
     boolean existsByReference(String reference);
 
     /** The buyer's own unanswered questions. Read by the assistant (M11). */
+    /** Open enquiries whose last word was the buyer's, that long ago — the unanswered reminder's list. */
+    @Query("select t from EnquiryTicket t where t.state = 'OPEN' and t.status <> 5 and t.lastMessageSide = 'BUYER' "
+            + "and t.lastMessageAt <= :before order by t.lastMessageAt asc")
+    List<EnquiryTicket> findUnansweredSince(@Param("before") java.time.OffsetDateTime before);
+
     @Query("select count(e) from EnquiryTicket e where e.userId = :userId "
             + "and e.state <> 'CLOSED' and e.status <> 5")
     long countOpenForUser(@Param("userId") Long userId);
