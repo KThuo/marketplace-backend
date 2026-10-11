@@ -32,5 +32,9 @@ public class AssistantMessage {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb") private String payload;
 
+    /** 1 or -1 from whoever had the conversation; null until they say. Only on the assistant's side. */
+    private Short rating;
+    @Column(name = "rated_at") private OffsetDateTime ratedAt;
+
     @CreationTimestamp @Column(name = "created_at", updatable = false) private OffsetDateTime createdAt;
 }

@@ -1,35 +1,50 @@
 package com.hodi.modules.assistant;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * What answers a question (M11).
  *
- * <p>An interface with one rules-based implementation today, the same shape {@code AffordabilityProvider}
- * used for M3's mocked scoring: the seam is real, so putting a language model behind it later is a second
+ * <p>An interface with one rules-based implementation, so putting something else behind it later is a second
  * class rather than a rewrite of everything that calls it.
  *
- * <p>Whatever is behind it, an answer here is assembled from the platform's own data. The assistant is
- * orchestration over M2, M3 and M4 — it searches real listings, runs the real affordability arithmetic and
- * reads the caller's own leads. It does not have opinions about property.
+ * <p>Whatever is behind it, an answer is assembled from the platform's own data, read as the person asking:
+ * a visitor reaches only what the public marketplace shows, and a signed-in buyer only their own rows.
  */
 public interface AssistantProvider {
 
+    Answer answer(Question question);
+
     /**
-     * @param question what they typed
-     * @param userId   whose conversation it is — the caller's own rows are all it may read
-     * @return what it decided, what it found, and what to say
+     * @param text    what they typed
+     * @param userId  who is asking, or null for a visitor
+     * @param context what the conversation remembers; never null
      */
-    Answer answer(String question, Long userId);
+    record Question(String text, Long userId, AssistantContext context) {
+        public boolean visitor() { return userId == null; }
+    }
 
     /**
      * @param intent  what the question turned out to be about
      * @param reply   what to say, in plain sentences
-     * @param payload what was found, as JSON, or null
-     * @param links   things worth clicking, in order
+     * @param data    what was found, kept for whoever asks "why did it say that"; may be null
+     * @param links   places worth going, in order
+     * @param actions things the client can do from here, drawn as cards
+     * @param context what the conversation should remember now
      */
-    record Answer(String intent, String reply, String payload, List<Link> links) {}
+    record Answer(String intent, String reply, Map<String, Object> data, List<Link> links, List<Action> actions,
+                  AssistantContext context) {}
 
-    /** @param label what it says, {@param to} a path within this application */
+    /** @param to a path within this application */
     record Link(String label, String to) {}
+
+    /**
+     * Something the client can do from this answer.
+     *
+     * @param type  one of the {@code ACTION_} constants
+     * @param label what the card says
+     * @param data  what the card needs: listings to choose between, a search to save, where to come back to
+     */
+    record Action(String type, String label, Map<String, Object> data) {}
 }

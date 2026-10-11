@@ -197,8 +197,12 @@ public class ReminderSweep {
             if (days < rule.days()) continue;
             // Keyed on the message time: a new message from the buyer starts the count again.
             if (!rules.claim(rule, "ENQUIRY", ticket.getId(), String.valueOf(ticket.getLastMessageAt().toEpochSecond()), asOf(today))) continue;
-            notifications.event(profiles.findLiveUserIdsByTenant(ticket.getTenantId()), Event.of("ENQUIRY_UNANSWERED",
-                    Map.of("property", ticket.getPropertyTitle(), "buyer", ticket.getBuyerName() == null ? "A buyer" : ticket.getBuyerName(),
+            // An enquiry with no organisation is a general one the assistant handed to the platform's staff.
+            List<Long> staff = ticket.getTenantId() == null
+                    ? profiles.findLivePlatformUserIdsHolding("ENQUIRIES_REPLY")
+                    : profiles.findLiveUserIdsByTenant(ticket.getTenantId());
+            notifications.event(staff, Event.of("ENQUIRY_UNANSWERED",
+                    Map.of("property", com.hodi.modules.leads.EnquiryService.listingOf(ticket), "buyer", ticket.getBuyerName() == null ? "A buyer" : ticket.getBuyerName(),
                             "reference", ticket.getReference(), "days", String.valueOf(days)),
                     "/app/enquiries?ref=" + ticket.getReference(), new About("ENQUIRY", ticket.getId(), ticket.getReference()))
                     .forOrganisation(ticket.getTenantId(), null));

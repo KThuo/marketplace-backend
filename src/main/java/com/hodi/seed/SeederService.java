@@ -541,7 +541,9 @@ public class SeederService {
                 "APPROVALS_VIEW", "RATINGS_VIEW", "AGENTS_VIEW", "VENDORS_VIEW",
                 "AUCTIONS_VIEW", "AUCTIONEERS_VIEW", "COMMISSIONS_VIEW", "SETTLEMENTS_VIEW",
                 "MORTGAGE_PRODUCTS_VIEW", "VALUATIONS_VIEW", "VALUER_PANEL_VIEW",
-                "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW");
+                "KYC_VIEW", "PAYMENTS_VIEW", "PAYMENT_TYPES_VIEW", "DEVELOPMENTS_FINANCE_VIEW",
+                // What the assistant could not answer: support reads it to know what people are stuck on.
+                "ASSISTANT_VIEW");
 
         // USERS_VIEW and the property-type catalogue on top: support resolves "who is this person" and
         // "why is that type not on the form", and neither is the auditor's question.

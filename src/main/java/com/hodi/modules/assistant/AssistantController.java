@@ -10,11 +10,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 /**
- * The assistant (M11).
+ * The assistant for a signed-in person (M11).
  *
- * <p>Everything is under {@code /me}: a conversation belongs to the person who had it, scoped by identity,
- * with no permission to grant. Nothing here reads anybody else's rows — including the "where do my enquiries
- * stand" answer, which is the caller's own count and nobody else's.
+ * <p>Everything is under {@code /me}: a conversation belongs to whoever had it, scoped by identity, with no
+ * permission to grant. Visitors use {@link PublicAssistantController}, and {@code claim} is how a visitor's
+ * conversation follows them into their account.
  */
 @RestController
 @RequestMapping("/api/v1/me/assistant")
@@ -30,14 +30,25 @@ public class AssistantController {
     }
 
     @GetMapping
-    public ApiResponse<PagedResponse<ConversationResponse>> mine(
-            @ModelAttribute PagedDataRequest request) {
+    public ApiResponse<PagedResponse<ConversationResponse>> mine(@ModelAttribute PagedDataRequest request) {
         return ApiResponse.success(assistant.mine(request));
     }
 
     @GetMapping("/{reference}")
     public ApiResponse<ConversationDetail> find(@PathVariable String reference) {
         return ApiResponse.success(assistant.find(reference));
+    }
+
+    @PostMapping("/{reference}/messages/{messageId}/rating")
+    public ApiResponse<ConversationDetail> rate(@PathVariable String reference, @PathVariable String messageId,
+                                                @Valid @RequestBody RateRequest request) {
+        return ApiResponse.success(assistant.rate(reference, messageId, request));
+    }
+
+    @PostMapping("/claim")
+    @RequestAction("KEEP VISITOR CONVERSATIONS")
+    public ApiResponse<ClaimResponse> claim(@Valid @RequestBody ClaimRequest request) {
+        return ApiResponse.success(assistant.claim(request));
     }
 
     @PostMapping("/{reference}/hand-off")

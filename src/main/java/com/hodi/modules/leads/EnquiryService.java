@@ -123,6 +123,54 @@ public class EnquiryService {
         return toResponse(ticket, true);
     }
 
+    /**
+     * A question about no particular listing, from a conversation the assistant handed on.
+     *
+     * <p>{@code tenantId} null sends it to the platform's own staff, who are the only ones whose scope admits
+     * an enquiry with no organisation; otherwise it lands in that organisation's inbox like any other. Not
+     * offered as an endpoint of its own: the assistant is the one place a buyer has a question with no home
+     * attached, and it decides where it goes from the platform's setting.
+     */
+    @Transactional
+    public EnquiryResponse raiseGeneral(Long tenantId, String tenantName, String subject, String message) {
+        Long userId = AuthContext.requireUserId();
+        User buyer = users.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", userId));
+
+        EnquiryTicket ticket = repository.save(EnquiryTicket.builder()
+                .reference(nextReference())
+                .tenantId(tenantId)
+                .tenantName(tenantName)
+                .userId(userId)
+                .buyerName(buyer.fullName())
+                .buyerEmail(buyer.getEmail())
+                .buyerPhone(buyer.getPhone())
+                .subject(blankToNull(subject))
+                .createdBy(buyer.getUsername())
+                .updatedBy(buyer.getUsername())
+                .build());
+        addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), message);
+
+        audit.record(AppConstant.AUDIT_ENQUIRY_RAISED, "EnquiryTicket", ticket.getId(), null,
+                ticket.getReference() + " about no listing, to " + (tenantName == null ? "the platform" : tenantName));
+        toStaff(ticket, "ENQUIRY_RECEIVED", Map.of("property", listingOf(ticket), "buyer", buyer.fullName(),
+                "reference", ticket.getReference()));
+        return toResponse(ticket, true);
+    }
+
+    /** What a message calls the thing asked about: the listing, or that there is none. */
+    public static String listingOf(EnquiryTicket ticket) {
+        return ticket.getPropertyTitle() != null ? ticket.getPropertyTitle() : "a general question";
+    }
+
+    /** Whoever answers this ticket: its organisation's staff, or the platform's when it has none. */
+    private void toStaff(EnquiryTicket ticket, String code, Map<String, ?> model) {
+        String path = "/app/enquiries?ref=" + ticket.getReference();
+        About about = new About("ENQUIRY", ticket.getId(), ticket.getReference());
+        if (ticket.getTenantId() == null) notifier.toPlatform("ENQUIRIES_REPLY", code, model, path, about);
+        else notifier.toSeller(ticket.getTenantId(), code, model, path, about);
+    }
+
     @Transactional(readOnly = true)
     public PagedResponse<EnquiryResponse> mine(EnquiryListRequest request) {
         var page = repository.findMine(AuthContext.requireUserId(),
@@ -157,9 +205,8 @@ public class EnquiryService {
         User buyer = users.findById(userId).orElseThrow();
         addMessage(ticket, AppConstant.SIDE_BUYER, userId, buyer.fullName(), request.message());
 
-        notifier.toSeller(ticket.getTenantId(), "ENQUIRY_MESSAGE",
-                Map.of("property", ticket.getPropertyTitle(), "buyer", buyer.fullName(), "reference", ticket.getReference()),
-                "/app/enquiries?ref=" + ticket.getReference(), new About("ENQUIRY", ticket.getId(), ticket.getReference()));
+        toStaff(ticket, "ENQUIRY_MESSAGE",
+                Map.of("property", listingOf(ticket), "buyer", buyer.fullName(), "reference", ticket.getReference()));
         return toResponse(ticket, true);
     }
 
@@ -206,7 +253,9 @@ public class EnquiryService {
         repository.save(ticket);
 
         notifier.toBuyer(ticket.getUserId(), "ENQUIRY_REPLIED",
-                Map.of("property", ticket.getPropertyTitle(), "seller", ticket.getTenantName(), "reference", ticket.getReference()),
+                Map.of("property", listingOf(ticket),
+                        "seller", ticket.getTenantName() == null ? "The Hodi team" : ticket.getTenantName(),
+                        "reference", ticket.getReference()),
                 "/account/conversations?tab=enquiries&ref=" + ticket.getReference(),
                 new About("ENQUIRY", ticket.getId(), ticket.getReference()), ticket.getTenantId());
         return toResponse(ticket, true);

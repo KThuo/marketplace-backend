@@ -2,6 +2,8 @@ package com.hodi.modules.assistant;
 
 import com.hodi.common.AppConstant;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
@@ -18,7 +20,18 @@ public class AssistantConversation {
     private Long id;
 
     @Column(nullable = false, length = 16) private String reference;
-    @Column(name = "user_id", nullable = false) private Long userId;
+    /** Null while it belongs to a visitor; set when they sign in and claim it. */
+    @Column(name = "user_id") private Long userId;
+
+    /** SHA-256 of the visitor's own token. Cleared when the conversation is claimed. */
+    @Column(name = "visitor_hash", length = 64) private String visitorHash;
+
+    /** A keyed hash of the address a visitor asked from, for the hourly limit and nothing else. */
+    @Column(name = "client_hash", length = 64) private String clientHash;
+
+    /** What the conversation remembers: {@link AssistantContext} as JSON. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb") private String context;
 
     /** Taken from the first thing they said, so a list of these reads as a list of questions. */
     @Column(length = 180) private String title;

@@ -310,6 +310,31 @@ public enum ConfigKey {
             "The seller's note on the booking terms",
             "Shown to the buyer, in their words, on every booking's terms unless the development has its own.",
             false, false),
+    // ── ASSISTANT ─────────────────────────────────────────────────────────────
+    ASSISTANT_VISITORS_ENABLED(
+            "assistant.visitors.enabled", "BOOLEAN", "ASSISTANT", "true",
+            "Visitors may use the assistant",
+            "When on, somebody who has not signed in may ask the assistant about listings, prices and words. "
+                    + "Anything about their own bookings, viewings or alerts still asks them to sign in.",
+            false, false),
+    ASSISTANT_VISITOR_HOURLY_LIMIT(
+            "assistant.visitor.hourly.limit", "INTEGER", "ASSISTANT", "40",
+            "Questions a visitor may ask in an hour",
+            "Counted per browser and per address. Stops the public assistant being used to copy the listings.",
+            false, false),
+    ASSISTANT_HANDOFF_GENERAL(
+            "assistant.handoff.general", "STRING", "ASSISTANT", "PLATFORM",
+            "Where a hand-off about no particular listing goes",
+            "PLATFORM sends it to the platform's own staff, ORGANISATION to the organisation named below, and "
+                    + "OFF offers a person only for questions about a listing. A question about a listing always "
+                    + "goes to that listing's seller.",
+            false, false),
+    ASSISTANT_HANDOFF_ORGANISATION(
+            "assistant.handoff.organisation", "STRING", "ASSISTANT", "",
+            "The organisation general hand-offs go to",
+            "Its reference, as shown on the organisation's page. Used only when the setting above is ORGANISATION; if it is "
+                    + "blank or not active, hand-offs go to the platform's staff instead.",
+            false, false),
     VALUATION_LENDING_BASIS(
             "valuation.lending.basis", "STRING", "AFFORDABILITY", "FORCED_SALE",
             "Which valuation figure the bank lends against",

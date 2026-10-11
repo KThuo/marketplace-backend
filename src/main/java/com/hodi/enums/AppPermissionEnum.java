@@ -150,6 +150,10 @@ public enum AppPermissionEnum {
     SELLERS_VIEW("See seller applications", AppModuleEnum.TENANTS, true),
     SELLERS_DECIDE("Approve or refuse a seller application", AppModuleEnum.TENANTS, true),
 
+    // ── ASSISTANT ─────────────────────────────────────────────────────────────
+    ASSISTANT_VIEW("See what the assistant could not answer, and what it knows", AppModuleEnum.ASSISTANT, true),
+    ASSISTANT_MANAGE("Edit what the assistant explains", AppModuleEnum.ASSISTANT, true),
+
     // ── CAMPAIGNS ─────────────────────────────────────────────────────────────
     CAMPAIGNS_VIEW("See campaigns and what they sent", AppModuleEnum.CAMPAIGNS),
     CAMPAIGNS_MANAGE("Write a campaign and submit it for approval", AppModuleEnum.CAMPAIGNS),

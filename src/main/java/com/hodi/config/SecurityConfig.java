@@ -87,6 +87,10 @@ public class SecurityConfig {
             // The one-click way out of promotional messages: a signed token in the body is what stands in
             // for a session, because the person is on a phone and has not signed in. It only ever refuses.
             "/api/v1/public/unsubscribe",
+            // The assistant for visitors: a random token in a header stands in for a session, each token reads
+            // only its own conversations, and questions are limited per hour.
+            "/api/v1/public/assistant/ask",
+            "/api/v1/public/assistant/*/messages/*/rating",
             "/api/v1/auth/login",
             // The second half of a challenged login: the caller has no session yet, only a one-shot
             // challenge token, so this cannot require authentication.

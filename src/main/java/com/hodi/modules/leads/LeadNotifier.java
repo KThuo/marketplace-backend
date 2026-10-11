@@ -32,6 +32,19 @@ public class LeadNotifier {
     }
 
     /**
+     * The platform's own staff who hold {@code actionCode}, about something with no organisation behind it —
+     * an enquiry the assistant handed on that is about no listing.
+     */
+    public void toPlatform(String actionCode, String code, Map<String, ?> model, String path, About about) {
+        List<Long> staff = profiles.findLivePlatformUserIdsHolding(actionCode);
+        if (staff.isEmpty()) {
+            log.warn("Nobody on the platform holds {} to be told about {}", actionCode, code);
+            return;
+        }
+        notifications.event(staff, Event.of(code, model, path, about));
+    }
+
+    /**
      * The seller, about something a buyer did.
      *
      * <p>Sent to every live person at that organisation who could act on it. Not to an "enquiries@" address:
