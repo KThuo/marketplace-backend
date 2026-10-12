@@ -140,6 +140,33 @@ class AssistantIT {
     }
 
     @Test
+    @DisplayName("upcoming auctions come from the public catalogue; \"what is a guide price\" is still explained")
+    void auctions() {
+        Long tenantId = jdbc.queryForObject("select id from tenants where status <> 5 order by id limit 1", Long.class);
+        Long auctioneerId = jdbc.queryForObject("select id from auctioneers order by id limit 1", Long.class);
+        String title = "Nex Test Plot " + UUID.randomUUID().toString().replaceAll("[^a-f]", "");
+        jdbc.update("insert into auction_lots (reference, title, property_type, county, town, guide_price, currency, "
+                + "auction_date, venue, auctioneer_id, tenant_id, state, published_at, status, status_flag) values "
+                + "(?, ?, 'LAND', 'Nairobi', 'Karen', 4500000, 'KES', now() + interval '1 day', 'Nex Hall', ?, ?, "
+                + "'SCHEDULED', now(), 1, 'Active')", RrnGenerator.generate("AL"), title, auctioneerId, tenantId);
+
+        signInAsBuyer(buyer);
+        MessageResponse upcoming = last(assistant.ask(new AskRequest(null, "do we have any upcoming auctions")));
+        assertEquals(INTENT_AUCTIONS, upcoming.intent());
+        assertTrue(upcoming.body().startsWith("Yes."), upcoming.body());
+        assertTrue(upcoming.body().contains(title) || upcoming.body().contains("The catalogue has the rest"), upcoming.body());
+        assertEquals("/auctions", upcoming.links().get(0).to());
+
+        MessageResponse land = last(assistant.ask(new AskRequest(null, "any land at auction under 5m")));
+        assertEquals(INTENT_AUCTIONS, land.intent());
+        assertTrue(land.body().contains("plots, guided up to KES 5,000,000"), land.body());
+
+        assertEquals(INTENT_EXPLAIN, last(assistant.ask(new AskRequest(null, "what is a guide price at auction"))).intent(),
+                "the meaning of a word, not the catalogue");
+        assertNotEquals(INTENT_AUCTIONS, last(assistant.ask(new AskRequest(null, "a house with lots of space"))).intent());
+    }
+
+    @Test
     @DisplayName("whole words: \"agent\" alone is not a hand-off, \"current\" is not \"rent\", and greetings are answered")
     void routesByWholeWords() {
         signInAsBuyer(buyer);

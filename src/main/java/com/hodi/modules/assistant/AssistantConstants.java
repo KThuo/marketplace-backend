@@ -27,6 +27,8 @@ public final class AssistantConstants {
     public static final String INTENT_TERMS        = "BOOKING_TERMS";
     /** "How many are left at Palm Heights?" */
     public static final String INTENT_UNITS_LEFT   = "UNITS_LEFT";
+    /** "Do we have any upcoming auctions?" */
+    public static final String INTENT_AUCTIONS     = "AUCTIONS";
     /** "Can I see the second one?" */
     public static final String INTENT_VIEWING      = "VIEWING";
     /** "Tell me when a three-bed comes up in Karen." */

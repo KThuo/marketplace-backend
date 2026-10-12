@@ -120,6 +120,18 @@ public class RulesAssistantProvider implements AssistantProvider {
             "units left", "homes left", "how many left", "how many are left", "still available", "availability",
             "sold out", "how many units");
 
+    private static final List<String> AUCTION = List.of(
+            "auction", "auctions", "auctioned", "auctioneer", "auctioneers", "repossessed", "repossession",
+            "repossessions", "foreclosure", "foreclosed", "bid", "bidding", "auction lot", "auction lots");
+
+    /** What makes an auction question a request for the catalogue rather than for the meaning of a word. */
+    private static final List<String> LISTING_CUES = List.of(
+            "upcoming", "coming up", "any", "show", "list", "next", "when", "have", "are there", "is there",
+            "what auctions", "which", "where", "find", "looking for");
+
+    private static final DateTimeFormatter WHEN = DateTimeFormatter.ofPattern("EEE d MMM, HH:mm", Locale.UK);
+    private static final java.time.ZoneId NAIROBI = java.time.ZoneId.of("Africa/Nairobi");
+
     private static final List<String> RESTART = List.of(
             "new search", "start again", "start over", "anything", "forget that", "clear that", "something else");
 
@@ -169,6 +181,7 @@ public class RulesAssistantProvider implements AssistantProvider {
 
     private final PublicPropertyService marketplace;
     private final PublicDevelopmentService developmentsPublic;
+    private final com.hodi.modules.auctions.PublicAuctionService auctionsPublic;
     private final DevelopmentRepository developments;
     private final AffordabilityService affordability;
     private final EnquiryTicketRepository enquiries;
@@ -195,6 +208,10 @@ public class RulesAssistantProvider implements AssistantProvider {
         if (Words.any(q, TERMS)) return terms(question, context);
         if (Words.any(q, MY_ACTIVITY)) return myActivity(question, context);
         if (Words.any(q, VIEWING)) return viewing(q, question, context);
+        // An auction question lists the catalogue, unless it is asking what an auction word means.
+        if (Words.any(q, AUCTION) && (Words.any(q, LISTING_CUES) || knowledge.match(q).isEmpty())) {
+            return auctions(q, context);
+        }
 
         PublicDevelopmentResponse named = developmentNamedIn(q);
         if (named != null || (Words.any(q, UNITS) && lastDevelopment(context) != null)) {
@@ -258,8 +275,9 @@ public class RulesAssistantProvider implements AssistantProvider {
         int n = 0;
         for (var p : results.getContent()) {
             n++;
-            reply.append("\n").append(n).append(". ").append(p.title()).append(", ").append(money(p.price()))
-                    .append(", ").append(p.town() == null ? p.county() : p.town());
+            String where = p.town() == null ? p.county() : p.town();
+            reply.append("\n").append(n).append(". ").append(p.title()).append(", ").append(money(p.price()));
+            if (!names(p.title(), where)) reply.append(", ").append(where);
             links.add(new Link(p.title(), "/property/" + p.reference()));
             shown.add(new Shown("PROPERTY", p.reference(), p.title()));
         }
@@ -477,6 +495,80 @@ public class RulesAssistantProvider implements AssistantProvider {
         return candidates.size() == 1 ? candidates.get(0) : null;
     }
 
+    // ── auctions ──────────────────────────────────────────────────────────────
+
+    /**
+     * What is coming up at auction, from the public catalogue, soonest first.
+     *
+     * <p>The catalogue is a separate table from the listings on purpose, so a home search never turns up a
+     * repossession; this is the way in for somebody who asks. An area, a kind of property and a guide-price cap
+     * are taken from the question. Lots whose date has passed but are not yet closed are left out, because "upcoming"
+     * is what was asked.
+     */
+    private Answer auctions(String q, AssistantContext context) {
+        var request = new com.hodi.modules.auctions.AuctionDtos.PublicLotSearchRequest();
+        request.setSize(20);
+        String county = countyIn(q);
+        if (county != null) request.setCounty(county);
+        Filters f = filtersIn(q);
+        if (f.propertyType() != null) request.setPropertyType(f.propertyType());
+        if (f.maxPrice() != null) request.setMaxGuide(f.maxPrice());
+        if (county == null && f.town() != null) request.setSearch(f.town());
+
+        OffsetDateTime now = OffsetDateTime.now();
+        List<com.hodi.modules.auctions.AuctionDtos.PublicLot> lots = auctionsPublic.search(request).getContent().stream()
+                .filter(l -> l.auctionDate() == null || !l.auctionDate().isBefore(now))
+                .toList();
+
+        List<String> narrowed = new ArrayList<>();
+        if (f.propertyType() != null) narrowed.add(plural(f.propertyType()));
+        if (f.maxPrice() != null) narrowed.add("guided up to " + money(f.maxPrice()));
+        if (county != null) narrowed.add("in " + county);
+        else if (f.town() != null) narrowed.add("around " + capitalise(f.town()));
+        String which = narrowed.isEmpty() ? "" : " " + String.join(", ", narrowed);
+
+        List<Link> links = List.of(new Link("Open the auction catalogue", "/auctions"));
+        if (lots.isEmpty()) {
+            return new Answer(INTENT_AUCTIONS, "No auctions" + which + " are scheduled at the moment. New lots are "
+                    + "published in the catalogue as auctioneers announce them.", Map.of("lots", 0), links, List.of(),
+                    context.withIntent(INTENT_AUCTIONS));
+        }
+        StringBuilder reply = new StringBuilder("Yes. ").append(lots.size())
+                .append(lots.size() == 1 ? " lot" : " lots").append(which).append(" coming up at auction, soonest first:");
+        int n = 0;
+        for (var l : lots.stream().limit(4).toList()) {
+            n++;
+            reply.append("\n").append(n).append(". ").append(l.title());
+            String place = l.town() != null ? l.town() : l.county();
+            if (!names(l.title(), place)) reply.append(", ").append(place);
+            if (l.guidePrice() != null) reply.append(". Guide ").append(money(l.guidePrice(), l.currency()));
+            if (l.auctionDate() != null) {
+                reply.append(". ").append(WHEN.format(l.auctionDate().atZoneSameInstant(NAIROBI)));
+                if (l.venue() != null && !l.venue().isBlank()) reply.append(" at ").append(l.venue());
+            }
+            reply.append('.');
+        }
+        if (lots.size() > 4) reply.append("\n\nThe catalogue has the rest, with each lot's terms and viewing times.");
+        reply.append("\n\nA guide price is not a reserve: lots often sell for more. Bidders register and pay a deposit "
+                + "first; the catalogue says how much for each lot.");
+        return new Answer(INTENT_AUCTIONS, reply.toString(), Map.of("lots", lots.size()), links, List.of(),
+                context.withIntent(INTENT_AUCTIONS));
+    }
+
+    /** A county the auction catalogue has lots in, named in the question. */
+    private String countyIn(String q) {
+        try {
+            return auctionsPublic.facets().counties().stream()
+                    .filter(c -> c != null && !c.isBlank())
+                    .filter(c -> Words.has(q, c.toLowerCase(Locale.ROOT)))
+                    .max(Comparator.comparingInt(String::length))
+                    .orElse(null);
+        } catch (RuntimeException e) {
+            log.debug("Could not read the auction facets: {}", e.getMessage());
+            return null;
+        }
+    }
+
     // ── a development ─────────────────────────────────────────────────────────
 
     private Answer unitsLeft(PublicDevelopmentResponse named, AssistantContext context) {
@@ -562,8 +654,8 @@ public class RulesAssistantProvider implements AssistantProvider {
     private Answer notUnderstood(Question question, AssistantContext context) {
         return new Answer(INTENT_UNKNOWN,
                 "I did not follow that, and I would rather say so than guess. I can search the listings (\"three "
-                        + "bedrooms in Kilimani under 20m\"), say how many homes are left in a development, work out "
-                        + "roughly what you could borrow, explain the words that come up when you are buying, and "
+                        + "bedrooms in Kilimani under 20m\"), list what is coming up at auction, say how many homes are left "
+                        + "in a development, work out roughly what you could borrow, explain the words that come up when you are buying, and "
                         + (question.visitor() ? "once you sign in, tell you about your own bookings and viewings."
                                 : "tell you about your own bookings, enquiries and viewings.")
                         + "\n\nOr say \"talk to a person\" and I will pass this on.",
@@ -703,6 +795,12 @@ public class RulesAssistantProvider implements AssistantProvider {
             case AppConstant.BOOKING_LAPSED -> "Lapsed";
             default -> capitalise(state.toLowerCase(Locale.ROOT));
         };
+    }
+
+    /** Whether a title already says the place, so the line does not say it twice. Null places count as said. */
+    private static boolean names(String title, String place) {
+        return place == null || place.isBlank()
+                || (title != null && title.toLowerCase(Locale.ROOT).contains(place.trim().toLowerCase(Locale.ROOT)));
     }
 
     private static String phrase(long count, String one, String many) {

@@ -71,7 +71,7 @@ public class AssistantService {
     /** Said once, at the top of every conversation, so nobody mistakes it for a person. Named from settings. */
     private String opening() {
         return "I am " + brand.assistant() + ", " + brand.name() + "'s assistant: software, not a person. I can search "
-                + "the listings, say how many homes are left in a development, work out roughly what you could borrow, "
+                + "the listings, tell you what is coming up at auction, say how many homes are left in a development, work out roughly what you could borrow, "
                 + "explain the words that come up when you are buying, and tell you where your own bookings, enquiries "
                 + "and viewings stand.\n\nIf I am not helping, say \"talk to a person\" and I will pass the whole "
                 + "conversation on, so you do not have to say it twice.";
