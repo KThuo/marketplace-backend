@@ -597,7 +597,7 @@ public class DemoActivitySeeder {
             source = one("""
                     insert into payment_accounts (payment_type_id, account_no, account_name, provider_code, category, status, status_flag,
                         config, created_at, updated_at, created_by)
-                    values (?, '01100098765432', 'Hodi disbursements', 'COOP_PESALINK', 'TRANSFER', 1, 'Active', '{}'::jsonb, now(), now(), ?)
+                    values (?, '01100098765432', 'Platform disbursements', 'COOP_PESALINK', 'TRANSFER', 1, 'Active', '{}'::jsonb, now(), now(), ?)
                     returning id""", Long.class, pesalinkType, ACTOR);
         }
         Long maker = maybe("select id from users where username = 'otieno'", Long.class);

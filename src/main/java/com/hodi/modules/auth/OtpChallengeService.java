@@ -62,6 +62,7 @@ public class OtpChallengeService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final OtpChallengeRepository repository;
+    private final com.hodi.modules.configurations.Brand brand;
     private final ConfigurationService configs;
     private final TotpService totp;
     private final NotifyClient notify;
@@ -101,7 +102,7 @@ public class OtpChallengeService {
         // the notify.sms.enabled preference — a sign-in code is not a notification somebody can opt out of
         // and still complete the sign-in it gates.
         notify.sendSensitiveSms(user.getPhone(),
-                "Your Hodi sign-in code is " + code + ". It expires in " + ttlMinutes() + " minutes.",
+                "Your " + brand.name() + " sign-in code is " + code + ". It expires in " + ttlMinutes() + " minutes.",
                 user.fullName());
         return new Challenge(saved.getChallengeToken(), CHANNEL_SMS, masked);
     }
@@ -136,7 +137,7 @@ public class OtpChallengeService {
                 .sentToMasked(masked)
                 .build());
         notify.sendSensitiveSms(user.getPhone(),
-                "Your Hodi confirmation code is " + code + ".", user.fullName());
+                "Your " + brand.name() + " confirmation code is " + code + ".", user.fullName());
         return new Challenge(saved.getChallengeToken(), CHANNEL_SMS, masked);
     }
 
@@ -178,7 +179,7 @@ public class OtpChallengeService {
                 .expiresAt(expires)
                 .build());
         notify.sendSensitiveSms(phone,
-                about + " Your Hodi confirmation code is " + code + ". It expires in " + ttlMinutes()
+                about + " Your " + brand.name() + " confirmation code is " + code + ". It expires in " + ttlMinutes()
                         + " minutes.",
                 recipientName);
         return new IssuedCode(saved.getChallengeToken(), masked, expires, ttlMinutes());

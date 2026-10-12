@@ -35,6 +35,7 @@ public class ThemeService {
         theme.put("logoMarkUrl", emptyToNull(configs.getString(ConfigKey.THEME_LOGO_MARK_URL)));
         theme.put("faviconUrl", emptyToNull(configs.getString(ConfigKey.THEME_FAVICON_URL)));
         theme.put("appName", configs.getString(ConfigKey.COMPANY_NAME));
+        theme.put("assistantName", configs.getString(ConfigKey.ASSISTANT_NAME));
         theme.put("darkEnabled", configs.getBoolean(ConfigKey.THEME_DARK_ENABLED));
         theme.put("fieldHints", configs.getBoolean(ConfigKey.UI_FIELD_HINTS));
         theme.put("contactEmail", emptyToNull(configs.getString(ConfigKey.COMPANY_EMAIL)));

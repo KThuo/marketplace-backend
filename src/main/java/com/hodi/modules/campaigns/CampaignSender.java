@@ -43,6 +43,7 @@ public class CampaignSender {
     private static final ZoneId NAIROBI = ZoneId.of("Africa/Nairobi");
 
     private final CampaignRepository campaigns;
+    private final com.hodi.modules.configurations.Brand brand;
     private final CampaignSendRepository sends;
     private final UserRepository users;
     private final ConsentService consent;
@@ -185,7 +186,7 @@ public class CampaignSender {
     }
 
     String smsBody(Campaign campaign, String unsubscribeLink) {
-        String text = "Hodi: " + firstLine(campaign.getBody()) + " Stop: " + unsubscribeLink;
+        String text = brand.smsPrefix() + firstLine(campaign.getBody()) + " Stop: " + unsubscribeLink;
         return text.length() <= 480 ? text : text.substring(0, 480);
     }
 

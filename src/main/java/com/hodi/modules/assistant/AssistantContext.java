@@ -42,15 +42,59 @@ public record AssistantContext(Filters filters, List<Shown> shown, String lastIn
             return bedrooms == null && maxPrice == null && town == null && listingType == null && propertyType == null;
         }
 
-        /** The new question's filters over the old ones: what it says wins, what it leaves out is kept. */
-        public Filters over(Filters older) {
-            if (older == null) return this;
+        /**
+         * A follow-up over the search in force.
+         *
+         * <p>What the new question says wins and what it leaves out is kept, with two exceptions that the plain
+         * merge got wrong: "two bedrooms in Upper Hill" followed by "what about a commercial hall" searched for a
+         * two-bedroom commercial hall. So a change of kind (homes, commercial, land) keeps only the area and
+         * whether it is to buy or rent, and commercial property and land never carry a bedroom count.
+         */
+        public Filters after(Filters older) {
+            Filters merged;
+            if (older == null || older.isEmpty()) {
+                merged = this;
+            } else if (propertyType != null && older.kind() != null && !kindOf(propertyType).equals(older.kind())) {
+                merged = new Filters(bedrooms, maxPrice, town != null ? town : older.town,
+                        listingType != null ? listingType : older.listingType, propertyType);
+            } else {
+                merged = new Filters(
+                        bedrooms != null ? bedrooms : older.bedrooms,
+                        maxPrice != null ? maxPrice : older.maxPrice,
+                        town != null ? town : older.town,
+                        listingType != null ? listingType : older.listingType,
+                        propertyType != null ? propertyType : older.propertyType);
+            }
+            return merged.hasRooms() ? merged
+                    : new Filters(null, merged.maxPrice, merged.town, merged.listingType, merged.propertyType);
+        }
+
+        /** The filters in {@code merged} that came from before rather than from this question. */
+        public Filters carriedInto(Filters merged) {
             return new Filters(
-                    bedrooms != null ? bedrooms : older.bedrooms,
-                    maxPrice != null ? maxPrice : older.maxPrice,
-                    town != null ? town : older.town,
-                    listingType != null ? listingType : older.listingType,
-                    propertyType != null ? propertyType : older.propertyType);
+                    bedrooms == null ? merged.bedrooms : null,
+                    maxPrice == null ? merged.maxPrice : null,
+                    town == null ? merged.town : null,
+                    listingType == null ? merged.listingType : null,
+                    propertyType == null ? merged.propertyType : null);
+        }
+
+        /** Whether a bedroom count means anything for this kind of property. */
+        private boolean hasRooms() {
+            return propertyType == null || "HOME".equals(kindOf(propertyType));
+        }
+
+        /** HOME, COMMERCIAL or LAND; null when nothing says. A bedroom count alone means a home. */
+        private String kind() {
+            if (propertyType != null) return kindOf(propertyType);
+            return bedrooms != null ? "HOME" : null;
+        }
+
+        private static String kindOf(String type) {
+            return switch (type) {
+                case "COMMERCIAL", "LAND" -> type;
+                default -> "HOME";
+            };
         }
     }
 

@@ -166,6 +166,16 @@ editing, both hand-off routes and the insights view.
 - [ ] Browser walkthrough signed in: claiming on sign-in, a viewing and an alert sent from the chat, a
   general hand-off, and the settings tab. Needs a sign-in.
 
+### 2026-10-12
+
+- The assistant is called Nex. Its name is the setting `assistant.name`, editable on the Assistant tab, so
+  it can change with the brand.
+- The platform's name is read from `company.name` everywhere people see it: sign-in codes, password resets,
+  text messages, the authenticator entry, the assistant's greeting, and the frontend. Internal labels say
+  "the platform" instead. The setting's default is the one place the placeholder name is written.
+- Search memory no longer carries filters across a change of kind. "Two bedrooms in Upper Hill" then "what
+  about a commercial hall" now searches commercial property in Upper Hill, and says it kept only the area.
+
 ### Noticed
 
 - Highrise Apartments says 14 of 34 homes available, while its four unit types add up to 73 left. The

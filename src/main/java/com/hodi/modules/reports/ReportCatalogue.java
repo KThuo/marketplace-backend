@@ -243,7 +243,7 @@ public final class ReportCatalogue {
                     true),
 
             new Report("DEVELOPMENT_MONEY_OUT", "Development money out",
-                    "What a development paid, and to whom: every payment through Hodi in whatever state it is "
+                    "What a development paid, and to whom: every payment made through the platform, in whatever state it is "
                             + "in, and every cost recorded by hand.",
                     "v_report_development_money_out", "happened_on",
                     ordered("When", "happened_on", "Development", "development_name",

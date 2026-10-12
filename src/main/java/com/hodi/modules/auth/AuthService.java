@@ -63,6 +63,7 @@ import java.util.List;
 public class AuthService {
 
     private final UserRepository users;
+    private final com.hodi.modules.configurations.Brand brand;
     private final UserProfileRepository profiles;
     private final UserProfileService userProfiles;
     private final UserTypeRepository userTypes;
@@ -639,7 +640,7 @@ public class AuthService {
         }
         if (tenant.isSuspended()) {
             throw new UnauthorizedException(
-                    "This organisation's account is suspended. Contact Hodi support.");
+                    "This organisation's account is suspended. Contact " + brand.name() + " support.");
         }
         if (tenant.isTerminated() || !AppConstant.isLive(tenant.getStatus())) {
             throw new UnauthorizedException("This organisation's account is closed.");

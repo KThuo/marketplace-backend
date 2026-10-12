@@ -70,7 +70,7 @@ public class MockAffordabilityProvider implements AffordabilityProvider {
      */
     @Override
     public String label() {
-        return "Hodi indicative rules";
+        return "Indicative rules";
     }
 
     @Override

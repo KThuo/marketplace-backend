@@ -164,7 +164,7 @@ class AffordabilityAgainstAProductIT {
         assertEquals(0, withProduct.assumedRate().compareTo(new BigDecimal("12.000")),
                 "every household used to be quoted the configured default whichever mortgage they chose");
         assertEquals(reference, withProduct.productReference());
-        assertEquals("Hodi indicative rules", withProduct.providerLabel(),
+        assertEquals("Indicative rules", withProduct.providerLabel(),
                 "a buyer reading MOCK beside their salary concludes the platform is a demonstration");
     }
 

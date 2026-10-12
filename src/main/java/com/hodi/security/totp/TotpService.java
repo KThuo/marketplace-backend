@@ -28,9 +28,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class TotpService {
 
-    private static final String ISSUER = "Hodi Market Place";
-
     private final ConfigurationService configs;
+    private final com.hodi.modules.configurations.Brand brand;
     private final EncryptionUtil encryptionUtil;
 
     private final SecretGenerator secretGenerator = new DefaultSecretGenerator();
@@ -64,9 +63,9 @@ public class TotpService {
     /** Build a {@code otpauth://} provisioning URI plus a base64 PNG QR payload. */
     public String generateQrDataUri(User user, String plainSecret) {
         QrData data = new QrData.Builder()
-                .label(ISSUER + ":" + user.getUsername())
+                .label(brand.name() + ":" + user.getUsername())
                 .secret(plainSecret)
-                .issuer(ISSUER)
+                .issuer(brand.name())
                 .algorithm(HashingAlgorithm.SHA1)
                 .digits(6)
                 .period(30)

@@ -311,6 +311,11 @@ public enum ConfigKey {
             "Shown to the buyer, in their words, on every booking's terms unless the development has its own.",
             false, false),
     // ── ASSISTANT ─────────────────────────────────────────────────────────────
+    ASSISTANT_NAME(
+            "assistant.name", "STRING", "ASSISTANT", "Nex",
+            "The assistant's name",
+            "What the assistant calls itself, on the button that opens it and in its greeting.",
+            false, false),
     ASSISTANT_VISITORS_ENABLED(
             "assistant.visitors.enabled", "BOOLEAN", "ASSISTANT", "true",
             "Visitors may use the assistant",

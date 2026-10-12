@@ -47,7 +47,7 @@ public class YouTubeOEmbed implements VideoCheck {
         var factory = new org.springframework.http.client.JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(TIMEOUT);
         this.client = RestClient.builder().requestFactory(factory)
-                .defaultHeader("User-Agent", "Hodi-Marketplace/1.0").build();
+                .defaultHeader("User-Agent", "Marketplace/1.0").build();
     }
 
     @Override

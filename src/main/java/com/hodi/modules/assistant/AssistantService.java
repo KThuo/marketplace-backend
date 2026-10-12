@@ -68,15 +68,14 @@ public class AssistantService {
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("d MMM HH:mm");
 
-    /** Said once, at the top of every conversation, so nobody mistakes it for a person. */
-    private static final String OPENING = """
-            I am Hodi's assistant: software, not a person. I can search the listings, say how many homes are left \
-            in a development, work out roughly what you could borrow, explain the words that come up when you are \
-            buying, and tell you where your own bookings, enquiries and viewings stand.
-
-            If I am not helping, say "talk to a person" and I will pass the whole conversation on, so you do not \
-            have to say it twice.""";
-
+    /** Said once, at the top of every conversation, so nobody mistakes it for a person. Named from settings. */
+    private String opening() {
+        return "I am " + brand.assistant() + ", " + brand.name() + "'s assistant: software, not a person. I can search "
+                + "the listings, say how many homes are left in a development, work out roughly what you could borrow, "
+                + "explain the words that come up when you are buying, and tell you where your own bookings, enquiries "
+                + "and viewings stand.\n\nIf I am not helping, say \"talk to a person\" and I will pass the whole "
+                + "conversation on, so you do not have to say it twice.";
+    }
     @Value("${hodi.jwt.secret}")
     private String secret;
 
@@ -88,6 +87,7 @@ public class AssistantService {
     private final ConfigurationService configs;
     private final AuditService audit;
     private final ObjectMapper json;
+    private final com.hodi.modules.configurations.Brand brand;
 
     // ── DTOs ──────────────────────────────────────────────────────────────────
 
@@ -278,7 +278,7 @@ public class AssistantService {
             Tenant organisation = AssistantConstants.HANDOFF_ORGANISATION.equals(target) ? namedOrganisation() : null;
             enquiry = enquiries.raiseGeneral(organisation == null ? null : organisation.getId(),
                     organisation == null ? null : organisation.getName(), "Passed on from the assistant", opening);
-            who = organisation == null ? "The Hodi team" : organisation.getName();
+            who = organisation == null ? brand.team() : organisation.getName();
         }
 
         conversation.setState(AssistantConstants.STATE_HANDED_OFF);
@@ -357,7 +357,7 @@ public class AssistantService {
                 .createdBy(caller.visitor() ? "visitor" : AuthContext.username())
                 .build());
         // A message rather than a client-side string, so the transcript a person reads begins with what was said.
-        record(conversation, AssistantConstants.SIDE_ASSISTANT, OPENING, null, null);
+        record(conversation, AssistantConstants.SIDE_ASSISTANT, opening(), null, null);
         return conversation;
     }
 

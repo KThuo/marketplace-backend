@@ -62,6 +62,7 @@ public class PasswordResetService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final UserRepository users;
+    private final com.hodi.modules.configurations.Brand brand;
     private final UserProfileRepository profiles;
     private final PasswordResetTokenRepository tokens;
     private final PasswordService passwords;
@@ -115,11 +116,11 @@ public class PasswordResetService {
                 // notified, and a reset link is not a notification somebody can opt out of and still
                 // recover their account. The body is masked in the logs.
                 notify.sendSensitiveSms(user.getPhone(),
-                        "Reset your Hodi password: " + link + " (valid " + expiry
+                        "Reset your " + brand.name() + " password: " + link + " (valid " + expiry
                                 + ", works once). If this was not you, ignore it.",
                         user.fullName());
             } else {
-                notify.sendSensitiveEmail(user.getEmail(), "Reset your Hodi password",
+                notify.sendSensitiveEmail(user.getEmail(), "Reset your " + brand.name() + " password",
                         mail.action(user.getFirstName(),
                                 "Someone asked to reset the password for this account.",
                                 "Choose a new password", link,

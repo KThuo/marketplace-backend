@@ -55,6 +55,7 @@ public class EnquiryService {
     private static final String REFERENCE_PREFIX = "EQ";
 
     private final EnquiryTicketRepository repository;
+    private final com.hodi.modules.configurations.Brand brand;
     private final com.hodi.modules.agents.IntroducerService introducers;
     private final AssignmentService assignment;
     private final EnquiryMessageRepository messages;
@@ -254,7 +255,7 @@ public class EnquiryService {
 
         notifier.toBuyer(ticket.getUserId(), "ENQUIRY_REPLIED",
                 Map.of("property", listingOf(ticket),
-                        "seller", ticket.getTenantName() == null ? "The Hodi team" : ticket.getTenantName(),
+                        "seller", ticket.getTenantName() == null ? brand.team() : ticket.getTenantName(),
                         "reference", ticket.getReference()),
                 "/account/conversations?tab=enquiries&ref=" + ticket.getReference(),
                 new About("ENQUIRY", ticket.getId(), ticket.getReference()), ticket.getTenantId());

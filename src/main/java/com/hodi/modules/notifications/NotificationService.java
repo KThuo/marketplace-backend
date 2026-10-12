@@ -61,6 +61,7 @@ public class NotificationService {
     private static final int SMS_MAX = 480;
 
     private final NotificationLogRepository logs;
+    private final com.hodi.modules.configurations.Brand brand;
     private final NotificationRepository inbox;
     private final UserRepository users;
     private final ConsentService consent;
@@ -388,7 +389,7 @@ public class NotificationService {
     }
 
     private String sms(String line, String link) {
-        String text = "Hodi: " + line + " " + link;
+        String text = brand.smsPrefix() + line + " " + link;
         return text.length() <= SMS_MAX ? text : text.substring(0, SMS_MAX);
     }
 

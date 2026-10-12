@@ -55,7 +55,7 @@ public class PaidCostRecorder {
                 .incurredOn(on)
                 .payee(paid.getPayeeName())
                 .referenceNo(paid.getInvoiceReference() == null ? paid.getReference() : paid.getInvoiceReference())
-                .notes("Paid through Hodi, " + paid.getReference()
+                .notes("Paid through the platform, " + paid.getReference()
                         + (paid.getBankReference() == null ? "" : " (Co-op " + paid.getBankReference() + ")"))
                 .documentId(paid.getDocumentId())
                 .beneficiaryId(paid.getBeneficiaryId())

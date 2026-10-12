@@ -54,7 +54,7 @@ public class ConsentService {
     private static final Map<String, String> PURPOSE_LABELS = Map.of(
             AppConstant.CONSENT_TRANSACTIONAL, "Account and transaction messages",
             AppConstant.CONSENT_PROPERTY_ALERTS, "New listings matching my saved searches",
-            AppConstant.CONSENT_PROMOTIONAL, "Offers and news from Hodi");
+            AppConstant.CONSENT_PROMOTIONAL, "Offers and news");
 
     private static final Map<String, String> PURPOSE_NOTES = Map.of(
             AppConstant.CONSENT_TRANSACTIONAL,

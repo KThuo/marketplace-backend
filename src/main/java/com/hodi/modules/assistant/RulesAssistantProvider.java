@@ -152,6 +152,14 @@ public class RulesAssistantProvider implements AssistantProvider {
         TYPES.put("plots", "LAND");
         TYPES.put("land", "LAND");
         TYPES.put("office", "COMMERCIAL");
+        TYPES.put("offices", "COMMERCIAL");
+        TYPES.put("office space", "COMMERCIAL");
+        TYPES.put("hall", "COMMERCIAL");
+        TYPES.put("halls", "COMMERCIAL");
+        TYPES.put("warehouse", "COMMERCIAL");
+        TYPES.put("showroom", "COMMERCIAL");
+        TYPES.put("retail", "COMMERCIAL");
+        TYPES.put("shops", "COMMERCIAL");
         TYPES.put("shop", "COMMERCIAL");
         TYPES.put("godown", "COMMERCIAL");
         TYPES.put("commercial", "COMMERCIAL");
@@ -213,8 +221,11 @@ public class RulesAssistantProvider implements AssistantProvider {
     private Answer search(String q, AssistantContext context) {
         Filters asked = filtersIn(q);
         boolean restart = Words.any(q, RESTART);
-        Filters filters = restart ? asked : asked.over(context.filtersOrNone());
-        boolean carried = !restart && !context.filtersOrNone().isEmpty() && !filters.equals(asked);
+        Filters filters = restart ? asked.after(null) : asked.after(context.filtersOrNone());
+        // Said back in words, so a filter kept from before is never a silent surprise.
+        String kept = restart ? "" : describeKept(asked.carriedInto(filters));
+        String keptLine = kept.isEmpty() ? ""
+                : "\n\nFrom before, I kept: " + kept + ". Say \"new search\" to drop it.";
 
         var request = new PropertyDtos.PublicSearchRequest();
         request.setSize(4);
@@ -231,7 +242,7 @@ public class RulesAssistantProvider implements AssistantProvider {
             return new Answer(INTENT_SEARCH,
                     "Nothing on the marketplace matches " + (described.isEmpty() ? "that" : described)
                             + " at the moment. Widening the area or the budget usually helps, or I can tell you "
-                            + "when something comes up.",
+                            + "when something comes up." + keptLine,
                     Map.of("matched", 0, "filters", filters),
                     List.of(new Link("Browse everything", "/")),
                     List.of(alertAction(filters)),
@@ -252,7 +263,7 @@ public class RulesAssistantProvider implements AssistantProvider {
             links.add(new Link(p.title(), "/property/" + p.reference()));
             shown.add(new Shown("PROPERTY", p.reference(), p.title()));
         }
-        if (carried) reply.append("\n\nI kept what you asked for before. Say \"new search\" to start afresh.");
+        reply.append(keptLine);
         reply.append("\n\nSay \"see the first one\" to arrange a viewing, or \"tell me when\" for new matches.");
 
         return new Answer(INTENT_SEARCH, reply.toString(),
@@ -261,7 +272,7 @@ public class RulesAssistantProvider implements AssistantProvider {
     }
 
     private Answer alert(String q, Question question, AssistantContext context) {
-        Filters filters = filtersIn(q).over(Words.any(q, RESTART) ? Filters.none() : context.filtersOrNone());
+        Filters filters = filtersIn(q).after(Words.any(q, RESTART) ? null : context.filtersOrNone());
         if (filters.isEmpty()) {
             return reply(INTENT_ALERT, "Tell me what to watch for, such as \"tell me when a three-bed comes up in "
                     + "Karen under 25m\", and I will set it up.", context);
@@ -313,7 +324,7 @@ public class RulesAssistantProvider implements AssistantProvider {
                         : ", roughly " + money(estimate.maxPropertyPrice()) + " of property once your deposit is added.")
                 + " That is arithmetic, not an offer: only the bank can tell you what they will actually lend.";
         // What it buys becomes the budget in force, so "show me what that buys" is the next search.
-        Filters budget = new Filters(null, estimate.maxPropertyPrice(), null, null, null).over(context.filtersOrNone());
+        Filters budget = new Filters(null, estimate.maxPropertyPrice(), null, null, null).after(context.filtersOrNone());
         return new Answer(INTENT_AFFORD, line, Map.of("income", income),
                 List.of(new Link("Work it out properly", "/affordability"),
                         new Link("What that buys", "/?maxPrice=" + estimate.maxPropertyPrice())),
@@ -623,7 +634,8 @@ public class RulesAssistantProvider implements AssistantProvider {
                     .filter(t -> t != null && !t.isBlank())
                     .filter(t -> Words.has(q, t.toLowerCase(Locale.ROOT)))
                     .max(Comparator.comparingInt(String::length))
-                    .map(t -> t.toLowerCase(Locale.ROOT))
+                    // As the marketplace spells it: "Upper Hill", not "Upper hill".
+                    .map(String::trim)
                     .orElse(null);
         } catch (RuntimeException e) {
             log.debug("Could not read the town facets: {}", e.getMessage());
@@ -643,6 +655,18 @@ public class RulesAssistantProvider implements AssistantProvider {
             else if ("SALE".equals(f.listingType())) kind += " for sale";
             parts.add(kind);
         }
+        if (f.maxPrice() != null) parts.add("up to " + money(f.maxPrice()));
+        if (f.town() != null) parts.add("around " + capitalise(f.town()));
+        return String.join(", ", parts);
+    }
+
+    /** Each kept filter on its own: "to rent, around Upper Hill", never a sentence implying what was not kept. */
+    static String describeKept(Filters f) {
+        List<String> parts = new ArrayList<>();
+        if (f.bedrooms() != null) parts.add(f.bedrooms() + (f.bedrooms() == 1 ? " bedroom" : " bedrooms") + " or more");
+        if (f.propertyType() != null) parts.add(plural(f.propertyType()));
+        if ("RENT".equals(f.listingType())) parts.add("to rent");
+        else if ("SALE".equals(f.listingType())) parts.add("to buy");
         if (f.maxPrice() != null) parts.add("up to " + money(f.maxPrice()));
         if (f.town() != null) parts.add("around " + capitalise(f.town()));
         return String.join(", ", parts);

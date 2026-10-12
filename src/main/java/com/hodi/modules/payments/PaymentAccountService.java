@@ -60,6 +60,7 @@ public class PaymentAccountService {
 
     private final org.springframework.context.ApplicationEventPublisher events;
     private final PaymentAccountRepository accounts;
+    private final com.hodi.modules.configurations.Brand brand;
     private final PaymentTypeRepository types;
     private final TenantRepository tenants;
     private final BankRepository institutions;
@@ -454,7 +455,7 @@ public class PaymentAccountService {
         String phone = phoneOfCaller(caller);
         OtpChallengeService.IssuedCode issued = otps.issueToPhone(caller.getUserId(),
                 OtpChallengeService.PURPOSE_PAYMENT_ACCOUNT, phone, caller.getFullName(),
-                "You are changing how " + nameOf(owner) + " collects payments on Hodi.");
+                "You are changing how " + nameOf(owner) + " collects payments on " + brand.name() + ".");
         return new OtpIssued(issued.challengeToken(), issued.sentToMasked(), issued.expiresAt(),
                 issued.validForMinutes());
     }

@@ -55,6 +55,7 @@ public class SearchAlertRunner {
     static final int MAX_MATCHES = 10;
 
     private final SearchAlertRepository repository;
+    private final com.hodi.modules.configurations.Brand brand;
     private final PublicPropertyService marketplace;
     private final ConsentService consent;
     private final UserRepository users;
@@ -241,7 +242,7 @@ public class SearchAlertRunner {
     private String smsBody(SearchAlert alert, List<Property> matches) {
         Property first = matches.getFirst();
         String more = matches.size() > 1 ? " and " + (matches.size() - 1) + " more" : "";
-        return "Hodi: " + first.getTitle() + " — " + money(first.getPrice(), first.getCurrency())
+        return brand.smsPrefix() + first.getTitle() + " — " + money(first.getPrice(), first.getCurrency())
                 + " in " + where(first) + more + ". Matches your saved search \"" + alert.getName()
                 + "\". " + publicUrl() + "/property/" + first.getReference();
     }

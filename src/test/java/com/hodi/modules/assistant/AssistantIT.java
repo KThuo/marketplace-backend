@@ -75,6 +75,7 @@ class AssistantIT {
     @Autowired EntityManager em;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
+    @Autowired com.hodi.modules.configurations.Brand brand;
 
     private User buyer;
 
@@ -115,6 +116,27 @@ class AssistantIT {
         assertTrue(filters.get("bedrooms").isNull(), "a new search forgets the bedrooms");
         assertEquals("RENT", filters.get("listingType").asString());
         assertEquals("APARTMENT", filters.get("propertyType").asString());
+    }
+
+    @Test
+    @DisplayName("a change of kind keeps only the area: two bedrooms, then a commercial hall, searches for a commercial hall")
+    void changeOfKind() {
+        signInAsBuyer(buyer);
+        String ref = assistant.ask(new AskRequest(null, "two bedrooms to rent under 20m")).conversation().reference();
+        MessageResponse hall = last(assistant.ask(new AskRequest(ref, "what about a commercial hall")));
+        assertEquals(INTENT_SEARCH, hall.intent());
+        JsonNode filters = filters(ref);
+        assertTrue(filters.get("bedrooms").isNull(), "a hall has no bedrooms");
+        assertTrue(filters.get("maxPrice").isNull(), "a budget for a home is not a budget for a hall");
+        assertEquals("COMMERCIAL", filters.get("propertyType").asString());
+        assertEquals("RENT", filters.get("listingType").asString(), "still to rent");
+        assertFalse(hall.body().contains("bedroom"), hall.body());
+        assertTrue(hall.body().contains("From before, I kept: to rent."), hall.body());
+
+        assistant.ask(new AskRequest(ref, "and a warehouse under 50m"));
+        filters = filters(ref);
+        assertEquals("COMMERCIAL", filters.get("propertyType").asString(), "same kind: kept");
+        assertEquals(0, new BigDecimal("50000000").compareTo(filters.get("maxPrice").decimalValue()));
     }
 
     @Test
@@ -290,7 +312,7 @@ class AssistantIT {
 
         ConversationDetail passed = assistant.handOff(ref, new HandOffRequest(null, "I have a question about fees."));
         assertEquals(STATE_HANDED_OFF, passed.conversation().state());
-        assertTrue(last(passed).body().contains("The Hodi team"), last(passed).body());
+        assertTrue(last(passed).body().contains(brand.team()), last(passed).body());
         EnquiryTicket ticket = enquiries.findByReference(passed.conversation().enquiryRef()).orElseThrow();
         assertNull(ticket.getPropertyId());
         assertNull(ticket.getTenantId(), "no organisation: the platform's own staff answer it");
